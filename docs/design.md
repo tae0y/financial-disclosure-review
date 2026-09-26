@@ -29,7 +29,8 @@ Sections with no code yet keep only their markdown heading.
 ## Data rules
 
 - Runtime data moves only through State. No global variables for it.
-- Settings (paths, model name, DB file) are passed at invoke time, not stored in State.
+- Settings (paths, model name, DB file) are passed at invoke time, not stored in State:
+  `Context(model, db_path)` via `context=`. Pass it again when re-running from a checkpoint.
 - Reusable data (rubrics, statutes, glossary, cases) is read from SQLite. Helpers open and
   close the connection. Vector search uses `sqlite-vec` (needs a Python build with
   `enable_load_extension`; the Homebrew 3.12 venv has it).
@@ -41,27 +42,34 @@ State (`product_page.url`). The page is loaded with
 Playwright, since the display-method check needs rendered, computed styles. The fetched HTML
 lives in State, so the thread's checkpoints are the record of what was judged.
 
-Page preparation follows the old repo's `collect.py`, `preprocess.py`, `ai.py`:
+Code loads the page; an agent manipulates it. Selector rules per site are not used: every
+site differs, and rules would need hand-tuning per site.
 
-1. Open the URL, wait for `networkidle`, scroll to the bottom.
-2. LLM identifies the target product (name, type, summary) from the page outline.
-3. First removal: `header`, `nav`, `footer`, `aside`, `[role=banner]`, `[role=navigation]`,
-   `[role=contentinfo]`.
-4. Site rule: LLM picks the main region, extra removal selectors, and expandable controls.
-   Cached per host in SQLite and reused once verified.
-5. Second check: LLM judges each removed region for target-product content. Such regions are
-   kept, and the rule is regenerated with that feedback (max 2 retries). A rule that never
-   passes is stored as unverified.
-6. Expand collapsed controls (`details`, `aria-expanded=false`, rule's expand selectors).
-7. Open in-content links; include only pages the LLM judges to describe the target product.
-8. On the live page, for both default and expanded states, assign `data-block-id` and extract
-   computed styles.
+1. Code opens the URL in a new tab, waits for `networkidle` (on timeout, continues), scrolls
+   to the bottom, and takes the tab's `default` snapshot.
+2. An agent works on the live page with tools that wrap Playwright's own API (not the
+   Playwright MCP server). It identifies the target product, marks page chrome for removal,
+   expands collapsed content, and opens in-content links. The prompt lists the signals to
+   watch: `aria-expanded`, `aria-controls`, `aria-hidden`, `hidden`, `role=tab`/`tabpanel`/
+   `dialog`, `details`/`summary`, landmarks (`header`, `nav`, `footer`, `aside`, `role=banner`
+   etc.), and the exception that a `header` inside the product article is content.
+3. Snapshots are tied to navigation. Arriving on a page (initial load, `goto`, `open_tab`)
+   takes a `default` snapshot; leaving it (`goto`, `close_tab`, `finish`) takes an `expanded`
+   snapshot. The agent can also save extra `expanded` snapshots (e.g. one per tab panel).
+   A snapshot assigns `data-block-id` and reads computed styles over CDP.
+4. Code builds the LLM-facing `html` from the main page's last `expanded` snapshot plus linked
+   pages the agent included: marked regions and styling attributes removed, blocks hidden by
+   computed style get `data-hidden`.
 
-- Steps 1-8 all run inside `preprocess_product_page`. Steps 6 and 7 use the results of steps 2
-  and 4, so the browser session stays open within one node. Playwright objects never enter
-  State. In a notebook, sync Playwright runs in a separate thread to avoid the asyncio loop.
+- Guards live in the tools, not the prompt: no `fill`/`type`/`evaluate`/download tools; a click
+  that would navigate the main frame is answered with 204 and reported to the agent, which
+  must use `goto` so the page is snapshotted before it leaves; turn and page caps.
+- Block ids are unique per State (prefix `v{visit}-`). Default and expanded snapshots of one
+  visit share ids, since the page is never reloaded within a visit.
+- Everything runs inside `preprocess_product_page`. Sync Playwright objects are bound to their
+  thread, so the whole agent loop runs in one worker thread. Playwright objects never enter
+  State. Tool calls are not checkpointed one by one; the agent's action log is kept in State.
 - Image captioning is out of scope.
-- The old `collect` command skipped step 5 (it ran only in `llm-process`). This design runs it.
 
 ## Graph
 
@@ -77,7 +85,7 @@ START → preprocess_product_page → classify_type
 - Order: explanation duty judges the plain-language output, so plain language runs right
   before it. A plain-language retry then re-runs only what depends on it.
 - No `pre_*` nodes. Each module node prepares its own input at the top of the function.
-  `preprocess_product_page` builds the page data that all modules share (Input steps 1-8).
+  `preprocess_product_page` builds the page data that all modules share (Input).
 - All retries go through `retry_dispatch`. It links only to `judge_display_method` for now;
   per-module branching (re-run only the failed module) is added there later.
 - `route_after_verify` returns `"end_report"` until the retry logic is built.
@@ -88,7 +96,7 @@ One top-level key per module. A node writes only its own module's key and reads 
 
 | Key | Type | Fields |
 |---|---|---|
-| `product_page` | `ProductPage` | `product_id`, `url`, `html`, `snapshots`, `product_type`, `page_type` |
+| `product_page` | `ProductPage` | `product_id`, `url`, `product`, `actions`, `snapshots`, `html`, `product_type`, `page_type` |
 | `display_check` | `DisplayCheck` | `items`, `judgments` |
 | `plain_language` | `PlainLanguage` | `items`, `draft`, `html`, `term_refs`, `accepted_blocks`, `contract_errors` |
 | `explanation_duty_check` | `ExplanationDutyCheck` | `items`, `original`, `plain`, `fidelity` |
