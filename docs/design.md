@@ -96,13 +96,16 @@ One top-level key per module. A node writes only its own module's key and reads 
 
 | Key | Type | Fields |
 |---|---|---|
-| `product_page` | `ProductPage` | `product_id`, `url`, `product`, `actions`, `snapshots`, `html`, `product_type`, `page_type` |
+| `product_page` | `ProductPage` | `url`, `product`, `actions`, `snapshots`, `html` |
+| `classification` | `Classification` | `product_type`, `page_type` |
 | `display_check` | `DisplayCheck` | `items`, `judgments` |
 | `plain_language` | `PlainLanguage` | `items`, `draft`, `html`, `term_refs`, `accepted_blocks`, `contract_errors` |
 | `explanation_duty_check` | `ExplanationDutyCheck` | `items`, `original`, `plain`, `fidelity` |
 | `verification` | `Verification` | `passed`, `reasons`, `failed_modules`, `feedback`, `loop_count` |
 | `report` | `Report` | defined when `end_report` is built |
 
+- `product_page.product` holds `product_name`, `summary`, `evidence` only. It identifies the
+  product; types are set by `classify_type` in `classification`.
 - Sub-TypedDicts use `total=False`. The initial State sets every key to `{}`, except
   `product_page.url`.
 - LangGraph replaces a returned key's whole value. A node copies its module's current dict
@@ -114,8 +117,9 @@ One top-level key per module. A node writes only its own module's key and reads 
 ## Rubrics
 
 Each module has its own rubric. Items carry `applies_to` (product types), `page_types`, and
-`applies_condition`. `classify_type` sets `product_type` and `page_type`; each module node
-looks up its own items with them. Original and plain-language text are judged against the
+`applies_condition`. `classify_type` writes `classification`; each module node looks up its
+own items with it. Only `classify_type` decides types: `product_page` carries no type or
+category field. Original and plain-language text are judged against the
 same explanation-duty items.
 
 Rubric drafts: `../05 법령·지침 원문 검증/카드사 가드레일 루브릭/`.
@@ -131,7 +135,7 @@ Rubric drafts: `../05 법령·지침 원문 검증/카드사 가드레일 루브
 | Id | Set by | Scope |
 |---|---|---|
 | `checkpointer` | `compile()`, once | one SQLite file |
-| `thread_id` | the caller, per invoke | one review of one page, e.g. `f"{product_id}-{run_time}"` |
+| `thread_id` | the caller, per invoke | one review of one page, e.g. `f"review-{run_time}"` |
 | `checkpoint_id` | LangGraph, per node step | one saved point inside a thread |
 
 - Each review request gets a new `thread_id`. Do not split by user: this graph is a one-shot
