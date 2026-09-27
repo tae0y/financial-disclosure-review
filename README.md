@@ -102,6 +102,7 @@ local HTML fixture and reaches no network.
 - `docs/product_page.md`, `docs/classification.md`, `docs/display_check.md`,
   `docs/plain_language.md`, `docs/explanation_duty_check.md`, `docs/report.md` — per-domain rules
 - `docs/api.md` — the HTTP surface, the job model, `detail` levels, concurrency and cost
+- `docs/team-usage-guide.md` — calling the deployed instance: base URL, auth, submit/poll example
 - `docs/openapi.yaml` — the OpenAPI 3.1 document, generated from the app; regenerate with
   `uv run python -m financial_disclosure_review.serving.openapi`
 - `docs/setup-docker.md`, `docs/setup-cloudflare.md` — the two containers and the tunnel
