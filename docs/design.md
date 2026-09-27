@@ -122,6 +122,22 @@ own items with it. Only `classify_type` decides types: `product_page` carries no
 category field. Original and plain-language text are judged against the
 same explanation-duty items.
 
+Scope: a public card-company product page is an ad (금소법 제22조). Explanation-duty items are
+applied by analogy (준용) as quality criteria, not as direct duties. Explanation screens inside
+the application flow are out of scope.
+
+`classify_type` judges only the product type; the page type follows from it.
+
+| `product_type` | `page_type` |
+|---|---|
+| 신용카드, 장기카드대출, 할부금융·리스 | 상품광고 |
+| 단기카드대출, 리볼빙 | 업무광고 |
+
+- Fixed by scope, not classified: ad status, the card company's own site, association review,
+  online automated sale, explanation screen.
+- `applies_condition` is judged per item by the LLM inside each module node, not by
+  `classify_type`.
+
 Rubric drafts: `../05 법령·지침 원문 검증/카드사 가드레일 루브릭/`.
 
 ## Checkpoints
