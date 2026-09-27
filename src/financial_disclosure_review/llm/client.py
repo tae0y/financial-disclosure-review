@@ -16,6 +16,8 @@ def ask(model: str, schema: type[BaseModel], task: str, effort: str = "low", **d
     prompt = task + "".join(
         f"\n{key}={json.dumps(value, ensure_ascii=False)}" for key, value in data.items()
     )
+    meter = current()
+    meter.check(schema.__name__)
     llm = ChatOpenAI(
         model=model, use_responses_api=True, max_retries=3, reasoning={"effort": effort}
     )
@@ -24,7 +26,13 @@ def ask(model: str, schema: type[BaseModel], task: str, effort: str = "low", **d
         prompt, config={"callbacks": [usage]}
     )
     for tokens in usage.usage_metadata.values():
-        print(f"    {schema.__name__}: in={tokens['input_tokens']} out={tokens['output_tokens']}")
+        entry = meter.record(
+            model, schema.__name__, tokens["input_tokens"], tokens["output_tokens"]
+        )
+        print(
+            f"    {schema.__name__}: in={entry['input_tokens']} out={entry['output_tokens']}"
+            f" ${entry['usd']:.5f}"
+        )
     return schema.model_validate(result).model_dump()
 
 
@@ -37,6 +45,8 @@ def ask_images(
     timeout: int = 90,
 ) -> tuple[str, dict | None]:
     """One image call. images are base64 PNGs, shown in the given order. Returns (text, usage)."""
+    meter = current()
+    meter.check("vision")
     content = [{"type": "input_text", "text": prompt}] + [
         {"type": "input_image", "image_url": "data:image/png;base64," + png, "detail": "high"}
         for png in images
@@ -47,7 +57,12 @@ def ask_images(
         max_output_tokens=max_output_tokens,
         input=cast(Any, [{"role": "user", "content": content}]),
     )
-    return response.output_text, (response.usage.model_dump() if response.usage else None)
+    tokens = response.usage.model_dump() if response.usage else None
+    if tokens:
+        meter.record(
+            model, "vision", tokens.get("input_tokens", 0), tokens.get("output_tokens", 0)
+        )
+    return response.output_text, tokens
 
 
 def call_ask(
@@ -88,6 +103,7 @@ class ToolChat:
     def __init__(
         self, model: str, tools: list[dict], effort: str = "low", max_retries: int = 3
     ) -> None:
+        self.model = model
         self.llm = ChatOpenAI(
             model=model, reasoning_effort=effort, max_retries=max_retries
         ).bind_tools(tools)
@@ -104,9 +120,14 @@ class ToolChat:
 
     def turn(self) -> dict:
         """One model turn. Returns the requested tool calls and the turn's token total."""
+        meter = current()
+        meter.check("discover")
         reply = self.llm.invoke(self.messages)
         self.messages.append(reply)
         usage = reply.usage_metadata or {}
+        meter.record(
+            self.model, "discover", usage.get("input_tokens", 0), usage.get("output_tokens", 0)
+        )
         return {
             "tool_calls": [dict(call) for call in reply.tool_calls],
             "tokens": usage.get("total_tokens"),
