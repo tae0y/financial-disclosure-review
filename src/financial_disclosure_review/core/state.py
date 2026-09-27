@@ -57,10 +57,20 @@ class Verification(TypedDict, total=False):
     failed_modules: Any
     feedback: Any
     loop_count: Any
+    retry_target: Any
+    retry_modules: Any
+    retry_history: Any
 
 
 class Report(TypedDict, total=False):
-    pass
+    status: Any
+    decision: Any
+    actions: Any
+    summary: Any
+    findings: Any
+    limits: Any
+    cost: Any
+    markdown: Any
 
 
 class State(TypedDict):

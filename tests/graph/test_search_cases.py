@@ -7,7 +7,6 @@ that placement: a reviewable product goes through `search_cases`, a non-review r
 from types import SimpleNamespace
 from typing import cast
 
-from langgraph.graph import END
 from langgraph.runtime import Runtime
 
 from financial_disclosure_review.core.context import Context
@@ -73,7 +72,10 @@ def test_empty_state_carries_the_new_key():
 def test_the_classify_route_goes_to_search_cases():
     state = state_with(classification={"product_type": "리볼빙"})
     assert route_after_classify(state) == "search_cases"
-    assert route_after_classify(state_with(classification={"product_type": "범위 밖"})) == END
+    # 범위 밖은 검토를 건너뛰지만 보고서는 받습니다(`route_after_classify` 참조).
+    assert (
+        route_after_classify(state_with(classification={"product_type": "범위 밖"})) == "end_report"
+    )
 
 
 def test_the_graph_runs_classify_then_search_cases_then_the_display_check():

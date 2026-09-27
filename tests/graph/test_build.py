@@ -97,7 +97,9 @@ def test_a_reviewable_page_runs_through_to_the_report(monkeypatch, revolving):
     assert final["explanation_duty_check"]["original"]
     assert final["verification"]["passed"] is True, final["verification"]
     assert final["verification"]["loop_count"] == 1
-    assert final["report"] == {}
+    assert final["report"]["status"] == "검토 완료"
+    assert final["report"]["findings"] == []
+    assert "# 금융상품 판매화면 검토 결과" in final["report"]["markdown"]
 
 
 def test_an_out_of_scope_page_stops_after_the_classification(monkeypatch, revolving):

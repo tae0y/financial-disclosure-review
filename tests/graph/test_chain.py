@@ -214,7 +214,7 @@ def test_an_invented_number_is_replaced_by_the_original_and_still_fails_verifica
     assert "1만원" in html, "대체된 블록은 원문 그대로 보여야 함"
     assert result["verification"]["passed"] is False
     assert "plain_language" in result["verification"]["failed_modules"]
-    assert routed(result) == "end_report", "실패해도 현재 그래프는 end_report로 감"
+    assert routed(result) == "retry_dispatch", "조치 가능한 피드백이 있으면 재생성으로 돌아감"
 
 
 def test_an_unclear_condition_is_never_counted_as_a_pass(monkeypatch, runtime):
@@ -241,4 +241,4 @@ def test_a_missing_upstream_result_fails_all_three_modules(monkeypatch, runtime)
         "explanation_duty_check",
         "plain_language",
     ]
-    assert routed(result) == "end_report"
+    assert routed(result) == "retry_dispatch"

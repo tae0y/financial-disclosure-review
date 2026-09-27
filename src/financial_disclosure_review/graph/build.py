@@ -15,7 +15,7 @@ from .nodes import (
     search_cases,
     verify_answer,
 )
-from .routes import route_after_classify, route_after_verify
+from .routes import route_after_classify, route_after_retry, route_after_verify
 
 
 def build_review_graph(checkpointer=None):
@@ -35,7 +35,7 @@ def build_review_graph(checkpointer=None):
     builder.add_conditional_edges(
         "classify_type",
         route_after_classify,
-        {"search_cases": "search_cases", END: END},
+        {"search_cases": "search_cases", "end_report": "end_report"},
     )
     builder.add_edge("search_cases", "judge_display_method")
     builder.add_edge("judge_display_method", "generate_plain_lang")
@@ -46,6 +46,14 @@ def build_review_graph(checkpointer=None):
         route_after_verify,
         {"retry_dispatch": "retry_dispatch", "end_report": "end_report"},
     )
-    builder.add_edge("retry_dispatch", "judge_display_method")
+    builder.add_conditional_edges(
+        "retry_dispatch",
+        route_after_retry,
+        {
+            "generate_plain_lang": "generate_plain_lang",
+            "judge_explanation_duty": "judge_explanation_duty",
+            "end_report": "end_report",
+        },
+    )
     builder.add_edge("end_report", END)
     return builder.compile(checkpointer=checkpointer)

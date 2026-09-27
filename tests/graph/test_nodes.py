@@ -123,10 +123,18 @@ def test_verify_answer_counts_the_loop_forward():
     assert verify_answer(state, RUNTIME)["verification"]["loop_count"] == 3
 
 
-def test_the_unimplemented_nodes_return_only_their_own_key():
-    state = empty_state()
-    assert retry_dispatch(state) == {"verification": {}}
-    assert end_report(state) == {"report": {}}
+def test_retry_dispatch_writes_only_the_verification_key():
+    update = retry_dispatch(empty_state())
+    assert set(update) == {"verification"}
+    assert update["verification"]["retry_target"] == "", "실패 모듈이 없으면 되돌아갈 노드도 없음"
+    assert update["verification"]["retry_history"][0]["loop"] == 0
+
+
+def test_end_report_writes_only_the_report_key_and_never_passes_an_unjudged_page():
+    update = end_report(empty_state())
+    assert set(update) == {"report"}
+    assert update["report"]["status"] == "판정 불가"
+    assert update["report"]["markdown"].startswith("---")
 
 
 def test_a_node_keeps_the_fields_its_module_already_had():

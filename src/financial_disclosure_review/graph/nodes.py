@@ -15,7 +15,7 @@ from ..domain.product_page import fetch_product_page
 from ..domain.report import build_report
 from ..domain.verification import verify
 from ..knowledge.search import search_cases_for
-from .retry import plan_retry
+from .retry import MAX_LOOPS, escalation, plan_retry
 
 
 def preprocess_product_page(state: State, runtime: Runtime[Context]) -> dict:
@@ -180,6 +180,7 @@ def end_report(state: State) -> dict:
             state.get("plain_language") or {},
             state.get("explanation_duty_check") or {},
             state.get("verification") or {},
+            {**escalation(state.get("verification") or {}), "max_loops": MAX_LOOPS},
         )
     )
     return {"report": report}
