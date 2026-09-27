@@ -11,13 +11,13 @@ from tests.helpers import FIXTURE_DIR
 def db_path(tmp_path_factory) -> str:
     path = tmp_path_factory.mktemp("reference") / "reference.sqlite"
     counts = build_rubric_db(FIXTURE_DIR / "rubric", path)
-    assert counts == {"card_guardrail_rubric": 3, "plain_service_rubric": 1}
+    assert counts == {"card_guardrail_rubric": 6, "plain_service_rubric": 11}
     return str(path)
 
 
 def test_items_come_back_in_yaml_order_with_their_lists(db_path):
     items = load_rubric(db_path, "card_guardrail_rubric")
-    assert [i["code"] for i in items] == ["A01", "E02", "E04"]
+    assert [i["code"] for i in items] == ["A01", "E02", "E04", "F01", "F03", "F19"]
     assert items[0]["applies_to"] == ["신용카드", "리볼빙"]
     assert items[0]["page_types"] == ["상품광고", "업무광고"]
     assert items[0]["sources"][0]["doc"] == "kfcpa"

@@ -17,24 +17,28 @@ design, not progress.
 
 ## Package layout
 
-`src/financial_disclosure_review/`, with one folder per State key. The placement rules are in
-`localdocs/plan.src-layout.md`; the short form is:
+`src/financial_disclosure_review/`, with one folder per State key under `domain/`. The
+placement rules are in `localdocs/plan.src-layout.md`; the short form is:
 
 | Folder | Holds | Never holds |
 |---|---|---|
-| `core/` | code two or more domains share: State, Context, text, colour, threads | domain judgment |
-| `llm/` | the call devices: structured output, image input, one tool-calling turn | prompt text |
+| `core/` | code two or more domains share: State, Context, text, colour, display codes, threads | domain judgment |
+| `llm/` | the call devices: structured output, image input, retry, one tool-calling turn | prompt text |
 | `knowledge/` | reading and building reusable reference data (rubrics, later statutes and cases) | which items an item-owner picks |
-| `<domain>/` | judgment rules, prompts, response schemas, loop decisions | `langgraph`, `State`, another domain |
+| `domain/<name>/` | judgment rules, prompts, response schemas, loop decisions | `langgraph`, `State`, another domain |
 | `graph/` | nodes, routing, retry branching, graph assembly | business logic |
 | `__main__.py` | the CLI | anything else |
 
-Import direction: `core → llm → knowledge → 도메인 → graph → __main__`. Domains never import
+`domain/` holds the seven judging domains, one folder per State key: `product_page`,
+`classification`, `display_check`, `plain_language`, `explanation_duty_check`, `verification`,
+`report`.
+
+Import direction: `core → llm → knowledge → domain → graph → __main__`. Domains never import
 each other; their data meets only in State. A domain exports one entry function from its
 `__init__.py`, and that function takes the State values it needs, not the whole State.
 
-Domains with no code yet (`plain_language`, `explanation_duty_check`, `verification`, `report`)
-hold a stub that returns `{}`, so the graph still runs to END.
+Domains with no code yet (`report`) hold a stub that returns `{}`, so the graph still runs to
+END. `graph/retry.py` is a stub of the same kind.
 
 ## Data rules
 

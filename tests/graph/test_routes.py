@@ -3,8 +3,8 @@
 import pytest
 from langgraph.graph import END
 
-from financial_disclosure_review.classification.schema import PAGE_TYPE_BY_PRODUCT
 from financial_disclosure_review.core.state import empty_state
+from financial_disclosure_review.domain.classification.schema import PAGE_TYPE_BY_PRODUCT
 from financial_disclosure_review.graph.routes import route_after_classify, route_after_verify
 from tests.helpers import state_with
 

@@ -3,8 +3,9 @@
 Reviews a Korean financial-product web page for the explanation duty and the display method,
 and converts its explanation into plain Korean, as one LangGraph app.
 
-Work in progress: the display-method module is built, the plain-language, explanation-duty,
-verification and report modules are stubs.
+Work in progress: the product-page, classification, display-method, plain-language,
+explanation-duty and verification modules are built; the report module and the retry branch are
+stubs, so a failed verification still ends the graph.
 
 ## Install
 
@@ -37,12 +38,13 @@ uv run pytest -m "use_llm or use_network"    # paid model calls and live sites
 ```
 
 `use_llm` costs money and `use_network` opens external sites, so both are excluded by default.
-The browser test in `tests/product_page/test_session.py` carries no marker: it renders a local
+The browser test in `tests/domain/product_page/test_session.py` carries no marker: it renders a local
 HTML fixture and reaches no network.
 
 ## Docs
 
 - `docs/design.md` — principles, package layout, input, graph, State, rubrics, checkpoints
 - `docs/src-layout-migration.md` — what moved out of the notebook, and what changed with it
-- `docs/product_page.md`, `docs/classification.md`, `docs/display_check.md` — per-domain rules
+- `docs/product_page.md`, `docs/classification.md`, `docs/display_check.md`,
+  `docs/plain_language.md`, `docs/explanation_duty_check.md` — per-domain rules
 - `localdocs/` — plans, worklog and ADRs (local only)

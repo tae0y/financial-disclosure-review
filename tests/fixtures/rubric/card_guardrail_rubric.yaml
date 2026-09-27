@@ -1,4 +1,5 @@
-# A three-item stand-in for the real rubric: one mandatory item and two display-method items.
+# A six-item stand-in for the real rubric: one mandatory item, two display-method items
+# and three F-group explanation-duty items (in scope, applies_to mismatch, application screen).
 items:
 - code: A01
   group: A. 광고 공통 의무표시
@@ -47,5 +48,51 @@ items:
   - doc: crefia_guide
     loc: 별표1
     quote: 배경과 명확히 구분
+    snapshot: 원문 스냅샷/crefia_guide.txt
+    official_url: https://example.test/guide
+- code: F01
+  group: F. 설명의무
+  applies_to:
+  - 신용카드
+  - 리볼빙
+  page_types:
+  - 권유·설명화면
+  applies_condition: null
+  binding: 법령
+  criterion: 상환방법에 따른 상환금액·이자율·시기가 설명되어 있는가?
+  sources:
+  - doc: kfcpa
+    loc: 제19조제1항제1호
+    quote: 상환방법에 따른 상환금액·이자율·시기
+    snapshot: 원문 스냅샷/kfcpa.txt
+    official_url: https://example.test/kfcpa
+- code: F03
+  group: F. 설명의무
+  applies_to:
+  - 할부금융·리스
+  page_types:
+  - 권유·설명화면
+  applies_condition: 담보(자동차 저당 등)를 요구하는 경우
+  binding: 법령
+  criterion: 담보권 설정과 실행사유가 설명되어 있는가?
+  sources:
+  - doc: kfcpa
+    loc: 제19조제1항제1호
+    quote: 담보권 설정 및 실행사유
+    snapshot: 원문 스냅샷/kfcpa.txt
+    official_url: https://example.test/kfcpa
+- code: F19
+  group: F. 설명의무
+  applies_to:
+  - 신용카드
+  page_types:
+  - 권유·설명화면
+  applies_condition: 비대면(온라인 자동화) 발급 화면인 경우
+  binding: 자율규제
+  criterion: 우선 설명사항을 먼저 보여주는가?
+  sources:
+  - doc: crefia_guide
+    loc: 별표2
+    quote: 우선 설명사항
     snapshot: 원문 스냅샷/crefia_guide.txt
     official_url: https://example.test/guide

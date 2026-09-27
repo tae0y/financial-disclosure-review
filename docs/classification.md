@@ -67,7 +67,7 @@ below keeps that gap on the record.
 
 | ID | Scenario | Expected | Where |
 |---|---|---|---|
-| S-01 | all six fixtures answered as expected | the table's types, a non-empty reason | `tests/classification/test_classify.py` |
+| S-01 | all six fixtures answered as expected | the table's types, a non-empty reason | `tests/domain/classification/test_classify.py` |
 | S-02 | the out-of-scope fixtures | reason starts with `2단계`; calls are classify then verify | same |
 | S-03 | a quote that is not on the page | one retry, then `판정 불가` / `판정 근거 부족` | same |
 | S-04 | a missing reason | as S-03 | same |
@@ -85,7 +85,7 @@ below keeps that gap on the record.
 | ID | Scenario | Checks | State |
 |---|---|---|---|
 | S-13 | the two sample URLs from preprocess through the graph | 신용카드 / 상품광고, every quote present | ran 2026-09-27, both as expected (gpt-5-mini) |
-| S-14 | the six fixtures against a real model | expected vs actual, quotes present | ran 2026-09-27, all six as expected (gpt-5-mini, in=52,983 out=13,471, about $0.04). Now `tests/classification/test_classify_llm.py` |
+| S-14 | the six fixtures against a real model | expected vs actual, quotes present | ran 2026-09-27, all six as expected (gpt-5-mini, in=52,983 out=13,471, about $0.04). Now `tests/domain/classification/test_classify_llm.py` |
 | S-15 | rebuild the fixtures from preprocess output and compare with S-14 | whether the snapshot-based result agrees | not run. S-13 and S-14 use different URLs, so this needs preprocessing run afresh on the fixtures' own URLs (four Lotte Card pages, Kakao Bank, Samsung Fire). None has a cached site rule, so each site may take the full 20-turn discovery loop — measure the cost on one fixture and get approval before running all six. |
 
 ### C. Risks that are not covered by a test

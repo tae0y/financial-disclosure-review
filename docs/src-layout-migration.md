@@ -25,26 +25,31 @@ created: 2026-09-27
 
 ## 무엇이 어디로 갔는가
 
-State 키 하나에 폴더 하나입니다. 노트북 섹션과의 대응은 다음과 같습니다.
+State 키 하나에 폴더 하나이고, 그 폴더들은 모두 `domain/` 아래에 모여 있습니다(2026-09-27
+영태 님 결정). 노트북 섹션과의 대응은 다음과 같습니다.
 
 | 노트북 | 옮긴 자리 |
 |---|---|
-| 2. 데이터 모델 (State, Context, 툴 스키마) | `core/state.py`, `core/context.py`, `product_page/tools.py` |
-| 3. 헬퍼 (문자열, 색상, HTML, 스냅숏, 루브릭) | `core/text.py`, `core/color.py`, `core/threads.py`, `product_page/html.py`, `product_page/session.py`, `knowledge/rubrics.py` |
-| 4. 비즈니스 로직 (세션, 툴, 규칙, 분류, 표시방법) | `product_page/`, `classification/`, `display_check/` |
+| 2. 데이터 모델 (State, Context, 툴 스키마) | `core/state.py`, `core/context.py`, `domain/product_page/tools.py` |
+| 3. 헬퍼 (문자열, 색상, HTML, 스냅숏, 루브릭) | `core/text.py`, `core/color.py`, `core/threads.py`, `domain/product_page/html.py`, `domain/product_page/session.py`, `knowledge/rubrics.py` |
+| 4. 비즈니스 로직 (세션, 툴, 규칙, 분류, 표시방법) | `domain/product_page/`, `domain/classification/`, `domain/display_check/` |
+| 4. 비즈니스 로직 (쉬운말 생성, 설명의무 판정, 답변 검증) | `domain/plain_language/`, `domain/explanation_duty_check/`, `domain/verification/` |
 | 5~6. 노드와 그래프 | `graph/nodes.py`, `graph/routes.py`, `graph/build.py` |
 | 7. 실행 (DB 구축, 실행 셀, 재실행 셀) | `knowledge/build.py`, `__main__.py` |
-| `classify_type` 확인 셀, fixture | `tests/` |
+| 각 확인 셀, fixture | `tests/` |
 | `!uv sync`, mermaid 렌더, EXPERIMENT 스파이크 2개 | 버렸습니다 |
+
+`domain/` 아래 폴더는 `product_page`, `classification`, `display_check`, `plain_language`,
+`explanation_duty_check`, `verification`, `report` 일곱 개입니다. `tests/`도 같은 모양으로
+`tests/domain/<이름>/`을 씁니다.
 
 import 방향은 `core → llm → knowledge → 도메인 → graph → __main__` 한 방향입니다. 도메인은
 서로를 import하지 않고, 데이터는 State에서만 만납니다. `langgraph`와 `State`는 `graph/`와
 `__main__.py`에만 등장합니다. 각 도메인은 `__init__.py`에서 진입 함수 하나만 내보내고, 그
 함수는 State 전체가 아니라 필요한 값만 받습니다.
 
-아직 코드가 없는 `plain_language`, `explanation_duty_check`, `verification`, `report`는 빈
-dict를 돌려주는 스텁을 두고 노드가 지금부터 그 스텁을 호출합니다. 그래프는 전환 내내 END까지
-실행됩니다.
+아직 코드가 없는 `report`와 `graph/retry.py`는 빈 dict를 돌려주는 스텁을 두고 노드가 지금부터
+그 스텁을 호출합니다. 그래프는 전환 내내 END까지 실행됩니다.
 
 ## 옮기기 외에 달라진 것
 
@@ -55,6 +60,10 @@ dict를 돌려주는 스텁을 두고 노드가 지금부터 그 스텁을 호�
 | `discover`의 모델 턴 → `llm/client.py`의 `ToolChat` | 결정 5. `langchain` 메시지 객체가 도메인에 남지 않도록 턴 전체를 호출 장치로 옮겼습니다. |
 | 비전 호출의 `OpenAI(...).responses.create` → `llm/client.py`의 `ask_images` | 같은 근거입니다. 프롬프트 조립과 응답 검증은 `display_check/judge.py`에 남습니다. |
 | 색상 헬퍼 → `core/color.py` | `capture_visual_samples`가 `contrast_ratio`를 쓰게 되면서 `product_page`와 `display_check` 두 도메인이 공유하게 되었습니다. |
+| `html_lines`, `BLOCK_TAGS` → `core/text.py` | `plain_blocks`가 `html_lines`를 쓰게 되면서 `plain_language`와 `display_check`가 공유합니다. 규칙 6. `html_text_runs`는 여전히 `display_check`만 쓰므로 그대로 남았습니다. |
+| `VIOLATION_KEYS` → `core/display_codes.py` | `verify`가 표시방법 측정값과 판정의 모순을 다시 확인하면서 `display_check`와 `verification`이 공유합니다. 규칙 6이자 규칙 3(도메인 간 import 금지)입니다. |
+| 2회 재시도 루프 → `llm/client.py`의 `call_ask` | 규칙 4(재시도는 `llm/`의 일). 노트북은 `call_model`이 전역 `ask`만 호출해 가짜 ask를 넣을 수 없어 `generate_plain`에 루프를 다시 썼지만, `call_ask`는 호출 함수를 인자로 받으므로 그 이유가 없어졌습니다. `generate_plain`의 되돌리기 분기는 `salvage`로 그대로 옮겼고 예외 메시지도 같습니다. |
+| `judge_explanation`의 원문 판정 블록 → `judge_original_side` | 노트북에서 이미 함수였던 `judge_plain_side`와 대칭이 되도록 같은 모듈의 함수로 꺼냈습니다. 인자는 클로저가 잡던 값 그대로입니다. |
 
 그 밖에 코드 내용이 아니라 형식만 바뀐 것이 둘 있습니다.
 
@@ -68,7 +77,7 @@ dict를 돌려주는 스텁을 두고 노드가 지금부터 그 스텁을 호�
 
 ## 검증 결과
 
-무료 검사는 `uv run pytest` 124건이 약 4초에 통과하고, `ruff check`와 `pyright`도 깨끗합니다
+무료 검사는 `uv run pytest` 168건이 약 4초에 통과하고, `ruff check`와 `pyright`도 깨끗합니다
 (pyright 오류 0건). 브라우저 테스트는 마커 없이 기본 실행에 포함됩니다. 로컬 HTML 픽스처를
 `set_content`로 열기 때문에 네트워크에 나가지 않습니다.
 
@@ -96,17 +105,26 @@ uv run python -m financial_disclosure_review rerun --thread review-260927-101500
     --from-node judge_display_method
 ```
 
-남은 일은 세 가지입니다.
+남은 일은 두 가지입니다.
 
-- **노트북 작업분이 src보다 앞서 있습니다.** 이 패키지는 `main`에 커밋된 노트북(blob
-  `4d176af`, 42셀)을 옮긴 것입니다. 머지 시점의 `notebooks/review.ipynb` 워킹트리에는 커밋되지
-  않은 셀 10개(약 1,370줄)가 더 있고, 그 안에 `generate_plain_lang`,
-  `judge_explanation_duty`, `verify_answer`의 구현과 각 확인 셀이 들어 있습니다. src에서는
-  이 세 도메인이 아직 스텁입니다. 두 곳에 같은 로직을 두지 않으려면, 노트북 쪽을 먼저
-  커밋한 뒤 같은 배치 규칙으로 `plain_language/`, `explanation_duty_check/`,
-  `verification/`에 옮기는 것이 다음 작업입니다.
-- `notebooks/`가 아직 남아 있습니다. `notebooks/fixtures/classify`는 `tests/fixtures/`로
-  옮겨졌으므로 노트북의 `classify_type` 확인 셀은 현재 상태로 실행되지 않습니다. 위 항목이
-  정리되기 전에는 삭제하지 않습니다. 전환 직전 상태는 커밋 `3fa6cc0`에 남아 있습니다.
+- `notebooks/`가 아직 남아 있습니다. 2026-09-27 두 번째 묶음으로 `generate_plain_lang`,
+  `judge_explanation_duty`, `verify_answer`와 각 확인 셀까지 옮겼으므로, 노트북에 src로
+  가지 않은 코드는 이제 없습니다(`!uv sync`, mermaid 렌더, EXPERIMENT 스파이크 2개는 계획대로
+  버렸습니다). 삭제는 영태 님 확인을 받은 뒤에 합니다. 전환 직전 상태는 커밋 `3fa6cc0`에
+  남아 있습니다.
 - `ralph/PROMPT_*.md`가 여전히 셀 ID를 참조합니다. 보관할지, src 기준으로 갱신할지, 삭제할지
   정해야 합니다.
+
+## 두 번째 묶음에서 새로 만든 검증 픽스처
+
+`generate_plain`과 `judge_explanation`은 루브릭 DB를 읽습니다. 노트북 확인 셀은 실제
+`data/reference.sqlite`를 읽었지만, 테스트는 저장소 밖 원본에 의존하지 않아야 하므로
+`tests/fixtures/rubric/`의 작은 루브릭을 늘렸습니다.
+
+| 파일 | 늘린 항목 | 왜 |
+|---|---|---|
+| `card_guardrail_rubric.yaml` | `F01`, `F03`, `F19` | 설명의무 F군의 세 경로: 범위 안, `applies_to` 불일치, 신청·가입·발급 화면 전용 조건 |
+| `plain_service_rubric.yaml` | 설명의무 `설명01`·`설명02`·`설명03`·`설명05`·`설명10`·`설명19`, 쉬운말서비스 `쉬운말01`·`쉬운말02`·`쉬운말08`·`쉬운말11`·`쉬운말13` | 설명의무는 위 세 경로에 "모델이 조건을 판단해야 하는 항목"을 더한 네 경로, 쉬운말서비스는 `plain_items_report`의 네 분기(`쉬운말01` 특례, 용어 코드, 범위 밖, 오류 표지 대조)와 `plain_scope` 제외 |
+
+`설명01`의 `applies_to`에 `신용카드`를 넣었습니다(원래 픽스처는 `리볼빙`만). 확인 시나리오가
+신용카드 페이지를 쓰기 때문이고, 실제 루브릭의 `설명01`도 신용카드를 포함합니다.

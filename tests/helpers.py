@@ -4,10 +4,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from financial_disclosure_review.classification.schema import VerifyAnswer
-from financial_disclosure_review.classification.stages import FIELDS_AFTER_STAGE, STAGES
 from financial_disclosure_review.core.state import State, empty_state
 from financial_disclosure_review.core.text import visible_text
+from financial_disclosure_review.domain.classification.schema import VerifyAnswer
+from financial_disclosure_review.domain.classification.stages import FIELDS_AFTER_STAGE, STAGES
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 

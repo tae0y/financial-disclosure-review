@@ -35,6 +35,27 @@ def print_summary(state: dict) -> None:
     for row in check.get("items") or []:
         print(f"  {row['code']}: {row['verdict']} | {row['reason']}")
 
+    plain = state.get("plain_language") or {}
+    print(
+        "plain_language:",
+        f"{len(plain.get('accepted_blocks') or [])} blocks kept,",
+        f"{len(plain.get('contract_errors') or [])} sent back to the original",
+    )
+    duty = state.get("explanation_duty_check") or {}
+    applied = [row for row in duty.get("items") or [] if row.get("applied")]
+    print(
+        "explanation_duty_check:",
+        f"{len(applied)}/{len(duty.get('items') or [])} items applied,",
+        f"{len(duty.get('fidelity') or [])} fidelity differences",
+    )
+    verification = state.get("verification") or {}
+    print(
+        "verification:",
+        f"passed={verification.get('passed')}",
+        f"failed={verification.get('failed_modules')}",
+        f"loop={verification.get('loop_count')}",
+    )
+
 
 def review(args: argparse.Namespace) -> int:
     thread_id = args.thread or f"review-{datetime.now().strftime('%y%m%d-%H%M%S')}"

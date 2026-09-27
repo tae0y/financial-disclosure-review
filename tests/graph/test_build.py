@@ -3,9 +3,10 @@
 import pytest
 from langchain_core.runnables import RunnableConfig
 
-from financial_disclosure_review.classification import classify_page
 from financial_disclosure_review.core.context import Context
 from financial_disclosure_review.core.state import State, empty_state
+from financial_disclosure_review.core.text import visible_text
+from financial_disclosure_review.domain.classification import classify_page
 from financial_disclosure_review.graph import nodes
 from financial_disclosure_review.graph.build import build_review_graph
 from tests.helpers import make_fake_ask, make_render_page, page_of
@@ -37,6 +38,41 @@ def initial(url: str = "https://example.test/product") -> State:
     return state
 
 
+def fake_plain(page, classification, feedback, ctx) -> dict:
+    """A PlainLanguage value whose one block really is in the page, so verify can pass on it."""
+    quote = visible_text(page["html"])[:24]
+    return {
+        "items": [],
+        "draft": [{"id": "b0", "text": quote, "terms": []}],
+        "html": f'<p data-source-id="b0">{quote}</p>',
+        "term_refs": [],
+        "accepted_blocks": [{"source_id": "b0", "source_quote": quote, "text": quote}],
+        "contract_errors": [],
+    }
+
+
+def fake_duty(page, classification, plain, ctx, previous_original, previous_items) -> dict:
+    row = {
+        "code": "설명01",
+        "verdict": "적합",
+        "quote": visible_text(page["html"])[:24],
+        "reason": "테스트",
+    }
+    return {
+        "items": [
+            {
+                **row,
+                "rubric": "plain_service_rubric",
+                "applied": True,
+                "condition_status": "해당없음",
+            }
+        ],
+        "original": [dict(row)],
+        "plain": [dict(row)],
+        "fidelity": [],
+    }
+
+
 def test_a_reviewable_page_runs_through_to_the_report(monkeypatch, revolving):
     page = {**make_render_page(), **page_of(revolving)}
     page["snapshots"] = make_render_page()["snapshots"]
@@ -51,13 +87,16 @@ def test_a_reviewable_page_runs_through_to_the_report(monkeypatch, revolving):
         "judge_display",
         lambda page, classification, ctx: {"items": [], "judgments": {"status": "완료"}},
     )
+    monkeypatch.setattr(nodes, "generate_plain", fake_plain)
+    monkeypatch.setattr(nodes, "judge_explanation", fake_duty)
     final = build_review_graph().invoke(initial(), context=Context(model="fake"))
 
     assert final["classification"] == REVOLVING_CLASSIFICATION
     assert final["display_check"]["judgments"]["status"] == "완료"
-    assert final["plain_language"] == {}
-    assert final["explanation_duty_check"] == {}
-    assert final["verification"] == {}
+    assert final["plain_language"]["accepted_blocks"]
+    assert final["explanation_duty_check"]["original"]
+    assert final["verification"]["passed"] is True, final["verification"]
+    assert final["verification"]["loop_count"] == 1
     assert final["report"] == {}
 
 

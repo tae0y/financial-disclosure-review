@@ -4,16 +4,16 @@ from typing import Any
 
 from langgraph.runtime import Runtime
 
-from ..classification import classify_page
 from ..core.context import Context
 from ..core.state import State
 from ..core.threads import run_in_thread
-from ..display_check import judge_display
-from ..explanation_duty_check import check_duty
-from ..plain_language import write_plain
-from ..product_page import fetch_product_page
-from ..report import build_report
-from ..verification import verify
+from ..domain.classification import classify_page
+from ..domain.display_check import judge_display
+from ..domain.explanation_duty_check import judge_explanation
+from ..domain.plain_language import generate_plain, unjudged_plain
+from ..domain.product_page import fetch_product_page
+from ..domain.report import build_report
+from ..domain.verification import verify
 from .retry import plan_retry
 
 
@@ -59,45 +59,87 @@ def judge_display_method(state: State, runtime: Runtime[Context]) -> dict:
 def generate_plain_lang(state: State, runtime: Runtime[Context]) -> dict:
     print("[generate_plain_lang]")
     plain: dict[str, Any] = dict(state.get("plain_language") or {})
-    plain.update(
-        write_plain(
-            state["product_page"],
-            state.get("classification") or {},
-            (state.get("verification") or {}).get("feedback"),
-            runtime.context,
+    page, classification = state["product_page"], state.get("classification") or {}
+    feedback = (state.get("verification") or {}).get("feedback") or []
+    if not classification.get("product_type") or not classification.get("page_type"):
+        plain.update(unjudged_plain("classification이 비어 있음: classify_type을 먼저 실행하세요"))
+    elif not page.get("html"):
+        plain.update(
+            unjudged_plain(
+                "product_page.html이 비어 있음: preprocess_product_page를 먼저 실행하세요"
+            )
         )
-    )
+    else:
+        plain.update(generate_plain(page, classification, feedback, runtime.context))
     return {"plain_language": plain}
 
 
 def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
     print("[judge_explanation_duty]")
-    duty: dict[str, Any] = dict(state.get("explanation_duty_check") or {})
-    duty.update(
-        check_duty(
-            state["product_page"],
-            state.get("classification") or {},
-            state.get("plain_language") or {},
-            duty or None,
-            runtime.context,
+    check: dict[str, Any] = dict(state.get("explanation_duty_check") or {})
+    page = state.get("product_page") or {}
+    plain = state.get("plain_language") or {}
+    classification = state.get("classification") or {}
+
+    def blocked(reason: str) -> list[dict]:
+        return [
+            {
+                "code": "",
+                "rubric": "",
+                "applied": False,
+                "condition_status": "",
+                "reason": reason,
+            }
+        ]
+
+    if not classification.get("product_type") or not classification.get("page_type"):
+        check.update(
+            items=blocked("classification이 비어 있음; classify_type을 먼저 실행해야 함"),
+            original=[],
+            plain=[],
+            fidelity=[],
         )
-    )
-    return {"explanation_duty_check": duty}
+    elif not page.get("html"):
+        check.update(
+            items=blocked("product_page.html이 비어 있음"),
+            original=[],
+            plain=[],
+            fidelity=[],
+        )
+    elif not plain.get("html"):
+        check.update(
+            items=check.get("items")
+            or blocked("plain_language.html이 비어 있음; generate_plain_lang을 먼저 실행해야 함"),
+            original=check.get("original") or [],
+            plain=[],
+            fidelity=[],
+        )
+    else:
+        check.update(
+            judge_explanation(
+                page,
+                plain,
+                classification,
+                runtime.context,
+                check.get("original") or None,
+                check.get("items") or None,
+            )
+        )
+    return {"explanation_duty_check": check}
 
 
 def verify_answer(state: State, runtime: Runtime[Context]) -> dict:
     print("[verify_answer]")
-    verification: dict[str, Any] = dict(state.get("verification") or {})
-    verification.update(
-        verify(
+    previous = state.get("verification") or {}
+    return {
+        "verification": verify(
+            state.get("product_page") or {},
             state.get("display_check") or {},
             state.get("plain_language") or {},
             state.get("explanation_duty_check") or {},
-            int(verification.get("loop_count") or 0),
-            runtime.context,
+            int(previous.get("loop_count") or 0),
         )
-    )
-    return {"verification": verification}
+    }
 
 
 def retry_dispatch(state: State) -> dict:

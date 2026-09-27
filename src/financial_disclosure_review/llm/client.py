@@ -48,6 +48,26 @@ def ask_images(
     return response.output_text, (response.usage.model_dump() if response.usage else None)
 
 
+def call_ask(
+    ask_fn, model: str, schema: type[BaseModel], task: str, check, effort: str, salvage=None, **data
+) -> dict:
+    """One model step with the retry contract: at most 2 attempts, the second one told what went
+    wrong. A second answer that still fails check goes to salvage(answer, problems) when given
+    (it may downgrade single rows); otherwise it raises. ask_fn is the call to make, so a caller
+    can hand in a stand-in instead of `ask`."""
+    problems: list[str] = []
+    answer = None
+    for _ in range(2):
+        payload = {**data, "previous_problems": problems} if problems else data
+        answer = ask_fn(model, schema, task, effort, **payload)
+        problems = check(answer)
+        if not problems:
+            return answer
+    if salvage:
+        return salvage(answer, problems)
+    raise RuntimeError(f"model call failed twice: {'; '.join(problems)[:400]}")
+
+
 def tool_spec(name: str, model: type[BaseModel]) -> dict:
     schema = model.model_json_schema()
     return {

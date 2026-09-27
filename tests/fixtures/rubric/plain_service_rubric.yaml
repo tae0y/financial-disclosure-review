@@ -1,17 +1,178 @@
-# A one-item stand-in: the build loads both rubric files, so both must exist.
+# An eleven-item stand-in for the real rubric. 설명의무: two plain items, one that no 신용카드 page
+# applies to, one 리볼빙 condition the model has to judge, one application-screen-only condition.
+# 쉬운말서비스: one per branch of plain_items_report, plus one the product type rules out.
 items:
 - code: 설명01
   group: 설명의무
   applies_to:
+  - 신용카드
   - 리볼빙
   targets:
   - 설명화면
   applies_condition: null
   binding: 법령
-  criterion: 금리와 변동 여부가 설명되어 있는가?
+  criterion: 금리와 변동 여부, 중도상환수수료 부과 여부가 설명되어 있는가?
   sources:
   - doc: kfcpa
     loc: 제19조제1항
     quote: 금리 및 변동 여부
     snapshot: 원문 스냅샷/kfcpa.txt
     official_url: https://example.test/kfcpa
+- code: 설명02
+  group: 설명의무
+  applies_to:
+  - 신용카드
+  - 리볼빙
+  targets:
+  - 설명화면
+  applies_condition: null
+  binding: 법령
+  criterion: 상환방법에 따른 상환금액·이자율·시기가 설명되어 있는가?
+  sources:
+  - doc: kfcpa
+    loc: 제19조제1항
+    quote: 상환방법에 따른 상환금액
+    snapshot: 원문 스냅샷/kfcpa.txt
+    official_url: https://example.test/kfcpa
+- code: 설명03
+  group: 설명의무
+  applies_to:
+  - 할부금융·리스
+  targets:
+  - 설명화면
+  applies_condition: 담보(자동차 저당 등)를 요구하는 경우
+  binding: 법령
+  criterion: 담보권 설정과 실행에 따른 권리변동이 설명되어 있는가?
+  sources:
+  - doc: kfcpa
+    loc: 제19조제1항
+    quote: 담보권 설정
+    snapshot: 원문 스냅샷/kfcpa.txt
+    official_url: https://example.test/kfcpa
+- code: 설명05
+  group: 설명의무
+  applies_to:
+  - 신용카드
+  - 리볼빙
+  targets:
+  - 설명화면
+  applies_condition: null
+  binding: 법령
+  criterion: 계약의 해지·해제에 관한 사항이 설명되어 있는가?
+  sources:
+  - doc: kfcpa
+    loc: 제19조제1항
+    quote: 계약의 해지·해제
+    snapshot: 원문 스냅샷/kfcpa.txt
+    official_url: https://example.test/kfcpa
+- code: 설명10
+  group: 설명의무
+  applies_to:
+  - 신용카드
+  - 리볼빙
+  targets:
+  - 설명화면
+  applies_condition: 리볼빙을 제공·권유하는 경우
+  binding: 법령
+  criterion: 리볼빙의 위험성과 수수료 계산 예시가 설명되어 있는가?
+  sources:
+  - doc: kfcpa
+    loc: 제19조제1항
+    quote: 리볼빙의 위험성
+    snapshot: 원문 스냅샷/kfcpa.txt
+    official_url: https://example.test/kfcpa
+- code: 설명19
+  group: 설명의무
+  applies_to:
+  - 신용카드
+  - 리볼빙
+  targets:
+  - 설명화면
+  applies_condition: 비대면(온라인 자동화) 신청 화면인 경우
+  binding: 자율규제
+  criterion: 우선 설명사항을 먼저 보여주는가?
+  sources:
+  - doc: crefia_guide
+    loc: 별표2
+    quote: 우선 설명사항
+    snapshot: 원문 스냅샷/crefia_guide.txt
+    official_url: https://example.test/guide
+- code: 쉬운말01
+  group: 쉬운말서비스
+  applies_to:
+  - 신용카드
+  - 리볼빙
+  targets:
+  - 쉬운말
+  applies_condition: null
+  binding: 자율규제
+  criterion: 원문에서 '예'로 판정된 설명의무·의무표시 항목이 쉬운말에도 남아 있는가?
+  sources:
+  - doc: plain_guide
+    loc: 제3장
+    quote: 의무표시 항목의 유지
+    snapshot: 원문 스냅샷/plain_guide.txt
+    official_url: https://example.test/plain
+- code: 쉬운말02
+  group: 쉬운말서비스
+  applies_to:
+  - 신용카드
+  - 리볼빙
+  targets:
+  - 쉬운말
+  applies_condition: null
+  binding: 자율규제
+  criterion: 원문에 없는 혜택·조건·수치·비교·권유 문구를 새로 만들지 않았는가?
+  sources:
+  - doc: plain_guide
+    loc: 제3장
+    quote: 원문에 없는 내용의 생성 금지
+    snapshot: 원문 스냅샷/plain_guide.txt
+    official_url: https://example.test/plain
+- code: 쉬운말08
+  group: 쉬운말서비스
+  applies_to:
+  - 신용카드
+  - 리볼빙
+  targets:
+  - 쉬운말
+  applies_condition: null
+  binding: 자율규제
+  criterion: 쉬운 말로 바꾼 용어가 원래와 다른 금융 개념이 되지 않았는가?
+  sources:
+  - doc: plain_guide
+    loc: 제4장
+    quote: 용어 변환의 한계
+    snapshot: 원문 스냅샷/plain_guide.txt
+    official_url: https://example.test/plain
+- code: 쉬운말11
+  group: 쉬운말서비스
+  applies_to:
+  - 신용카드
+  - 리볼빙
+  targets:
+  - 쉬운말
+  applies_condition: null
+  binding: 자율규제
+  criterion: 한 문장에 여러 조건을 몰아 쓰지 않고 두 가지 뜻으로 읽히지 않는가?
+  sources:
+  - doc: plain_guide
+    loc: 제4장
+    quote: 문장 하나의 복잡도
+    snapshot: 원문 스냅샷/plain_guide.txt
+    official_url: https://example.test/plain
+- code: 쉬운말13
+  group: 쉬운말서비스
+  applies_to:
+  - 리볼빙
+  targets:
+  - 쉬운말
+  applies_condition: null
+  binding: 자율규제
+  criterion: 단정적 표현으로 위험을 가리지 않았는가?
+  sources:
+  - doc: plain_guide
+    loc: 제4장
+    quote: 단정적 표현의 금지
+    snapshot: 원문 스냅샷/plain_guide.txt
+    official_url: https://example.test/plain

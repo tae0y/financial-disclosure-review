@@ -7,6 +7,32 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+BLOCK_TAGS = [
+    "p",
+    "li",
+    "div",
+    "tr",
+    "td",
+    "th",
+    "dt",
+    "dd",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "section",
+    "article",
+    "ul",
+    "ol",
+    "table",
+    "main",
+    "header",
+    "footer",
+    "br",
+]
+
 
 def norm(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip().lower()
@@ -26,6 +52,16 @@ def visible_text(html: str) -> str:
     for tag in soup(["script", "style"]):
         tag.decompose()
     return " ".join(soup.get_text(" ").split())
+
+
+def html_lines(html: str) -> list[str]:
+    """Text of the LLM-facing html split at block elements and <br>: one entry per visual line."""
+    soup = BeautifulSoup(html, "html.parser")
+    for el in soup.find_all(BLOCK_TAGS):
+        el.insert_before("\n")
+        el.insert_after("\n")
+    parts = (" ".join(part.split()) for part in soup.get_text().split("\n"))
+    return [line for line in parts if line]
 
 
 def locate_quote(text: str, quote: str) -> tuple[int, int] | None:
