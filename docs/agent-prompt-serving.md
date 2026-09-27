@@ -126,18 +126,47 @@ Define an explicit response model that carries counts, verdicts and the final ar
 ### 2.8 Auth must be declared, not just enforced
 
 Reading a header inside a handler protects the route but leaves the OpenAPI document silent, so a
-generated client cannot authenticate. Declare a real security scheme (`APIKeyHeader`) so the
-requirement appears in the document.
+generated client cannot authenticate. Declare a real security scheme — `HTTPBearer` for a
+pre-issued token — so the requirement appears in the document.
 
-Compare keys with `hmac.compare_digest`. Keep health endpoints unauthenticated so container probes
-need no credential — and assert that in a test, so no `/v1` route quietly becomes public.
+Use `Authorization: Bearer <token>` rather than a custom `X-API-Key` header. It is the standard
+scheme, every HTTP client has a helper for it, and logging middleware and proxies redact
+`Authorization` by default while a custom header is written out in plain text.
 
-**Default-open is a deliberate decision with a loud warning.** If no keys are configured, log a
-warning at startup saying every caller is accepted. Each accepted call spends model credit.
+Compare with `hmac.compare_digest`, never `==`. Keep health endpoints unauthenticated so container
+probes need no credential — and assert both halves in a test, so no `/v1` route quietly becomes
+public and no probe quietly starts needing a secret.
 
-### 2.9 Secrets reach the container at run time
+**Fail closed at startup.** If no token is configured, refuse to start: log the reason and exit
+non-zero. Do not warn and serve. An agent API spends money on every accepted call, so the cost of
+one forgotten environment variable is unbounded, and "it worked locally" is exactly how that
+variable gets forgotten.
+
+Put that check in **startup, not in the app factory**, so the OpenAPI document can still be
+generated in CI or on a laptop that holds no token.
+
+Issue tokens with a prefix (`fdr_...`): a bare random string in a leaked log is unidentifiable,
+while a prefixed one is matched by secret scanners and traceable back to the service. Accept a
+comma-separated list so an old and a new token can both be live during a rotation.
+
+> **Test it:** assert startup raises without a token; assert 401 for a missing header, a wrong
+> token, a malformed header and the scheme you replaced; assert the health routes still answer.
+
+### 2.9 Secrets reach the container at run time, and only the container that needs them
 
 `.env` goes in `.dockerignore` and in `env_file:`. No secret is ever `COPY`-ed into a layer.
+
+Give a sidecar its own env file rather than the shared one — a tunnel daemon has no business
+holding your model key. Mark it `required: false` so local runs, where that sidecar is scaled to
+zero, still start.
+
+**Do not pass a secret through Compose variable substitution unless you have verified where it
+reads from.** Substitution reads `.env` in the *project directory* — the directory of the first
+`-f` file — not the directory you ran the command from. A `${TOKEN}` reference to a `.env` one
+level up resolves to an **empty string with only a warning**, and the service starts misconfigured.
+`env_file:` reads the path as written and has no such trap.
+
+> **Check it:** `docker compose ... config | grep YOUR_SECRET` and confirm a real value, not `""`.
 
 ### 2.10 Only the gateway is reachable
 
@@ -232,10 +261,14 @@ sleep 5
 curl -sS "localhost:8000/v1/reviews/$job" | python3 -m json.tool   # expect status=failed + a real message
 
 # Auth actually plumbs through Compose, not just through the test client.
-FDR_API_KEYS=test-key docker compose ... up -d gateway && sleep 6
-curl -s -o /dev/null -w '%{http_code}\n' localhost:8000/v1/reviews                        # 401
-curl -s -o /dev/null -w '%{http_code}\n' -H 'X-API-Key: test-key' localhost:8000/v1/reviews  # 200
-curl -s -o /dev/null -w '%{http_code}\n' localhost:8000/healthz                           # 200
+TOKEN=$(grep '^API_TOKEN=' .env | cut -d= -f2)
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8000/v1/reviews                             # 401
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer wrong" localhost:8000/v1/reviews  # 401
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" localhost:8000/v1/reviews # 200
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8000/healthz                                # 200
+
+# Fail-closed is real, not just intended: the container must exit, not serve.
+docker run --rm <gateway-image> >/dev/null 2>&1; echo "exit=$?"   # expect non-zero
 ```
 
 If a run drives a browser, exercise it inside the container **without** spending model credit:
@@ -277,6 +310,8 @@ separates paid tests from free ones.
 - [ ] No raw input payload appears in any response, at any `detail` level.
 - [ ] The OpenAPI document declares the security scheme; `/v1` routes require it and health
       routes do not, both asserted by tests.
+- [ ] The gateway exits non-zero when no token is configured, verified by running the image.
+- [ ] Every secret reaching a container was confirmed non-empty in `docker compose config`.
 - [ ] The committed OpenAPI file has a drift test and passes an external validator.
 - [ ] Only the gateway is reachable in the production Compose file.
 - [ ] Both images run as a non-root user and contain no secret.

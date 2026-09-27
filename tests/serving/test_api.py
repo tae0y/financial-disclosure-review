@@ -9,13 +9,15 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from financial_disclosure_review.serving.api.app import agent_of, create_app
+from financial_disclosure_review.serving.api.app import MissingTokenError, agent_of, create_app
 from financial_disclosure_review.serving.api.client import AgentError
 from financial_disclosure_review.serving.api.jobs import JobStore
 from financial_disclosure_review.serving.schemas import JobStatus, RunResult
 from financial_disclosure_review.serving.settings import ApiSettings
 
 URL = "https://example.test/card/apply"
+TOKEN = "fdr_test_token_value"
+AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
 
 class StubAgent:
@@ -51,6 +53,7 @@ class StubAgent:
 
 
 def build(tmp_path, agent: StubAgent, **overrides) -> tuple[TestClient, StubAgent]:
+    overrides.setdefault("api_tokens", (TOKEN,))
     settings = ApiSettings(jobs_db=str(tmp_path / "jobs.sqlite"), **overrides)
     app = create_app(settings)
     app.dependency_overrides[agent_of] = lambda: agent
@@ -61,7 +64,7 @@ def wait_for(client: TestClient, job_id: str, *, headers=None, timeout: float = 
     """Poll the way a caller does, until the job leaves queued/running."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        body = client.get(f"/v1/reviews/{job_id}", headers=headers or {}).json()
+        body = client.get(f"/v1/reviews/{job_id}", headers=headers or AUTH).json()
         if body["status"] not in ("queued", "running"):
             return body
         time.sleep(0.02)
@@ -73,8 +76,8 @@ def stub() -> StubAgent:
     return StubAgent()
 
 
-def test_healthz_needs_no_key_and_no_worker(tmp_path, stub) -> None:
-    client, _ = build(tmp_path, stub, api_keys=("secret",))
+def test_healthz_needs_no_token_and_no_worker(tmp_path, stub) -> None:
+    client, _ = build(tmp_path, stub)
     with client:
         body = client.get("/healthz").json()
     assert body == {"status": "ok", "service": "api", "detail": {}}
@@ -103,7 +106,7 @@ def test_readyz_is_degraded_when_the_worker_is_unreachable(tmp_path) -> None:
 def test_submit_returns_202_and_the_run_finishes_in_the_background(tmp_path, stub) -> None:
     client, agent = build(tmp_path, stub)
     with client:
-        accepted = client.post("/v1/reviews", json={"url": URL})
+        accepted = client.post("/v1/reviews", json={"url": URL}, headers=AUTH)
         assert accepted.status_code == 202
         body = accepted.json()
         assert body["status"] == "queued"
@@ -121,7 +124,7 @@ def test_submit_returns_202_and_the_run_finishes_in_the_background(tmp_path, stu
 def test_a_worker_refusal_lands_on_the_job_not_the_submission(tmp_path) -> None:
     client, _ = build(tmp_path, StubAgent(error=AgentError("worker returned 500: BudgetExceeded")))
     with client:
-        job_id = client.post("/v1/reviews", json={"url": URL}).json()["job_id"]
+        job_id = client.post("/v1/reviews", json={"url": URL}, headers=AUTH).json()["job_id"]
         done = wait_for(client, job_id)
     assert done["status"] == "failed"
     assert "BudgetExceeded" in done["error"]
@@ -131,7 +134,7 @@ def test_a_worker_refusal_lands_on_the_job_not_the_submission(tmp_path) -> None:
 def test_an_unexpected_crash_still_closes_the_job(tmp_path) -> None:
     client, _ = build(tmp_path, StubAgent(error=RuntimeError("boom")))
     with client:
-        job_id = client.post("/v1/reviews", json={"url": URL}).json()["job_id"]
+        job_id = client.post("/v1/reviews", json={"url": URL}, headers=AUTH).json()["job_id"]
         done = wait_for(client, job_id)
     assert done["status"] == "failed"
     assert done["error"] == "RuntimeError: boom"
@@ -140,15 +143,15 @@ def test_an_unexpected_crash_still_closes_the_job(tmp_path) -> None:
 def test_report_markdown_is_409_until_the_job_succeeds(tmp_path, stub) -> None:
     client, _ = build(tmp_path, stub)
     with client:
-        job_id = client.post("/v1/reviews", json={"url": URL}).json()["job_id"]
+        job_id = client.post("/v1/reviews", json={"url": URL}, headers=AUTH).json()["job_id"]
         wait_for(client, job_id)
-        ok = client.get(f"/v1/reviews/{job_id}/report.md")
+        ok = client.get(f"/v1/reviews/{job_id}/report.md", headers=AUTH)
         assert ok.status_code == 200
         assert ok.text.startswith("# 검토 보고서")
         assert "text/markdown" in ok.headers["content-type"]
 
-        client.post("/v1/reviews", json={"url": URL})
-        missing = client.get("/v1/reviews/nope/report.md")
+        client.post("/v1/reviews", json={"url": URL}, headers=AUTH)
+        missing = client.get("/v1/reviews/nope/report.md", headers=AUTH)
     assert missing.status_code == 404
 
 
@@ -158,6 +161,7 @@ def test_rerun_takes_a_thread_and_a_node(tmp_path, stub) -> None:
         accepted = client.post(
             "/v1/reruns",
             json={"thread_id": "review-260927-101500", "from_node": "judge_display_method"},
+            headers=AUTH,
         )
         assert accepted.status_code == 202
         done = wait_for(client, accepted.json()["job_id"])
@@ -169,32 +173,92 @@ def test_rerun_takes_a_thread_and_a_node(tmp_path, stub) -> None:
 def test_a_bad_url_is_rejected_before_a_job_exists(tmp_path, stub) -> None:
     client, agent = build(tmp_path, stub)
     with client:
-        assert client.post("/v1/reviews", json={"url": "not-a-url"}).status_code == 422
-        assert client.get("/v1/reviews").json()["count"] == 0
+        bad = client.post("/v1/reviews", json={"url": "not-a-url"}, headers=AUTH)
+        assert bad.status_code == 422
+        assert client.get("/v1/reviews", headers=AUTH).json()["count"] == 0
     assert agent.calls == []
 
 
 def test_max_usd_over_the_cap_is_rejected(tmp_path, stub) -> None:
     client, _ = build(tmp_path, stub)
     with client:
-        response = client.post("/v1/reviews", json={"url": URL, "max_usd": 500})
+        response = client.post("/v1/reviews", json={"url": URL, "max_usd": 500}, headers=AUTH)
     assert response.status_code == 422
 
 
-def test_a_key_is_required_once_one_is_configured(tmp_path, stub) -> None:
-    client, agent = build(tmp_path, stub, api_keys=("s3cret", "other"))
+def test_every_v1_route_rejects_a_caller_without_a_token(tmp_path, stub) -> None:
+    client, agent = build(tmp_path, stub)
     with client:
         assert client.post("/v1/reviews", json={"url": URL}).status_code == 401
         assert client.get("/v1/reviews").status_code == 401
+        assert client.get("/v1/reviews/anything").status_code == 401
+        assert client.get("/v1/reviews/anything/report.md").status_code == 401
         assert (
-            client.post("/v1/reviews", json={"url": URL}, headers={"X-API-Key": "wrong"})
-        ).status_code == 401
+            client.post(
+                "/v1/reruns", json={"thread_id": "t", "from_node": "classify_type"}
+            ).status_code
+            == 401
+        )
+    assert agent.calls == []
 
-        accepted = client.post("/v1/reviews", json={"url": URL}, headers={"X-API-Key": "other"})
+
+def test_a_wrong_or_malformed_token_is_rejected(tmp_path, stub) -> None:
+    client, agent = build(tmp_path, stub)
+    with client:
+        for headers in (
+            {"Authorization": "Bearer wrong-token"},
+            {"Authorization": TOKEN},  # no scheme
+            {"Authorization": f"Basic {TOKEN}"},  # wrong scheme
+            {"Authorization": "Bearer "},
+            {"X-API-Key": TOKEN},  # the scheme this replaced
+        ):
+            response = client.post("/v1/reviews", json={"url": URL}, headers=headers)
+            assert response.status_code == 401, headers
+            assert response.headers["WWW-Authenticate"] == "Bearer"
+    assert agent.calls == []
+
+
+def test_the_issued_token_is_accepted(tmp_path, stub) -> None:
+    client, agent = build(tmp_path, stub)
+    with client:
+        accepted = client.post("/v1/reviews", json={"url": URL}, headers=AUTH)
         assert accepted.status_code == 202
-        done = wait_for(client, accepted.json()["job_id"], headers={"X-API-Key": "s3cret"})
+        done = wait_for(client, accepted.json()["job_id"])
     assert done["status"] == "succeeded"
     assert len(agent.calls) == 1
+
+
+def test_a_second_token_stays_valid_during_a_rotation(tmp_path, stub) -> None:
+    """Two live tokens let a caller move to the new one before the old one is withdrawn."""
+    client, _ = build(tmp_path, stub, api_tokens=(TOKEN, "fdr_the_new_one"))
+    with client:
+        for token in (TOKEN, "fdr_the_new_one"):
+            response = client.post(
+                "/v1/reviews", json={"url": URL}, headers={"Authorization": f"Bearer {token}"}
+            )
+            assert response.status_code == 202
+        assert (
+            client.post(
+                "/v1/reviews", json={"url": URL}, headers={"Authorization": "Bearer fdr_retired"}
+            ).status_code
+            == 401
+        )
+
+
+def test_the_gateway_refuses_to_start_without_a_token(tmp_path, stub) -> None:
+    """Fail closed: no opt-out, so a forgotten variable cannot publish an open API."""
+    app = create_app(ApiSettings(jobs_db=str(tmp_path / "jobs.sqlite"), api_tokens=()))
+    app.dependency_overrides[agent_of] = lambda: stub
+    with pytest.raises(MissingTokenError, match="FDR_API_TOKEN"):
+        with TestClient(app):
+            pass
+
+
+def test_health_routes_answer_without_a_token(tmp_path, stub) -> None:
+    client, _ = build(tmp_path, stub)
+    with client:
+        assert client.get("/healthz").status_code == 200
+        assert client.get("/readyz").status_code == 200
 
 
 def test_a_job_cut_off_by_shutdown_is_interrupted_not_running(tmp_path) -> None:
@@ -206,15 +270,15 @@ def test_a_job_cut_off_by_shutdown_is_interrupted_not_running(tmp_path) -> None:
             raise AssertionError("unreachable")
 
     jobs_db = str(tmp_path / "jobs.sqlite")
-    app = create_app(ApiSettings(jobs_db=jobs_db))
+    app = create_app(ApiSettings(jobs_db=jobs_db, api_tokens=(TOKEN,)))
     app.dependency_overrides[agent_of] = lambda: Hangs()
     with TestClient(app) as client:
-        job_id = client.post("/v1/reviews", json={"url": URL}).json()["job_id"]
+        job_id = client.post("/v1/reviews", json={"url": URL}, headers=AUTH).json()["job_id"]
         for _ in range(100):  # let the background task reach `running`
-            if client.get(f"/v1/reviews/{job_id}").json()["status"] == "running":
+            if client.get(f"/v1/reviews/{job_id}", headers=AUTH).json()["status"] == "running":
                 break
             time.sleep(0.02)
-        assert client.get(f"/v1/reviews/{job_id}").json()["status"] == "running"
+        assert client.get(f"/v1/reviews/{job_id}", headers=AUTH).json()["status"] == "running"
 
     store = JobStore(jobs_db)
     row = store.get(job_id)
@@ -226,10 +290,10 @@ def test_a_job_cut_off_by_shutdown_is_interrupted_not_running(tmp_path) -> None:
 
 def test_a_restart_finds_no_row_left_mid_flight(tmp_path, stub) -> None:
     jobs_db = str(tmp_path / "jobs.sqlite")
-    first = create_app(ApiSettings(jobs_db=jobs_db))
+    first = create_app(ApiSettings(jobs_db=jobs_db, api_tokens=(TOKEN,)))
     first.dependency_overrides[agent_of] = lambda: StubAgent(error=AgentError("worker down"))
     with TestClient(first) as client:
-        failed = client.post("/v1/reviews", json={"url": URL}).json()["job_id"]
+        failed = client.post("/v1/reviews", json={"url": URL}, headers=AUTH).json()["job_id"]
         wait_for(client, failed)
 
     # A row that never ran, as a crash before startup reconciliation would leave it.
@@ -237,10 +301,10 @@ def test_a_restart_finds_no_row_left_mid_flight(tmp_path, stub) -> None:
     orphan = store.create(url=URL)
     store.close()
 
-    second = create_app(ApiSettings(jobs_db=jobs_db))
+    second = create_app(ApiSettings(jobs_db=jobs_db, api_tokens=(TOKEN,)))
     second.dependency_overrides[agent_of] = lambda: stub
     with TestClient(second) as client:
-        listed = client.get("/v1/reviews").json()
+        listed = client.get("/v1/reviews", headers=AUTH).json()
     statuses = {job["job_id"]: job["status"] for job in listed["jobs"]}
     assert statuses[orphan.job_id] == "interrupted"
     assert statuses[failed] == "failed"

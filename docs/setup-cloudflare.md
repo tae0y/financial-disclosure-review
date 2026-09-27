@@ -13,14 +13,20 @@ route to it cannot be created by accident.
 
 1. In the Cloudflare Zero Trust dashboard, open **Networks → Tunnels** and create a tunnel.
    Choose the **Docker** connector; the token in the command it shows is what you need.
-2. Put that token in `.env`:
+2. Put that token in `.env.tunnel`, not `.env`:
 
-   ```
-   CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoi...
+   ```bash
+   cp .env.tunnel.example .env.tunnel
+   # TUNNEL_TOKEN=eyJhIjoi...
    ```
 
-   It is a credential for your account. It belongs in `.env`, which is gitignored and is never
-   copied into an image — compose passes it at run time.
+   Its own file for two reasons. The sidecar has no business holding the model key that `.env`
+   carries. And compose variable substitution reads the *project* directory — `docker/` — not the
+   repository root, so a `${CLOUDFLARE_TUNNEL_TOKEN}` reference to `.env` resolved to an empty
+   string and the tunnel came up unable to connect, with no error. `env_file` reads the path as
+   written, which removes that failure entirely.
+
+   Both files are gitignored and neither is copied into an image.
 3. Add a **public hostname** to the tunnel:
 
    | Field | Value |
@@ -46,18 +52,25 @@ route to it cannot be created by accident.
 
 ## Before you point a hostname at it
 
-**Set `FDR_API_KEYS`.** The tunnel makes the API reachable from anywhere. With that variable empty
-every caller is accepted, and each accepted call spends model credit. Set it, restart `api`, and
-confirm that an unauthenticated request now returns 401:
+The tunnel makes the API reachable from anywhere, and each accepted call spends model credit.
+`FDR_API_TOKEN` is required, so an unauthenticated instance cannot start — but confirm the
+deployed one actually rejects an anonymous caller:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' -X POST https://your-hostname/v1/reviews \
   -H 'Content-Type: application/json' -d '{"url":"https://example.com"}'
 # expect 401
+
+curl -s -o /dev/null -w '%{http_code}\n' https://your-hostname/healthz
+# expect 200 — health stays open for probes
 ```
 
-Optionally add a Zero Trust **Access** policy in front of the hostname for a second layer. The API
-key check is independent of it and stays useful for machine callers.
+Hand the token to callers over a channel you would use for any other credential, not in a ticket
+or a chat thread that outlives it. To rotate: put both tokens in `FDR_API_TOKEN`, comma-separated,
+restart `api`, move the callers, then remove the old one and restart again.
+
+Optionally add a Zero Trust **Access** policy in front of the hostname for a second layer. The
+token check is independent of it and stays useful for machine callers.
 
 ## Why the 100-second limit does not bite
 
@@ -69,7 +82,9 @@ the job model — see [api.md](api.md).
 ## Troubleshooting
 
 **Error 1033, or the hostname does not resolve.** The tunnel is not connected.
-`docker compose logs cloudflared` — a missing or wrong `CLOUDFLARE_TUNNEL_TOKEN` shows here.
+`docker compose logs cloudflared` — a missing or wrong `TUNNEL_TOKEN` shows here. Check that
+`.env.tunnel` exists and holds it: the file is optional by design, so a missing one is not an
+error, it just leaves the sidecar with no token.
 
 **502 from the hostname.** `cloudflared` is up but cannot reach the service. The public hostname's
 URL must be `api:8000`, not `localhost:8000`.

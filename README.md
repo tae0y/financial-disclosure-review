@@ -23,10 +23,15 @@ DB built in the next step, not the yaml — rebuild it after any rubric change.
 
 ```bash
 uv run python -m financial_disclosure_review build-db
+uv run python -m financial_disclosure_review build-cases          # costs ~$0.0002
 uv run python -m financial_disclosure_review review "https://<product page>"
 uv run python -m financial_disclosure_review rerun --thread review-260927-101500 \
     --from-node judge_explanation_duty
 ```
+
+`build-db` loads the rubric yaml and stays free and offline. `build-cases` embeds the case
+corpus into the same DB, so it is a separate command and calls a paid model; `--dry-run` prints
+what would be embedded and spends nothing. `docs/cases.md` has the corpus and the search.
 
 `review` prints a summary, writes the report to `data/reports/<thread>.md`, and prints what the
 run cost. `--model`, `--data-dir`, `--db-path` and `--checkpoints` override the defaults in
@@ -51,7 +56,8 @@ The same graph behind an HTTP API: a FastAPI gateway, the LangGraph worker in it
 and a Cloudflare tunnel in front.
 
 ```bash
-cp .env.example .env   # then set OPENAI_API_KEY
+cp .env.example .env   # set OPENAI_API_KEY, and FDR_API_TOKEN from the command below
+uv run python -m financial_disclosure_review.serving.token
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.override.yml up --build
 curl -s localhost:8000/readyz | python3 -m json.tool
 open http://localhost:8000/docs
@@ -62,15 +68,18 @@ A review takes minutes, so submitting returns a job id to poll:
 ```bash
 curl -sS -X POST localhost:8000/v1/reviews \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $FDR_API_TOKEN" \
   -d '{"url":"https://<product page>"}'
 # {"job_id":"9f2c…","status":"queued","poll":"/v1/reviews/9f2c…"}
 
-curl -sS localhost:8000/v1/reviews/9f2c…
-curl -sS localhost:8000/v1/reviews/9f2c…/report.md
+AUTH="Authorization: Bearer $FDR_API_TOKEN"
+curl -sS -H "$AUTH" localhost:8000/v1/reviews/9f2c…
+curl -sS -H "$AUTH" localhost:8000/v1/reviews/9f2c…/report.md
 ```
 
-`FDR_API_KEYS` is empty by default, which accepts every caller. Set it before pointing a public
-hostname at the tunnel — `docs/setup-cloudflare.md` covers that.
+Every `/v1` route needs the issued token and the gateway refuses to start without one, so there is
+no unauthenticated mode to forget about. `docs/api.md` has the full surface and
+`docs/openapi.yaml` the generated spec.
 
 ## Test
 
@@ -87,6 +96,7 @@ local HTML fixture and reaches no network.
 ## Docs
 
 - `docs/design.md` — principles, package layout, input, graph, State, rubrics, checkpoints, caps
+- `docs/cases.md` — the sanction/dispute case corpus, sqlite-vec, and the `search_cases` node
 - `docs/evaluation.md` — evaluation design, gold labels, measured results, failure analysis
 - `docs/operations.md` — escalation, retry policy, cost caps, information protection, constraints
 - `docs/product_page.md`, `docs/classification.md`, `docs/display_check.md`,

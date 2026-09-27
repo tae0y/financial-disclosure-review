@@ -23,9 +23,10 @@ def _str(name: str, default: str) -> str:
     return os.environ.get(name, "").strip() or default
 
 
-def _keys(name: str) -> tuple[str, ...]:
+def _tokens(name: str) -> tuple[str, ...]:
+    """Comma-separated so an old and a new token can both be live during a rotation."""
     raw = os.environ.get(name, "")
-    return tuple(key.strip() for key in raw.split(",") if key.strip())
+    return tuple(token.strip() for token in raw.split(",") if token.strip())
 
 
 @dataclass(frozen=True)
@@ -54,7 +55,9 @@ class ApiSettings:
 
     agent_url: str = field(default_factory=lambda: _str("FDR_AGENT_URL", "http://agent:8100"))
     jobs_db: str = field(default_factory=lambda: _str("FDR_JOBS_DB", "/app/data/jobs.sqlite"))
-    api_keys: tuple[str, ...] = field(default_factory=lambda: _keys("FDR_API_KEYS"))
+    # The issued bearer token. Required: the gateway refuses to start without one, so forgetting
+    # it cannot quietly publish an unauthenticated API. Several values allow a rotation.
+    api_tokens: tuple[str, ...] = field(default_factory=lambda: _tokens("FDR_API_TOKEN"))
     run_timeout_seconds: float = field(default_factory=lambda: _float("FDR_RUN_TIMEOUT", 1800.0))
     concurrency: int = field(default_factory=lambda: _int("FDR_AGENT_CONCURRENCY", 1))
     job_retention_days: int = field(default_factory=lambda: _int("FDR_JOB_RETENTION_DAYS", 30))

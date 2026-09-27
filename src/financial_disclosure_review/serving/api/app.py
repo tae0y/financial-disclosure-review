@@ -21,7 +21,7 @@ from dotenv import find_dotenv, load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
-from fastapi.security import APIKeyHeader
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.concurrency import run_in_threadpool
 
 from ..schemas import (
@@ -38,6 +38,11 @@ from .client import AgentClient, AgentError
 from .jobs import JobStore
 
 log = logging.getLogger("fdr.api")
+
+
+class MissingTokenError(RuntimeError):
+    """Startup found no API token. Raised so the container exits instead of serving openly."""
+
 
 DESCRIPTION = """\
 Reviews a Korean financial-product web page against the explanation duty (설명의무) and the
@@ -95,7 +100,9 @@ SERVERS = [
 Responses = dict[int | str, dict[str, Any]]
 
 AUTH_RESPONSES: Responses = {
-    401: {"description": "`FDR_API_KEYS` is set and the `X-API-Key` header is missing or wrong."}
+    401: {
+        "description": "The `Authorization: Bearer <token>` header is missing, malformed or wrong."
+    }
 }
 NOT_FOUND_RESPONSE: Responses = {404: {"description": "No job with that id."}}
 ACCEPTED_RESPONSES: Responses = {
@@ -123,33 +130,40 @@ def agent_of(request: Request) -> AgentClient:
 
 # Declared as a security scheme rather than read off the raw headers, so the generated OpenAPI
 # document carries the requirement and a generated client knows how to authenticate.
-# `auto_error=False` keeps the 401 here, where the "no keys configured" case is decided.
-api_key_header = APIKeyHeader(
-    name="X-API-Key",
+# `auto_error=False` keeps the 401 here, in one place, with one message.
+bearer_scheme = HTTPBearer(
     auto_error=False,
+    bearerFormat="opaque",
     description=(
-        "Required on every /v1 route when FDR_API_KEYS is set. With that variable empty the "
-        "check is skipped and any caller is accepted, which is only appropriate locally."
+        "The issued API token, as `Authorization: Bearer <token>`. Required on every /v1 route; "
+        "the gateway refuses to start without a token configured, so there is no unauthenticated "
+        "mode to fall back to. Issue one with "
+        "`python -m financial_disclosure_review.serving.token`."
     ),
 )
 
 
-async def require_key(
-    request: Request, offered: Annotated[str | None, Security(api_key_header)] = None
+async def require_token(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)] = None,
 ) -> None:
-    """`X-API-Key` against `FDR_API_KEYS`. With no keys configured the check is skipped."""
-    keys = settings_of(request).api_keys
-    if not keys:
-        return
-    if not any(hmac.compare_digest(offered or "", key) for key in keys):
+    """The bearer token against `FDR_API_TOKEN`.
+
+    No "skip the check" branch exists: an empty token list cannot reach a request, because startup
+    refuses it. If one somehow did, `any()` over nothing is False and the request is rejected —
+    the failure mode is a locked door, not an open one.
+    """
+    offered = credentials.credentials if credentials else ""
+    tokens = settings_of(request).api_tokens
+    if not any(hmac.compare_digest(offered, token) for token in tokens):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="a valid X-API-Key header is required",
-            headers={"WWW-Authenticate": "X-API-Key"},
+            detail="a valid `Authorization: Bearer <token>` header is required",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
 
-Authorized = Annotated[None, Security(require_key)]
+Authorized = Annotated[None, Security(require_token)]
 Store = Annotated[JobStore, Depends(store_of)]
 Agent = Annotated[AgentClient, Depends(agent_of)]
 
@@ -195,6 +209,15 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logging.basicConfig(level=os.environ.get("FDR_LOG_LEVEL", "INFO"))
+        # Fail closed, before anything is bound or any request can arrive. A gateway that starts
+        # without a token is one forgotten variable away from a public, credit-spending API, so
+        # this refuses rather than warns, and there is no opt-out.
+        if not settings.api_tokens:
+            raise MissingTokenError(
+                "FDR_API_TOKEN is not set: the gateway will not start without an API token. "
+                "Issue one with `python -m financial_disclosure_review.serving.token` and set "
+                "FDR_API_TOKEN to it."
+            )
         app.state.settings = settings
         app.state.store = JobStore(settings.jobs_db)
         app.state.agent = AgentClient(settings.agent_url, settings.run_timeout_seconds)
@@ -208,19 +231,14 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         purged = await run_in_threadpool(
             app.state.store.purge_older_than, settings.job_retention_days
         )
-        if not settings.api_keys:
-            log.warning(
-                "FDR_API_KEYS is empty: every caller is accepted. Set it before putting this "
-                "behind a public hostname."
-            )
         log.info(
-            "gateway up: agent=%s jobs=%s concurrency=%s interrupted=%s purged=%s auth=%s",
+            "gateway up: agent=%s jobs=%s concurrency=%s interrupted=%s purged=%s tokens=%d",
             settings.agent_url,
             settings.jobs_db,
             settings.concurrency,
             stale,
             purged,
-            "on" if settings.api_keys else "off",
+            len(settings.api_tokens),
         )
         try:
             yield
@@ -257,7 +275,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     @app.get("/readyz", response_model=Health, tags=["health"], operation_id="getReadiness")
     async def readyz(agent: Agent) -> Health:
         """Readiness including the worker, for a caller deciding whether to submit."""
-        detail: dict[str, Any] = {"jobs_db": settings.jobs_db, "auth": bool(settings.api_keys)}
+        detail: dict[str, Any] = {"jobs_db": settings.jobs_db, "auth": "required"}
         try:
             detail["agent"] = await agent.readyz()
             ok = detail["agent"].get("status") == "ok"

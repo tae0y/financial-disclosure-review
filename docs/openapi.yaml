@@ -318,12 +318,13 @@ components:
       title: ValidationError
       type: object
   securitySchemes:
-    APIKeyHeader:
-      description: Required on every /v1 route when FDR_API_KEYS is set. With that variable empty the
-        check is skipped and any caller is accepted, which is only appropriate locally.
-      in: header
-      name: X-API-Key
-      type: apiKey
+    HTTPBearer:
+      bearerFormat: opaque
+      description: 'The issued API token, as `Authorization: Bearer <token>`. Required on every /v1 route;
+        the gateway refuses to start without a token configured, so there is no unauthenticated mode to
+        fall back to. Issue one with `python -m financial_disclosure_review.serving.token`.'
+      scheme: bearer
+      type: http
 info:
   description: "Reviews a Korean financial-product web page against the explanation duty (설명의무) and the\n\
     display-method rules (표시방법), and rewrites its explanation in plain Korean.\n\n**A review takes minutes,\
@@ -385,7 +386,7 @@ paths:
                 $ref: '#/components/schemas/JobAccepted'
           description: Queued. Poll the `poll` path until the job reaches a terminal status.
         '401':
-          description: '`FDR_API_KEYS` is set and the `X-API-Key` header is missing or wrong.'
+          description: 'The `Authorization: Bearer <token>` header is missing, malformed or wrong.'
         '422':
           content:
             application/json:
@@ -393,7 +394,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - APIKeyHeader: []
+      - HTTPBearer: []
       summary: Submit Rerun
       tags:
       - reviews
@@ -427,7 +428,7 @@ paths:
                 $ref: '#/components/schemas/JobList'
           description: Successful Response
         '401':
-          description: '`FDR_API_KEYS` is set and the `X-API-Key` header is missing or wrong.'
+          description: 'The `Authorization: Bearer <token>` header is missing, malformed or wrong.'
         '422':
           content:
             application/json:
@@ -435,7 +436,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - APIKeyHeader: []
+      - HTTPBearer: []
       summary: List Reviews
       tags:
       - reviews
@@ -456,7 +457,7 @@ paths:
                 $ref: '#/components/schemas/JobAccepted'
           description: Queued. Poll the `poll` path until the job reaches a terminal status.
         '401':
-          description: '`FDR_API_KEYS` is set and the `X-API-Key` header is missing or wrong.'
+          description: 'The `Authorization: Bearer <token>` header is missing, malformed or wrong.'
         '422':
           content:
             application/json:
@@ -464,7 +465,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - APIKeyHeader: []
+      - HTTPBearer: []
       summary: Submit Review
       tags:
       - reviews
@@ -487,7 +488,7 @@ paths:
                 $ref: '#/components/schemas/Job'
           description: Successful Response
         '401':
-          description: '`FDR_API_KEYS` is set and the `X-API-Key` header is missing or wrong.'
+          description: 'The `Authorization: Bearer <token>` header is missing, malformed or wrong.'
         '404':
           description: No job with that id.
         '422':
@@ -497,7 +498,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - APIKeyHeader: []
+      - HTTPBearer: []
       summary: Get Review
       tags:
       - reviews
@@ -523,7 +524,7 @@ paths:
                 type: string
           description: The report as Markdown.
         '401':
-          description: '`FDR_API_KEYS` is set and the `X-API-Key` header is missing or wrong.'
+          description: 'The `Authorization: Bearer <token>` header is missing, malformed or wrong.'
         '404':
           description: No job with that id.
         '409':
@@ -535,7 +536,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - APIKeyHeader: []
+      - HTTPBearer: []
       summary: Get Report Markdown
       tags:
       - reviews

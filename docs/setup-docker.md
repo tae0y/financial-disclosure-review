@@ -24,13 +24,18 @@ the internet is not the one driving a browser.
 cp .env.example .env
 ```
 
-`OPENAI_API_KEY` is the only value the service cannot start without. The rest have working
-defaults; `.env.example` documents each one.
+`OPENAI_API_KEY` and `FDR_API_TOKEN` are the two values the service cannot start without. The
+rest have working defaults; `.env.example` documents each one.
+
+The Cloudflare tunnel token is deliberately **not** in `.env`. It lives in `.env.tunnel` (see
+`.env.tunnel.example`), read only by the `cloudflared` sidecar, so that container never receives
+the model key. The file is optional: local runs scale the tunnel to zero and need no token.
 
 Two worth setting deliberately:
 
-- **`FDR_API_KEYS`** — empty means every caller is accepted. Set it before a public hostname
-  points at the tunnel.
+- **`FDR_API_TOKEN`** — required. The gateway exits with code 3 if it is unset, so there is no
+  way to start an unauthenticated instance. Issue one with
+  `uv run python -m financial_disclosure_review.serving.token`.
 - **`FDR_RUBRIC_HOST_DIR`** — the host path mounted read-only at `/app/rubrics`. The default is
   the sibling folder inside `261001 ABC Final Project`; set it if your checkout sits elsewhere.
 
@@ -122,8 +127,8 @@ can read it — Playwright's default is under `~/.cache`, which that user does n
 **`agent` never turns healthy.** Give it time: `start_period` is 20s and the first boot also builds
 the reference DB. Then `docker compose logs agent`.
 
-**`api` exits at startup.** It waits on `agent` being healthy. If the agent is unhealthy, the
-gateway never starts.
+**`api` exits at startup.** Two causes. It waits on `agent` being healthy, so an unhealthy agent
+stops it. Or `FDR_API_TOKEN` is unset — the log says so and the container exits with code 3.
 
 **Jobs come back `failed` with `BudgetExceeded`.** The per-run cap was reached. Raise `FDR_MAX_USD`
 or `FDR_MAX_CALLS`, or pass `max_usd` on the request.

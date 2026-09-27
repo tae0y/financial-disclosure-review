@@ -55,8 +55,6 @@ services:
       FDR_AGENT_URL: http://agent:8100
       FDR_JOBS_DB: /app/data/jobs.sqlite
       FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-1}
-      # Comma-separated. Empty means every caller is accepted — set it before going public.
-      FDR_API_KEYS: ${FDR_API_KEYS:-}
       FDR_CORS_ORIGINS: ${FDR_CORS_ORIGINS:-}
       FDR_RUN_TIMEOUT: ${FDR_RUN_TIMEOUT:-1800}
       FDR_JOB_RETENTION_DAYS: ${FDR_JOB_RETENTION_DAYS:-30}
@@ -87,9 +85,15 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     command: tunnel --no-autoupdate run
-    env_file: ../.env
+    # Its own file, holding only TUNNEL_TOKEN, for two reasons. Compose substitution reads the
+    # project directory (docker/), not ../.env, so `${CLOUDFLARE_TUNNEL_TOKEN}` silently resolved
+    # to an empty string and the tunnel came up unable to connect. And the sidecar has no business
+    # holding the model key that ../.env carries.
+    # `required: false` keeps local runs working, where this service is scaled to zero.
+    env_file:
+      - path: ../.env.tunnel
+        required: false
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
       TZ: Asia/Seoul
     networks:
       - internal

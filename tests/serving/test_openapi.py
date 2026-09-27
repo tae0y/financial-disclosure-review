@@ -15,23 +15,32 @@ def test_the_committed_spec_matches_the_code() -> None:
     assert committed.read_text(encoding="utf-8") == render(document())
 
 
-def test_every_v1_route_requires_the_api_key() -> None:
+def test_every_v1_route_requires_the_token() -> None:
     """An unauthenticated /v1 route would be a hole the document hides."""
     spec = document()
     for path, operations in spec["paths"].items():
         for method, operation in operations.items():
             security = operation.get("security")
             if path.startswith("/v1/"):
-                assert security == [{"APIKeyHeader": []}], f"{method.upper()} {path}"
+                assert security == [{"HTTPBearer": []}], f"{method.upper()} {path}"
             else:
                 assert security is None, f"{method.upper()} {path} should stay open"
 
 
-def test_the_key_is_declared_as_a_header_scheme() -> None:
-    scheme = document()["components"]["securitySchemes"]["APIKeyHeader"]
-    assert scheme["type"] == "apiKey"
-    assert scheme["in"] == "header"
-    assert scheme["name"] == "X-API-Key"
+def test_the_token_is_declared_as_a_bearer_scheme() -> None:
+    scheme = document()["components"]["securitySchemes"]["HTTPBearer"]
+    assert scheme["type"] == "http"
+    assert scheme["scheme"] == "bearer"
+    assert "Authorization: Bearer" in scheme["description"]
+
+
+def test_the_spec_is_generated_without_a_token_configured() -> None:
+    """Generating the document must not require the runtime credential.
+
+    `create_app()` stays pure and the token check lives in startup, so the spec can be exported
+    in CI or on a laptop that holds no token.
+    """
+    assert "HTTPBearer" in document()["components"]["securitySchemes"]
 
 
 def test_health_routes_stay_reachable_without_a_credential() -> None:
