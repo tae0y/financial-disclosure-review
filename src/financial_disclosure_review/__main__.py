@@ -71,24 +71,30 @@ def build_db(args: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     data_dir = default_data_dir()
-    root = argparse.ArgumentParser(prog="financial_disclosure_review", description=__doc__)
-    root.add_argument("--model", default=Context.model)
-    root.add_argument("--data-dir", default=data_dir)
-    root.add_argument("--db-path", default=default_db_path())
-    root.add_argument("--checkpoints", default=default_checkpoint_path(data_dir))
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--model", default=Context.model)
+    common.add_argument("--data-dir", default=data_dir)
+    common.add_argument("--db-path", default=default_db_path())
+    common.add_argument("--checkpoints", default=default_checkpoint_path(data_dir))
+
+    root = argparse.ArgumentParser(
+        prog="financial_disclosure_review", description=__doc__, parents=[common]
+    )
     commands = root.add_subparsers(dest="command", required=True)
 
-    one = commands.add_parser("review", help="review one product page URL")
+    one = commands.add_parser("review", help="review one product page URL", parents=[common])
     one.add_argument("url")
     one.add_argument("--thread", default="", help="thread id; a timestamped one by default")
     one.set_defaults(run=review)
 
-    again = commands.add_parser("rerun", help="re-run a thread from one node")
+    again = commands.add_parser("rerun", help="re-run a thread from one node", parents=[common])
     again.add_argument("--thread", required=True)
     again.add_argument("--from-node", required=True)
     again.set_defaults(run=rerun)
 
-    build = commands.add_parser("build-db", help="build the reference DB from the rubric yaml")
+    build = commands.add_parser(
+        "build-db", help="build the reference DB from the rubric yaml", parents=[common]
+    )
     build.add_argument("--rubric-dir", default=default_rubric_dir())
     build.set_defaults(run=build_db)
     return root
