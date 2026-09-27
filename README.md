@@ -43,5 +43,6 @@ HTML fixture and reaches no network.
 ## Docs
 
 - `docs/design.md` — principles, package layout, input, graph, State, rubrics, checkpoints
+- `docs/src-layout-migration.md` — what moved out of the notebook, and what changed with it
 - `docs/product_page.md`, `docs/classification.md`, `docs/display_check.md` — per-domain rules
 - `localdocs/` — plans, worklog and ADRs (local only)
