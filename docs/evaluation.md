@@ -45,6 +45,18 @@ Two of the six are out-of-scope pages (삼성화재 자동차보험, 카카오�
 rejected at step 2 with the second verification call agreeing. Source:
 `eval/results/260927-174210-classification-record.json`.
 
+The suite records the verdict, not the document the requester receives. To keep the exception
+path demonstrable without a network, `eval/out_of_scope_report.py` replays those recorded calls
+and renders the report through the same `build_report` the graph's `end_report` node uses:
+
+```bash
+uv run python eval/out_of_scope_report.py   # replay, 0 calls, $0
+```
+
+It writes `data/reports/out-of-scope-samsungfire-direct-auto-insurance.md` and
+`out-of-scope-kakaobank-fixed-deposit.md` — the verdict `검토 대상 아님`, the step that rejected
+the page, and the grounds sentence, with no checking module having run.
+
 ### 2. Explanation duty, defect injection — pipeline 2/3, ablation 1/3
 
 Base page: 롯데카드 디지로카 Las Vegas 상품안내 화면 (공개 페이지, 본문 5,667자, 적용 항목 39개).

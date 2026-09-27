@@ -293,8 +293,10 @@ def _markdown(
         f"- 조치 방침: {decision}",
         f"- 대상 화면: {page.get('url', '')}",
         f"- 상품명: {product.get('product_name', '(확인 불가)')}",
-        f"- 상품유형/화면유형: {classification.get('product_type', '')}"
-        f" / {classification.get('page_type', '')}",
+        # 범위 밖·판정 불가로 끝난 검토는 화면유형이 정해지지 않은 채로 남습니다. 담당자가 읽는
+        # 문서에 `None`이 그대로 찍히면 값이 빠진 것인지 오류인지 구분되지 않으므로 말로 적습니다.
+        f"- 상품유형/화면유형: {classification.get('product_type') or '(확인 불가)'}"
+        f" / {classification.get('page_type') or '(해당 없음)'}",
         f"- 분류 근거: {_clip(str(classification.get('reason', '')), 300)}",
         "",
         "## 1. 담당자 조치 목록",
