@@ -76,12 +76,18 @@ site differs, and rules would need hand-tuning per site.
 Serial, three modules: display method → plain language → explanation duty.
 
 ```
-START → preprocess_product_page → classify_type
-      → judge_display_method → generate_plain_lang → judge_explanation_duty
+START → preprocess_product_page → classify_type ─┬→ judge_display_method
+                                                 └→ END   (범위 밖 / 판정 불가)
+
+judge_display_method → generate_plain_lang → judge_explanation_duty
       → verify_answer ─┬→ end_report → END
                        └→ retry_dispatch → judge_display_method
 ```
 
+- `route_after_classify` returns `END` when `classification.product_type` is `범위 밖` or
+  `판정 불가`, and `"judge_display_method"` otherwise. Ending here is a normal result, not an
+  error: the caller reads `classification` (with its `reason`) from the final State. Only
+  system errors (API failure, response schema parse failure) raise exceptions.
 - Order: explanation duty judges the plain-language output, so plain language runs right
   before it. A plain-language retry then re-runs only what depends on it.
 - No `pre_*` nodes. Each module node prepares its own input at the top of the function.
@@ -97,7 +103,7 @@ One top-level key per module. A node writes only its own module's key and reads 
 | Key | Type | Fields |
 |---|---|---|
 | `product_page` | `ProductPage` | `url`, `product`, `actions`, `snapshots`, `html` |
-| `classification` | `Classification` | `product_type`, `page_type` |
+| `classification` | `Classification` | `product_type`, `page_type`, `reason` |
 | `display_check` | `DisplayCheck` | `items`, `judgments` |
 | `plain_language` | `PlainLanguage` | `items`, `draft`, `html`, `term_refs`, `accepted_blocks`, `contract_errors` |
 | `explanation_duty_check` | `ExplanationDutyCheck` | `items`, `original`, `plain`, `fidelity` |
@@ -126,13 +132,19 @@ Scope: a public card-company product page is an ad (금소법 제22조). Explana
 applied by analogy (준용) as quality criteria, not as direct duties. Explanation screens inside
 the application flow are out of scope.
 
-`classify_type` judges only the product type; the page type follows from it.
+`classify_type` judges in three steps: (1) is it a single product page, (2) is it a card
+company's credit product or service, (3) which product type. A "no" at step 1 or 2 ends the
+review with `product_type = "범위 밖"`. The page type is not judged; it follows from the
+product type.
 
 | `product_type` | `page_type` |
 |---|---|
 | 신용카드, 장기카드대출, 할부금융·리스 | 상품광고 |
 | 단기카드대출, 리볼빙 | 업무광고 |
 
+- Non-review results: `product_type` is `범위 밖` (step 1 or 2 failed) or `판정 불가` (the
+  model's answer failed validation twice, or the verification call disagreed; needs a human
+  check). In both cases `page_type` is `None` and `reason` names the step and the grounds.
 - Fixed by scope, not classified: ad status, the card company's own site, association review,
   online automated sale, explanation screen.
 - `applies_condition` is judged per item by the LLM inside each module node, not by
