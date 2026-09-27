@@ -23,6 +23,12 @@ CONDITION_KEYWORDS = [
     "신용점수", "하락", "해지", "변동",
 ]  # fmt: skip
 NUMBER_RE = re.compile(r"\d[\d,.]*")
+# "1년에", "1개월"처럼 원문의 '연회비'·'무이자 할부'를 자연스럽게 풀어 쓸 때 생기는 1 + 단위는
+# 지어낸 수치로 보지 않는다. 원문에 있던 수치를 바꾸거나 빼면 '수치 누락' 쪽에서 잡히므로,
+# 이 예외가 만드는 구멍은 '원문에 수치가 전혀 없던 기간을 1로 지어내는 경우'로 좁다.
+COUNTER_UNITS = ["년", "해", "달", "개월", "회", "번", "명", "곳", "가지", "종류"]
+# 짧고 다른 낱말 안에 자주 들어가는 표현("결제일에"의 '제일')은 부분문자열만으로 판단하지 않는다.
+AMBIGUOUS_SHORT = {"최고", "최저", "최상", "최초", "최대", "최강", "제일", "유일", "1위"}
 
 
 def strip_ws(s: str) -> str:
@@ -31,6 +37,29 @@ def strip_ws(s: str) -> str:
 
 def number_set(text: str) -> set[str]:
     return {n.replace(",", "").rstrip(".") for n in NUMBER_RE.findall(text)}
+
+
+def counter_ones(text: str) -> set[str]:
+    """'1' + 기간·횟수 단위로만 쓰인 1을 모은다. 다른 수치는 건드리지 않는다."""
+    if not any(f"1{unit}" in text for unit in COUNTER_UNITS):
+        return set()
+    return {"1"} if re.search(r"(?<!\d)1(" + "|".join(COUNTER_UNITS) + ")", text) else set()
+
+
+def has_phrase(text: str, phrase: str) -> bool:
+    """단정·최상급 표현이 정말 그 표현으로 쓰였는지 본다.
+
+    긴 표현은 공백만 지우고 부분문자열로 찾는다. 짧고 모호한 표현은 한글 음절 뒤에 붙어 있으면
+    다른 낱말의 일부로 보고 세지 않는다('결제일에'는 '제일'이 아니다). 이 규칙은 원문과 쉬운말
+    양쪽에 같이 적용되므로, 원문이 이미 쓴 표현을 쉬운말이 유지한 경우에는 걸리지 않는다."""
+    if phrase not in AMBIGUOUS_SHORT:
+        return strip_ws(phrase) in strip_ws(text)
+    spaced = " ".join(text.split())
+    for match in re.finditer(re.escape(phrase), spaced):
+        before = spaced[match.start() - 1] if match.start() else ""
+        if not ("가" <= before <= "힣"):
+            return True
+    return False
 
 
 def verify_source_quote(text: str, quote: str) -> str:
@@ -43,22 +72,20 @@ def verify_block(quote: str, text: str) -> list[str]:
     문제가 없으면 빈 리스트를 돌려준다."""
     problems: list[str] = []
     q_nums, t_nums = number_set(quote), number_set(text)
-    extra_nums = sorted(t_nums - q_nums)
+    extra_nums = sorted(t_nums - q_nums - counter_ones(text))
     missing_nums = sorted(q_nums - t_nums)
     if extra_nums:
         problems.append(f"원문에 없는 수치 포함: {', '.join(extra_nums)}")
     if missing_nums:
         problems.append(f"원문 수치 누락: {', '.join(missing_nums)}")
 
-    q_compact, t_compact = strip_ws(quote), strip_ws(text)
     added_phrases = [
-        p
-        for p in FORBIDDEN_ABSOLUTE_PHRASES
-        if strip_ws(p) in t_compact and strip_ws(p) not in q_compact
+        p for p in FORBIDDEN_ABSOLUTE_PHRASES if has_phrase(text, p) and not has_phrase(quote, p)
     ]
     if added_phrases:
         problems.append(f"원문에 없는 단정·최상급 표현 포함: {', '.join(added_phrases)}")
 
+    q_compact, t_compact = strip_ws(quote), strip_ws(text)
     had_hedge = any(strip_ws(m) in q_compact for m in HEDGE_MARKERS)
     kept_hedge = any(strip_ws(m) in t_compact for m in HEDGE_MARKERS)
     if had_hedge and not kept_hedge:
