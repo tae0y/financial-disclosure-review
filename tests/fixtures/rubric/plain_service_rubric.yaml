@@ -1,0 +1,17 @@
+# A one-item stand-in: the build loads both rubric files, so both must exist.
+items:
+- code: 설명01
+  group: 설명의무
+  applies_to:
+  - 리볼빙
+  targets:
+  - 설명화면
+  applies_condition: null
+  binding: 법령
+  criterion: 금리와 변동 여부가 설명되어 있는가?
+  sources:
+  - doc: kfcpa
+    loc: 제19조제1항
+    quote: 금리 및 변동 여부
+    snapshot: 원문 스냅샷/kfcpa.txt
+    official_url: https://example.test/kfcpa
