@@ -85,5 +85,27 @@ below keeps that gap on the record.
 | ID | Scenario | Checks | State |
 |---|---|---|---|
 | S-13 | the two sample URLs from preprocess through the graph | 신용카드 / 상품광고, every quote present | ran 2026-09-27, both as expected (gpt-5-mini) |
-| S-14 | the six fixtures against a real model | expected vs actual, quotes present | `tests/classification/test_classify_llm.py`, not yet run |
-| S-15 | rebuild the fixtures from preprocess output and compare with S-14 | whether the snapshot-based result agrees | not yet run |
+| S-14 | the six fixtures against a real model | expected vs actual, quotes present | ran 2026-09-27, all six as expected (gpt-5-mini, in=52,983 out=13,471, about $0.04). Now `tests/classification/test_classify_llm.py` |
+| S-15 | rebuild the fixtures from preprocess output and compare with S-14 | whether the snapshot-based result agrees | not run. S-13 and S-14 use different URLs, so this needs preprocessing run afresh on the fixtures' own URLs (four Lotte Card pages, Kakao Bank, Samsung Fire). None has a cached site rule, so each site may take the full 20-turn discovery loop — measure the cost on one fixture and get approval before running all six. |
+
+### C. Risks that are not covered by a test
+
+| ID | Item | Why |
+|---|---|---|
+| R-01 | the short-term-loan pitch at the end of a revolving page | S-14 classified `lottecard-revolving` correctly with a real model, so common rule 2 (another product's name in a pitch is not the subject) holds for that one fixture. Other combinations of pitch wording are unchecked. |
+| R-02 | event, bundle and list pages | there is no fixture for the step-1 "no" path against a real model |
+| R-03 | a real case where the verification call answers yes | knowing how often a mismatch happens needs many pages |
+| R-04 | a cap on the number of calls | the worst case is three calls per page (two classify, one verify). Nothing in the code caps the calls or tokens of a whole run. |
+
+## How to run the scenarios
+
+- S-01 to S-12: `uv run pytest tests/classification tests/graph`.
+- S-13 and S-14: `uv run pytest -m use_llm` (S-13 also needs `use_network`). Both cost money, so
+  ask 영태 first.
+- Every scenario shares one condition: `classify_page` and `classify_type` never raise.
+
+## Follow-up candidates
+
+- Run S-15, after measuring the site-rule discovery cost on a single fixture and getting approval.
+- Add an event or list page fixture for R-02.
+- Cap the calls and tokens of a whole run (R-04).
