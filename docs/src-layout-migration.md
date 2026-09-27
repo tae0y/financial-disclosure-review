@@ -96,10 +96,17 @@ uv run python -m financial_disclosure_review rerun --thread review-260927-101500
     --from-node judge_display_method
 ```
 
-남은 일은 두 가지입니다.
+남은 일은 세 가지입니다.
 
+- **노트북 작업분이 src보다 앞서 있습니다.** 이 패키지는 `main`에 커밋된 노트북(blob
+  `4d176af`, 42셀)을 옮긴 것입니다. 머지 시점의 `notebooks/review.ipynb` 워킹트리에는 커밋되지
+  않은 셀 10개(약 1,370줄)가 더 있고, 그 안에 `generate_plain_lang`,
+  `judge_explanation_duty`, `verify_answer`의 구현과 각 확인 셀이 들어 있습니다. src에서는
+  이 세 도메인이 아직 스텁입니다. 두 곳에 같은 로직을 두지 않으려면, 노트북 쪽을 먼저
+  커밋한 뒤 같은 배치 규칙으로 `plain_language/`, `explanation_duty_check/`,
+  `verification/`에 옮기는 것이 다음 작업입니다.
 - `notebooks/`가 아직 남아 있습니다. `notebooks/fixtures/classify`는 `tests/fixtures/`로
-  옮겨졌으므로 노트북의 확인 셀은 현재 상태로 실행되지 않습니다. 삭제는 영태 님 확인을
-  기다리고 있으며, 전환 직전 상태는 커밋 `3fa6cc0`에 남아 있습니다.
+  옮겨졌으므로 노트북의 `classify_type` 확인 셀은 현재 상태로 실행되지 않습니다. 위 항목이
+  정리되기 전에는 삭제하지 않습니다. 전환 직전 상태는 커밋 `3fa6cc0`에 남아 있습니다.
 - `ralph/PROMPT_*.md`가 여전히 셀 ID를 참조합니다. 보관할지, src 기준으로 갱신할지, 삭제할지
   정해야 합니다.
