@@ -2,6 +2,9 @@
 localdocs/
 localdocs
 
+######## AI Agent temporary files
+scratchpad/
+
 ######## Python
 
 # Byte-compiled / optimized / DLL files
