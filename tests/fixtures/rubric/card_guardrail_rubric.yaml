@@ -1,0 +1,51 @@
+# A three-item stand-in for the real rubric: one mandatory item and two display-method items.
+items:
+- code: A01
+  group: A. 광고 공통 의무표시
+  applies_to:
+  - 신용카드
+  - 리볼빙
+  page_types:
+  - 상품광고
+  - 업무광고
+  applies_condition: null
+  binding: 법령
+  criterion: 계약을 체결하기 전에 상품설명서와 약관을 읽어볼 것을 권유하는 문구가 있는가?
+  sources:
+  - doc: kfcpa
+    loc: 제22조제3항제1호
+    quote: 금융상품에 관한 계약을 체결하기 전에 금융상품 설명서 및 약관을 읽어 볼 것을 권유하는 내용
+    snapshot: 원문 스냅샷/kfcpa.txt
+    official_url: https://example.test/kfcpa
+- code: E02
+  group: E. 표시방법
+  applies_to:
+  - 신용카드
+  - 리볼빙
+  page_types:
+  - 상품광고
+  - 업무광고
+  applies_condition: null
+  binding: 법령
+  criterion: 의무표시사항은 글자 크기를 A4 기준 9포인트 이상으로 표시했는가?
+  sources:
+  - doc: crefia_reg
+    loc: 제5조
+    quote: 의무표시사항의 글자 크기
+    snapshot: 원문 스냅샷/crefia_reg.txt
+    official_url: https://example.test/crefia
+- code: E04
+  group: E. 표시방법
+  applies_to:
+  - 신용카드
+  page_types:
+  - 상품광고
+  applies_condition: null
+  binding: 자율규제
+  criterion: 경고문구는 배경과 명확히 구분되어 쉽게 알아볼 수 있는가?
+  sources:
+  - doc: crefia_guide
+    loc: 별표1
+    quote: 배경과 명확히 구분
+    snapshot: 원문 스냅샷/crefia_guide.txt
+    official_url: https://example.test/guide

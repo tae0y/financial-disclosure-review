@@ -6,31 +6,42 @@ created: 2026-09-26
 
 # Design
 
-Decisions for `notebooks/review.ipynb`. This file records the target design, not progress.
+Decisions for the `financial_disclosure_review` package. This file records the target
+design, not progress.
 
 ## Principles
 
 - Simplicity first. Add only what the current step needs.
-- Build one step at a time. The notebook runs top to bottom after every step.
+- Build one step at a time. `uv run pytest`, `ruff check` and `pyright` pass after every step.
 - Data model, node inputs/outputs, and graph shape are decided by 영태.
 
-## Notebook sections
+## Package layout
 
-1. Dependencies: `!uv sync`, imports
-2. Data model: class definitions
-3. Helpers: domain-agnostic functions (file/DB reads, string handling)
-4. Business logic: functions holding judgment or generation rules
-5. Graph nodes: take State, call section 4, return only changed keys
-6. Graph build: nodes, edges, compile
-7. Run (DB build code sits right before this section)
+`src/financial_disclosure_review/`, with one folder per State key. The placement rules are in
+`localdocs/plan.src-layout.md`; the short form is:
 
-Sections with no code yet keep only their markdown heading.
+| Folder | Holds | Never holds |
+|---|---|---|
+| `core/` | code two or more domains share: State, Context, text, colour, threads | domain judgment |
+| `llm/` | the call devices: structured output, image input, one tool-calling turn | prompt text |
+| `knowledge/` | reading and building reusable reference data (rubrics, later statutes and cases) | which items an item-owner picks |
+| `<domain>/` | judgment rules, prompts, response schemas, loop decisions | `langgraph`, `State`, another domain |
+| `graph/` | nodes, routing, retry branching, graph assembly | business logic |
+| `__main__.py` | the CLI | anything else |
+
+Import direction: `core → llm → knowledge → 도메인 → graph → __main__`. Domains never import
+each other; their data meets only in State. A domain exports one entry function from its
+`__init__.py`, and that function takes the State values it needs, not the whole State.
+
+Domains with no code yet (`plain_language`, `explanation_duty_check`, `verification`, `report`)
+hold a stub that returns `{}`, so the graph still runs to END.
 
 ## Data rules
 
 - Runtime data moves only through State. No global variables for it.
 - Settings (paths, model name, DB file) are passed at invoke time, not stored in State:
   `Context(model, db_path)` via `context=`. Pass it again when re-running from a checkpoint.
+  The CLI takes them as `--model`, `--data-dir`, `--db-path` and `--checkpoints`.
 - Reusable data (rubrics, statutes, glossary, cases) is read from SQLite. Helpers open and
   close the connection. Vector search uses `sqlite-vec` (needs a Python build with
   `enable_load_extension`; the Homebrew 3.12 venv has it).
