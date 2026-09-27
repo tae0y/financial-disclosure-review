@@ -43,9 +43,9 @@ human, not something to resolve automatically.
 | 범위 밖 | None | step 1 or 2 answered no, and the verification agreed |
 | 판정 불가 | None | validation failed twice, or the verification disagreed |
 
-`범위 밖` and `판정 불가` both end the graph at `route_after_classify`. That is a normal result:
-the caller reads `classification.reason`, which names the step and the grounds. Only system
-errors raise.
+`범위 밖` and `판정 불가` both skip the checks at `route_after_classify` and go straight to
+`end_report`. That is a normal result, and the requester still receives a report naming the step
+and the grounds (`report.status` is `검토 대상 아님` or `판정 불가`). Only system errors raise.
 
 ## Test scenarios
 
@@ -75,7 +75,7 @@ below keeps that gap on the record.
 | S-06 | step 2 no, verification says yes | `판정 불가` / `판정 불일치`, carrying both reasons | same |
 | S-07 | a quote differing only in whitespace | accepted | same |
 | S-08 | step 1 no | `범위 밖`, reason starts with `1단계` | same |
-| S-09 | `route_after_classify` with 범위 밖, 판정 불가 | END | `tests/graph/test_routes.py` |
+| S-09 | `route_after_classify` with 범위 밖, 판정 불가 | `end_report` (검토는 건너뛰고 보고서는 받음) | `tests/graph/test_routes.py` |
 | S-10 | `route_after_classify` with the five reviewable types | `judge_display_method` | same |
 | S-11 | `classify_type` on a normal page | a `classification` slice, no exception | `tests/graph/test_nodes.py` |
 | S-12 | `classify_type` on an empty `product_page` | `판정 불가` / `입력 없음`, no model call | same |

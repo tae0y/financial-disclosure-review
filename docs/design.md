@@ -95,7 +95,7 @@ Serial, three modules: display method → plain language → explanation duty.
 
 ```
 START → preprocess_product_page → classify_type ─┬→ search_cases → judge_display_method
-                                                 └→ END   (범위 밖 / 판정 불가)
+                                                 └→ end_report   (범위 밖 / 판정 불가)
 
 judge_display_method → generate_plain_lang → judge_explanation_duty
       → verify_answer ─┬→ end_report → END
