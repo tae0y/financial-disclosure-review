@@ -11,6 +11,8 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 
 from .core.context import Context, default_data_dir, default_db_path, default_rubric_dir
 from .core.state import empty_state
+from .core.usage import start_run
+from .evaluation import SUITES, default_eval_dir, render, run_evaluation
 from .graph.build import build_review_graph
 from .knowledge.build import build_rubric_db
 from .knowledge.build_cases import build_case_db, case_db_counts
@@ -22,6 +24,18 @@ def default_checkpoint_path(data_dir: str) -> str:
 
 def context_from(args: argparse.Namespace) -> Context:
     return Context(model=args.model, data_dir=args.data_dir, db_path=args.db_path)
+
+
+def save_report(state: dict, data_dir: str, thread_id: str) -> str:
+    """Write the reviewer-facing report next to the run's data. Returns the path, or ""."""
+    markdown = (state.get("report") or {}).get("markdown")
+    if not markdown:
+        return ""
+    folder = Path(data_dir) / "reports"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{thread_id}.md"
+    path.write_text(markdown, encoding="utf-8")
+    return str(path)
 
 
 def print_summary(state: dict) -> None:
@@ -56,6 +70,19 @@ def print_summary(state: dict) -> None:
         f"failed={verification.get('failed_modules')}",
         f"loop={verification.get('loop_count')}",
     )
+    report = state.get("report") or {}
+    if report:
+        print("report status:", report.get("status"), "|", report.get("decision"))
+        for action in report.get("actions") or []:
+            print("  -", action)
+        cost = report.get("cost") or {}
+        print(
+            "cost:",
+            f"{cost.get('calls')} calls,",
+            f"in={cost.get('input_tokens')} out={cost.get('output_tokens')},",
+            f"${cost.get('usd')} (~{cost.get('krw')} KRW),",
+            f"{cost.get('elapsed_seconds')}s",
+        )
 
 
 def review(args: argparse.Namespace) -> int:
@@ -64,9 +91,13 @@ def review(args: argparse.Namespace) -> int:
     state = empty_state()
     state["product_page"] = {"url": args.url}
     print("thread:", thread_id)
+    start_run(max_calls=args.max_calls, max_usd=args.max_usd)
     with SqliteSaver.from_conn_string(args.checkpoints) as saver:
         final = build_review_graph(saver).invoke(state, config, context=context_from(args))
     print_summary(final)
+    saved = save_report(final, args.data_dir, thread_id)
+    if saved:
+        print("report:", saved)
     return 0
 
 
@@ -80,8 +111,40 @@ def rerun(args: argparse.Namespace) -> int:
         if before is None:
             print(f"thread {args.thread!r} has no checkpoint whose next node is {args.from_node!r}")
             return 1
+        start_run(max_calls=args.max_calls, max_usd=args.max_usd)
         final = graph.invoke(None, before.config, context=context_from(args))
     print_summary(final)
+    saved = save_report(final, args.data_dir, args.thread)
+    if saved:
+        print("report:", saved)
+    return 0
+
+
+def evaluate(args: argparse.Namespace) -> int:
+    """Run the evaluation suites and write both the data and the markdown next to the cases."""
+    mode = "record" if args.record else ("live" if args.live else "replay")
+    suites = tuple(SUITES) if args.suite == "all" else (args.suite,)
+    arms = ("pipeline", "ablation") if args.ablation else ("pipeline",)
+    run = run_evaluation(
+        context_from(args),
+        suites=suites,
+        mode=mode,
+        eval_dir=args.eval_dir,
+        max_flips=args.flips,
+        arms=arms,
+    )
+    folder = Path(args.eval_dir) / "results"
+    folder.mkdir(parents=True, exist_ok=True)
+    stem = f"{datetime.now().strftime('%y%m%d-%H%M%S')}-{args.suite}-{mode}"
+    (folder / f"{stem}.json").write_text(
+        json.dumps(run, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    (folder / f"{stem}.md").write_text(render(run), encoding="utf-8")
+    for entry in run["suites"]:
+        print(entry["result"]["suite"], "->", json.dumps(entry["metrics"], ensure_ascii=False))
+    print("cassette:", run["cassette"])
+    print("cost:", json.dumps(run["cost"], ensure_ascii=False))
+    print("written:", folder / f"{stem}.md")
     return 0
 
 
@@ -120,6 +183,12 @@ def parser() -> argparse.ArgumentParser:
     common.add_argument("--data-dir", default=data_dir)
     common.add_argument("--db-path", default=default_db_path())
     common.add_argument("--checkpoints", default=default_checkpoint_path(data_dir))
+    common.add_argument(
+        "--max-calls", type=int, default=60, help="model calls one run may make; 0 for no cap"
+    )
+    common.add_argument(
+        "--max-usd", type=float, default=1.0, help="USD one run may spend; 0 for no cap"
+    )
 
     root = argparse.ArgumentParser(
         prog="financial_disclosure_review", description=__doc__, parents=[common]
@@ -152,6 +221,23 @@ def parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="print what would be embedded and spend nothing"
     )
     cases.set_defaults(run=build_cases)
+
+    check = commands.add_parser(
+        "evaluate", help="run the evaluation suites (replay is free)", parents=[common]
+    )
+    check.add_argument("--suite", default="all", choices=["all", *SUITES])
+    check.add_argument("--eval-dir", default=str(default_eval_dir()))
+    check.add_argument(
+        "--live", action="store_true", help="call the real model instead of replaying a cassette"
+    )
+    check.add_argument(
+        "--record", action="store_true", help="call the real model and write the answers down"
+    )
+    check.add_argument("--flips", type=int, default=3, help="how many disclosures to delete")
+    check.add_argument(
+        "--ablation", action="store_true", help="also run the no-validation comparison arm"
+    )
+    check.set_defaults(run=evaluate)
     return root
 
 

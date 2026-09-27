@@ -1,0 +1,96 @@
+{
+  "dataset": "쉬운말 계약 위반 케이스 v1",
+  "purpose": "쉬운말 변환이 원문의 수치·조건·가능성 표현을 흔들었을 때 계약 검사가 이를 잡아내는지, 그리고 정상 변환을 잘못 잡지는 않는지 본다.",
+  "label_source": "각 쌍의 결함은 손으로 넣었다. defect가 null인 쌍은 원문의 수치와 조건 문구를 모두 보존한 정상 변환이다. 문장은 카드사 상품안내 화면에서 흔한 표현을 참고해 새로 썼다.",
+  "baseline": "계약 검사가 없는 구성(모델 출력을 그대로 게시)은 정의상 이 결함을 하나도 걸러내지 못하므로 탐지율 0%가 비교 기준이다.",
+  "cases": [
+    {
+      "id": "clean-annual-fee",
+      "defect": null,
+      "source_quote": "연회비는 국내전용 20,000원입니다.",
+      "rewrite": "국내에서만 쓰는 카드의 연회비는 1년에 20,000원입니다."
+    },
+    {
+      "id": "clean-benefit-condition",
+      "defect": null,
+      "source_quote": "전월 실적이 30만원 이상이면 커피 전문점에서 10% 할인을 받을 수 있습니다.",
+      "rewrite": "지난달 사용액이 30만원 이상이면 커피 전문점에서 10%를 깎아 줄 수 있습니다."
+    },
+    {
+      "id": "clean-late-payment",
+      "defect": null,
+      "source_quote": "카드 대금을 연체하면 개인신용평점이 하락할 수 있습니다.",
+      "rewrite": "결제일에 카드 대금을 내지 않고 연체하면 신용평점이 하락할 수 있습니다."
+    },
+    {
+      "id": "clean-cancel-refund",
+      "defect": null,
+      "source_quote": "중도 해지 시 남은 기간에 대한 연회비는 환급 규정에 따라 계산됩니다.",
+      "rewrite": "카드를 중간에 해지하면 남은 기간의 연회비는 환급 규정에 따라 계산해 돌려줍니다."
+    },
+    {
+      "id": "invented-annual-fee",
+      "defect": "invented_number",
+      "expect_marker": "원문에 없는 수치 포함",
+      "source_quote": "연회비는 국내전용 20,000원입니다.",
+      "rewrite": "연회비는 국내전용 12,000원입니다."
+    },
+    {
+      "id": "invented-rate-floor",
+      "defect": "invented_number",
+      "expect_marker": "원문에 없는 수치 포함",
+      "source_quote": "할부 수수료율은 연 12.5%부터 연 19.9%까지입니다.",
+      "rewrite": "할부 수수료율은 연 9.9%부터 연 19.9%까지입니다."
+    },
+    {
+      "id": "dropped-discount-rate",
+      "defect": "dropped_number",
+      "expect_marker": "원문 수치 누락",
+      "source_quote": "건당 결제금액의 0.5%에서 2%까지 할인됩니다.",
+      "rewrite": "결제금액에 따라 일부를 할인해 줍니다."
+    },
+    {
+      "id": "absolute-no-condition",
+      "defect": "absolute_phrase",
+      "expect_marker": "단정·최상급 표현",
+      "source_quote": "지난달 실적과 관계없이 할인을 제공합니다.",
+      "rewrite": "누구나 무조건 할인을 받습니다."
+    },
+    {
+      "id": "absolute-superlative",
+      "defect": "absolute_phrase",
+      "expect_marker": "단정·최상급 표현",
+      "source_quote": "국내 가맹점에서 2개월 무이자 할부를 제공합니다.",
+      "rewrite": "국내 가맹점에서 업계 최고의 2개월 무이자 할부를 제공합니다."
+    },
+    {
+      "id": "hedge-dropped-limit",
+      "defect": "hedge_dropped",
+      "expect_marker": "확정 표현으로 바뀜",
+      "source_quote": "심사 결과에 따라 이용한도가 달라질 수 있습니다.",
+      "rewrite": "이용한도는 신청한 금액으로 정해집니다."
+    },
+    {
+      "id": "condition-dropped-threshold",
+      "defect": "condition_dropped",
+      "expect_marker": "조건·불이익 관련 문구 누락",
+      "source_quote": "전월 실적 30만원 이상이면 5천원이 적립됩니다.",
+      "rewrite": "전월 실적 30만원일 때 5천원이 적립됩니다."
+    },
+    {
+      "id": "condition-dropped-penalty",
+      "defect": "condition_dropped",
+      "expect_marker": "조건·불이익 관련 문구 누락",
+      "source_quote": "연체 시 연체이자율이 적용되고 불이익이 발생할 수 있습니다.",
+      "rewrite": "결제가 늦으면 이자가 더 붙을 수 있습니다."
+    },
+    {
+      "id": "quote-not-on-page",
+      "defect": "quote_not_in_page",
+      "expect_marker": "source_quote를 원문에서 확인할 수 없음",
+      "page_text": "연회비는 국내전용 20,000원이고 해외겸용은 25,000원입니다.",
+      "source_quote": "연회비가 평생 무료입니다.",
+      "rewrite": "연회비를 내지 않아도 됩니다."
+    }
+  ]
+}
