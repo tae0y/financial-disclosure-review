@@ -9,6 +9,8 @@ from langchain_openai import ChatOpenAI
 from openai import OpenAI
 from pydantic import BaseModel
 
+from ..core.usage import current
+
 
 def ask(model: str, schema: type[BaseModel], task: str, effort: str = "low", **data) -> dict:
     prompt = task + "".join(
@@ -109,3 +111,28 @@ class ToolChat:
             "tool_calls": [dict(call) for call in reply.tool_calls],
             "tokens": usage.get("total_tokens"),
         }
+
+
+EMBED_MODEL = "text-embedding-3-small"
+EMBED_DIMENSIONS = 1536  # the model's native size; the vec0 column is declared to match
+EMBED_BATCH = 64
+
+
+def embed_texts(texts: list[str], model: str = EMBED_MODEL, timeout: int = 60) -> list[list[float]]:
+    """Embeddings for texts, in the order given. Batched, and metered like any other call.
+
+    Callers that must not spend (tests, offline builds) pass their own function instead of this
+    one, the way `call_ask` takes `ask_fn`.
+    """
+    meter = current()
+    vectors: list[list[float]] = []
+    for start in range(0, len(texts), EMBED_BATCH):
+        batch = texts[start : start + EMBED_BATCH]
+        meter.check("embed")
+        response = OpenAI(max_retries=2, timeout=timeout).embeddings.create(
+            model=model, input=batch
+        )
+        vectors += [item.embedding for item in sorted(response.data, key=lambda d: d.index)]
+        entry = meter.record(model, "embed", response.usage.prompt_tokens, 0)
+        print(f"    embed: {len(batch)} texts in={entry['input_tokens']} ${entry['usd']:.5f}")
+    return vectors

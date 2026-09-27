@@ -14,6 +14,7 @@ from ..domain.plain_language import generate_plain, unjudged_plain
 from ..domain.product_page import fetch_product_page
 from ..domain.report import build_report
 from ..domain.verification import verify
+from ..knowledge.search import search_cases_for
 from .retry import plan_retry
 
 
@@ -29,6 +30,25 @@ def classify_type(state: State, runtime: Runtime[Context]) -> dict:
     classification: dict[str, Any] = dict(state.get("classification") or {})
     classification.update(classify_page(state["product_page"], runtime.context.model))
     return {"classification": classification}
+
+
+def search_cases(state: State, runtime: Runtime[Context]) -> dict:
+    """Related sanction/dispute cases for the classified product. Reference data only: this node
+    fills `case_search` and no judging node reads it yet."""
+    print("[search_cases]")
+    cases: dict[str, Any] = dict(state.get("case_search") or {})
+    classification = state.get("classification") or {}
+    if not classification.get("product_type"):
+        cases.update(
+            queries=[],
+            hits=[],
+            status="판정 불가",
+            reason="classification is empty; run classify_type first",
+        )
+    else:
+        product = (state.get("product_page") or {}).get("product") or {}
+        cases.update(search_cases_for(product, classification, runtime.context.db_path))
+    return {"case_search": cases}
 
 
 def judge_display_method(state: State, runtime: Runtime[Context]) -> dict:

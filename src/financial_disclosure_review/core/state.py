@@ -23,6 +23,13 @@ class Classification(TypedDict, total=False):
     reason: Any
 
 
+class CaseSearch(TypedDict, total=False):
+    queries: Any
+    hits: Any
+    status: Any
+    reason: Any
+
+
 class DisplayCheck(TypedDict, total=False):
     items: Any
     judgments: Any
@@ -59,6 +66,7 @@ class Report(TypedDict, total=False):
 class State(TypedDict):
     product_page: ProductPage
     classification: Classification
+    case_search: CaseSearch
     display_check: DisplayCheck
     plain_language: PlainLanguage
     explanation_duty_check: ExplanationDutyCheck

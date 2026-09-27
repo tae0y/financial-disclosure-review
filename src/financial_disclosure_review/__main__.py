@@ -13,6 +13,7 @@ from .core.context import Context, default_data_dir, default_db_path, default_ru
 from .core.state import empty_state
 from .graph.build import build_review_graph
 from .knowledge.build import build_rubric_db
+from .knowledge.build_cases import build_case_db, case_db_counts
 
 
 def default_checkpoint_path(data_dir: str) -> str:
@@ -90,6 +91,28 @@ def build_db(args: argparse.Namespace) -> int:
     return 0
 
 
+def build_cases(args: argparse.Namespace) -> int:
+    """Embed the case corpus into the reference DB. This one costs money, so it is not part of
+    `build-db`: --dry-run prints what would be embedded and spends nothing."""
+    from .knowledge.build_cases import CASE_CORPUS_FILE, embed_text_of
+
+    path = Path(args.corpus_dir) / CASE_CORPUS_FILE
+    if args.dry_run:
+        import yaml
+
+        items = yaml.safe_load(path.read_text())["items"]
+        texts = [embed_text_of(item) for item in items]
+        chars = sum(len(t) for t in texts)
+        print(f"case corpus {path}: {len(items)} cases, {chars} characters to embed")
+        print(f"  longest case: {max(len(t) for t in texts)} characters")
+        print("  no embedding call was made (--dry-run)")
+        return 0
+    counts = build_case_db(path, args.db_path)
+    print(f"case tables in {args.db_path}: {counts}")
+    print(f"row counts: {case_db_counts(args.db_path)}")
+    return 0
+
+
 def parser() -> argparse.ArgumentParser:
     data_dir = default_data_dir()
     common = argparse.ArgumentParser(add_help=False)
@@ -118,6 +141,17 @@ def parser() -> argparse.ArgumentParser:
     )
     build.add_argument("--rubric-dir", default=default_rubric_dir())
     build.set_defaults(run=build_db)
+
+    cases = commands.add_parser(
+        "build-cases",
+        help="embed the case corpus into the reference DB (costs money)",
+        parents=[common],
+    )
+    cases.add_argument("--corpus-dir", default=default_rubric_dir())
+    cases.add_argument(
+        "--dry-run", action="store_true", help="print what would be embedded and spend nothing"
+    )
+    cases.set_defaults(run=build_cases)
     return root
 
 

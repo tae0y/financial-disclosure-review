@@ -24,7 +24,7 @@ placement rules are in `localdocs/plan.src-layout.md`; the short form is:
 |---|---|---|
 | `core/` | code two or more domains share: State, Context, text, colour, display codes, threads, the run meter | domain judgment |
 | `llm/` | the call devices: structured output, image input, retry, one tool-calling turn | prompt text |
-| `knowledge/` | reading and building reusable reference data (rubrics, later statutes and cases) | which items an item-owner picks |
+| `knowledge/` | reading and building reusable reference data (rubrics, cases, the sqlite-vec connection), and the vector search over it | which items an item-owner picks |
 | `domain/<name>/` | judgment rules, prompts, response schemas, loop decisions | `langgraph`, `State`, another domain |
 | `graph/` | nodes, routing, retry branching, graph assembly | business logic |
 | `evaluation/` | the measurement harness: suites, gold cases, cassettes, metrics | anything a review calls |
@@ -94,7 +94,7 @@ site differs, and rules would need hand-tuning per site.
 Serial, three modules: display method → plain language → explanation duty.
 
 ```
-START → preprocess_product_page → classify_type ─┬→ judge_display_method
+START → preprocess_product_page → classify_type ─┬→ search_cases → judge_display_method
                                                  └→ END   (범위 밖 / 판정 불가)
 
 judge_display_method → generate_plain_lang → judge_explanation_duty
@@ -105,9 +105,13 @@ judge_display_method → generate_plain_lang → judge_explanation_duty
 ```
 
 - `route_after_classify` returns `END` when `classification.product_type` is `범위 밖` or
-  `판정 불가`, and `"judge_display_method"` otherwise. Ending here is a normal result, not an
+  `판정 불가`, and `"search_cases"` otherwise. Ending here is a normal result, not an
   error: the caller reads `classification` (with its `reason`) from the final State. Only
   system errors (API failure, response schema parse failure) raise exceptions.
+- `search_cases` sits between the classification and the display check because case lookup is an
+  input to judging, not a result of it. It needs the product type, and putting it after a judging
+  node would mean the cases could not reach the judgment that they inform. It is not retryable:
+  no verification feedback would change what it finds. Details in `docs/cases.md`.
 - Order: explanation duty judges the plain-language output, so plain language runs right
   before it. A plain-language retry then re-runs only what depends on it.
 - No `pre_*` nodes. Each module node prepares its own input at the top of the function.
@@ -129,6 +133,7 @@ One top-level key per module. A node writes only its own module's key and reads 
 |---|---|---|
 | `product_page` | `ProductPage` | `url`, `product`, `actions`, `snapshots`, `html` |
 | `classification` | `Classification` | `product_type`, `page_type`, `reason` |
+| `case_search` | `CaseSearch` | `queries`, `hits`, `status`, `reason` |
 | `display_check` | `DisplayCheck` | `items`, `judgments` |
 | `plain_language` | `PlainLanguage` | `items`, `draft`, `html`, `term_refs`, `accepted_blocks`, `contract_errors` |
 | `explanation_duty_check` | `ExplanationDutyCheck` | `items`, `original`, `plain`, `fidelity` |
@@ -149,6 +154,9 @@ One top-level key per module. A node writes only its own module's key and reads 
   `판정 불가` into a task for a person, and never reports a pass as legal compliance.
 - `verification.retry_target` / `retry_modules` / `retry_history` are written only by
   `retry_dispatch`.
+- `case_search` is reference data, not a judgment: `search_cases` fills it and no judging node
+  reads it yet. Each hit carries `related_checklist`, so a judging node can later pick just the
+  cases tied to the rubric codes it is working on.
 
 ## Rubrics
 

@@ -12,6 +12,7 @@ from .nodes import (
     judge_explanation_duty,
     preprocess_product_page,
     retry_dispatch,
+    search_cases,
     verify_answer,
 )
 from .routes import route_after_classify, route_after_verify
@@ -21,6 +22,7 @@ def build_review_graph(checkpointer=None):
     builder = StateGraph(State, context_schema=Context)
     builder.add_node("preprocess_product_page", preprocess_product_page)
     builder.add_node("classify_type", classify_type)
+    builder.add_node("search_cases", search_cases)
     builder.add_node("judge_display_method", judge_display_method)
     builder.add_node("generate_plain_lang", generate_plain_lang)
     builder.add_node("judge_explanation_duty", judge_explanation_duty)
@@ -33,8 +35,9 @@ def build_review_graph(checkpointer=None):
     builder.add_conditional_edges(
         "classify_type",
         route_after_classify,
-        {"judge_display_method": "judge_display_method", END: END},
+        {"search_cases": "search_cases", END: END},
     )
+    builder.add_edge("search_cases", "judge_display_method")
     builder.add_edge("judge_display_method", "generate_plain_lang")
     builder.add_edge("generate_plain_lang", "judge_explanation_duty")
     builder.add_edge("judge_explanation_duty", "verify_answer")

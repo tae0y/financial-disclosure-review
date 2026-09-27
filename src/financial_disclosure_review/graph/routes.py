@@ -8,7 +8,7 @@ from ..core.state import State
 def route_after_classify(state: State) -> str:
     if state["classification"].get("product_type") in ("범위 밖", "판정 불가"):
         return END
-    return "judge_display_method"
+    return "search_cases"
 
 
 def route_after_verify(state: State) -> str:
