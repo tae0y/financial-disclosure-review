@@ -1,0 +1,108 @@
+# docker/docker-compose.yml
+#
+# Three services, one internal network. Only `api` is on the tunnel's path; `agent` publishes
+# nothing and is reachable at http://agent:8100 from inside the network alone.
+name: financial-disclosure-review
+
+services:
+  agent:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.agent
+    env_file: ../.env
+    environment:
+      FDR_DATA_DIR: /app/data
+      FDR_RUBRIC_DIR: /app/rubrics
+      FDR_MODEL: ${FDR_MODEL:-gpt-5-mini}
+      FDR_MAX_CALLS: ${FDR_MAX_CALLS:-60}
+      FDR_MAX_USD: ${FDR_MAX_USD:-1.0}
+      # The run meter in core.usage is a module-level global, so one run at a time per process.
+      FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-1}
+      FDR_LOG_LEVEL: ${FDR_LOG_LEVEL:-INFO}
+      TZ: Asia/Seoul
+    expose:
+      - "8100"
+    volumes:
+      # Snapshots, site rules, the reference DB and the checkpoint history.
+      - ../data:/app/data
+      # The rubric yaml lives outside the repo; the entrypoint builds the DB from it once.
+      - "${FDR_RUBRIC_HOST_DIR:-../../05 법령·지침 원문 검증/카드사 가드레일 루브릭}:/app/rubrics:ro"
+    # Chromium maps shared memory for every tab; the 64MB default makes it crash mid-render.
+    shm_size: "1gb"
+    # Reaps the Chromium processes Playwright leaves behind when a run is cut short.
+    init: true
+    networks:
+      - internal
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "7"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    env_file: ../.env
+    environment:
+      FDR_AGENT_URL: http://agent:8100
+      FDR_JOBS_DB: /app/data/jobs.sqlite
+      FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-1}
+      # Comma-separated. Empty means every caller is accepted — set it before going public.
+      FDR_API_KEYS: ${FDR_API_KEYS:-}
+      FDR_CORS_ORIGINS: ${FDR_CORS_ORIGINS:-}
+      FDR_RUN_TIMEOUT: ${FDR_RUN_TIMEOUT:-1800}
+      FDR_JOB_RETENTION_DAYS: ${FDR_JOB_RETENTION_DAYS:-30}
+      FDR_LOG_LEVEL: ${FDR_LOG_LEVEL:-INFO}
+      TZ: Asia/Seoul
+    expose:
+      - "8000"
+    volumes:
+      - ../data:/app/data
+    networks:
+      - internal
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "7"
+    depends_on:
+      agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    env_file: ../.env
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+      TZ: Asia/Seoul
+    networks:
+      - internal
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "7"
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  internal:
+    driver: bridge

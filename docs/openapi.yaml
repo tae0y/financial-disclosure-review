@@ -1,0 +1,557 @@
+# Generated from the FastAPI app — do not edit by hand.
+#
+# Regenerate after any change to a route, a request model or a response model:
+#     uv run python -m financial_disclosure_review.serving.openapi
+#
+# tests/serving/test_openapi.py fails when this file and the code disagree.
+components:
+  schemas:
+    Detail:
+      description: How much of a finished run to return.
+      enum:
+      - summary
+      - full
+      title: Detail
+      type: string
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          title: Detail
+          type: array
+      title: HTTPValidationError
+      type: object
+    Health:
+      properties:
+        detail:
+          additionalProperties: true
+          title: Detail
+          type: object
+        service:
+          title: Service
+          type: string
+        status:
+          enum:
+          - ok
+          - degraded
+          title: Status
+          type: string
+      required:
+      - status
+      - service
+      title: Health
+      type: object
+    Job:
+      description: A queued or finished review, as the gateway records it.
+      examples:
+      - created_at: '2026-09-27T08:44:35.297258Z'
+        error: 'worker returned 500: PageBlocked: navigation failed'
+        finished_at: '2026-09-27T08:44:36.678295Z'
+        job_id: 82653a02438f4ce4b8bbc5524ea9d711
+        kind: review
+        started_at: '2026-09-27T08:44:35.302597Z'
+        status: failed
+        url: https://www.example-card.co.kr/product/credit/apply
+      properties:
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+        finished_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Finished At
+        job_id:
+          title: Job Id
+          type: string
+        kind:
+          default: review
+          enum:
+          - review
+          - rerun
+          title: Kind
+          type: string
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+        result:
+          anyOf:
+          - $ref: '#/components/schemas/RunResult'
+          - type: 'null'
+        started_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Started At
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        thread_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Thread Id
+        url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Url
+      required:
+      - job_id
+      - status
+      - created_at
+      title: Job
+      type: object
+    JobAccepted:
+      description: 'The 202 body: enough to poll with, nothing more.'
+      examples:
+      - job_id: 82653a02438f4ce4b8bbc5524ea9d711
+        poll: /v1/reviews/82653a02438f4ce4b8bbc5524ea9d711
+        status: queued
+      properties:
+        job_id:
+          title: Job Id
+          type: string
+        poll:
+          title: Poll
+          type: string
+        status:
+          $ref: '#/components/schemas/JobStatus'
+      required:
+      - job_id
+      - status
+      - poll
+      title: JobAccepted
+      type: object
+    JobList:
+      properties:
+        count:
+          title: Count
+          type: integer
+        jobs:
+          items:
+            $ref: '#/components/schemas/Job'
+          title: Jobs
+          type: array
+      required:
+      - jobs
+      - count
+      title: JobList
+      type: object
+    JobStatus:
+      enum:
+      - queued
+      - running
+      - succeeded
+      - failed
+      - interrupted
+      title: JobStatus
+      type: string
+    RerunRequest:
+      description: Re-run an existing checkpoint thread from one node onward.
+      examples:
+      - from_node: judge_display_method
+        thread_id: review-260927-101500-a1b2c3
+      properties:
+        detail:
+          $ref: '#/components/schemas/Detail'
+          default: summary
+        from_node:
+          description: 'A graph node name: preprocess_product_page, classify_type, judge_display_method,
+            generate_plain_lang, judge_explanation_duty, verify_answer, end_report.'
+          maxLength: 80
+          title: From Node
+          type: string
+        max_calls:
+          anyOf:
+          - maximum: 500.0
+            minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Max Calls
+        max_usd:
+          anyOf:
+          - exclusiveMinimum: 0.0
+            maximum: 50.0
+            type: number
+          - type: 'null'
+          title: Max Usd
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+        thread_id:
+          maxLength: 120
+          title: Thread Id
+          type: string
+      required:
+      - thread_id
+      - from_node
+      title: RerunRequest
+      type: object
+    ReviewRequest:
+      description: One product page to review. Everything but `url` falls back to the process defaults.
+      examples:
+      - url: https://www.example-card.co.kr/product/credit/apply
+      - detail: full
+        max_usd: 2.0
+        model: gpt-5
+        url: https://www.example-card.co.kr/product/credit/apply
+      properties:
+        detail:
+          $ref: '#/components/schemas/Detail'
+          default: summary
+        max_calls:
+          anyOf:
+          - maximum: 500.0
+            minimum: 1.0
+            type: integer
+          - type: 'null'
+          title: Max Calls
+        max_usd:
+          anyOf:
+          - exclusiveMinimum: 0.0
+            maximum: 50.0
+            type: number
+          - type: 'null'
+          title: Max Usd
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Overrides FDR_MODEL, e.g. gpt-5-mini
+          title: Model
+        thread_id:
+          anyOf:
+          - maxLength: 120
+            type: string
+          - type: 'null'
+          description: Checkpoint thread to write; a timestamped one when omitted
+          title: Thread Id
+        url:
+          format: uri
+          maxLength: 2083
+          minLength: 1
+          title: Url
+          type: string
+      required:
+      - url
+      title: ReviewRequest
+      type: object
+    RunResult:
+      description: What the worker hands back for a finished run.
+      properties:
+        cost:
+          additionalProperties: true
+          title: Cost
+          type: object
+        decision:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Decision
+        elapsed_seconds:
+          default: 0.0
+          title: Elapsed Seconds
+          type: number
+        report:
+          additionalProperties: true
+          title: Report
+          type: object
+        status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: report.status, e.g. 검토 완료
+          title: Status
+        summary:
+          additionalProperties: true
+          title: Summary
+          type: object
+        thread_id:
+          title: Thread Id
+          type: string
+        url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Url
+      required:
+      - thread_id
+      title: RunResult
+      type: object
+    ValidationError:
+      properties:
+        ctx:
+          title: Context
+          type: object
+        input:
+          title: Input
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          title: Location
+          type: array
+        msg:
+          title: Message
+          type: string
+        type:
+          title: Error Type
+          type: string
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+      type: object
+  securitySchemes:
+    APIKeyHeader:
+      description: Required on every /v1 route when FDR_API_KEYS is set. With that variable empty the
+        check is skipped and any caller is accepted, which is only appropriate locally.
+      in: header
+      name: X-API-Key
+      type: apiKey
+info:
+  description: "Reviews a Korean financial-product web page against the explanation duty (설명의무) and the\n\
+    display-method rules (표시방법), and rewrites its explanation in plain Korean.\n\n**A review takes minutes,\
+    \ so nothing here returns one.** The page is rendered in a real browser and\njudged over a series\
+    \ of model calls. Cloudflare closes a response that has produced nothing for\nabout 100 seconds, so\
+    \ a synchronous endpoint would fail on exactly the runs that worked.\n\nSubmitting therefore returns\
+    \ `202 Accepted` with a job id; poll `GET /v1/reviews/{job_id}` until\n`status` leaves `queued`/`running`.\
+    \ Job rows are stored on disk, so a restart does not lose the\nrecord of what was asked.\n\n`status`\
+    \ reaches one of:\n\n- `succeeded` — `result` is filled.\n- `failed` — the worker raised; `error`\
+    \ holds the type and message.\n- `interrupted` — the gateway restarted mid-run. The partial run's\
+    \ checkpoints survive, so\n  `POST /v1/reruns` resumes it instead of starting over.\n"
+  title: Financial Disclosure Review API
+  version: 0.1.0
+openapi: 3.1.0
+paths:
+  /healthz:
+    get:
+      description: Liveness of the gateway alone, so the container probe never fails on the worker.
+      operationId: getHealth
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+          description: Successful Response
+      summary: Healthz
+      tags:
+      - health
+  /readyz:
+    get:
+      description: Readiness including the worker, for a caller deciding whether to submit.
+      operationId: getReadiness
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+          description: Successful Response
+      summary: Readyz
+      tags:
+      - health
+  /v1/reruns:
+    post:
+      description: Queue a re-run of a recorded thread from one node onward.
+      operationId: submitRerun
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RerunRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAccepted'
+          description: Queued. Poll the `poll` path until the job reaches a terminal status.
+        '401':
+          description: '`FDR_API_KEYS` is set and the `X-API-Key` header is missing or wrong.'
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - APIKeyHeader: []
+      summary: Submit Rerun
+      tags:
+      - reviews
+  /v1/reviews:
+    get:
+      description: Recent jobs, newest first.
+      operationId: listReviews
+      parameters:
+      - in: query
+        name: limit
+        required: false
+        schema:
+          default: 50
+          maximum: 200
+          minimum: 1
+          title: Limit
+          type: integer
+      - in: query
+        name: status
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/JobStatus'
+          - type: 'null'
+          title: Status
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobList'
+          description: Successful Response
+        '401':
+          description: '`FDR_API_KEYS` is set and the `X-API-Key` header is missing or wrong.'
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - APIKeyHeader: []
+      summary: List Reviews
+      tags:
+      - reviews
+    post:
+      description: Queue a review of one product page URL.
+      operationId: submitReview
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAccepted'
+          description: Queued. Poll the `poll` path until the job reaches a terminal status.
+        '401':
+          description: '`FDR_API_KEYS` is set and the `X-API-Key` header is missing or wrong.'
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - APIKeyHeader: []
+      summary: Submit Review
+      tags:
+      - reviews
+  /v1/reviews/{job_id}:
+    get:
+      description: One job. `result` is filled once `status` is `succeeded`.
+      operationId: getReview
+      parameters:
+      - in: path
+        name: job_id
+        required: true
+        schema:
+          title: Job Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+          description: Successful Response
+        '401':
+          description: '`FDR_API_KEYS` is set and the `X-API-Key` header is missing or wrong.'
+        '404':
+          description: No job with that id.
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - APIKeyHeader: []
+      summary: Get Review
+      tags:
+      - reviews
+  /v1/reviews/{job_id}/report.md:
+    get:
+      description: The reviewer-facing report as Markdown, once the job has succeeded.
+      operationId: getReviewReportMarkdown
+      parameters:
+      - in: path
+        name: job_id
+        required: true
+        schema:
+          title: Job Id
+          type: string
+      responses:
+        '200':
+          content:
+            text/markdown:
+              schema:
+                type: string
+            text/plain:
+              schema:
+                type: string
+          description: The report as Markdown.
+        '401':
+          description: '`FDR_API_KEYS` is set and the `X-API-Key` header is missing or wrong.'
+        '404':
+          description: No job with that id.
+        '409':
+          description: The job has not succeeded, so there is no report yet.
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - APIKeyHeader: []
+      summary: Get Report Markdown
+      tags:
+      - reviews
+servers:
+- description: Local, via the compose override file.
+  url: http://localhost:8000
+- description: Through the Cloudflare tunnel.
+  url: https://{hostname}
+  variables:
+    hostname:
+      default: disclosure-review.example.com
+      description: The public hostname routed to api:8000 by the tunnel.
+tags:
+- description: Submitting a review and reading it back. Every route here requires `X-API-Key` once `FDR_API_KEYS`
+    is set.
+  name: reviews
+- description: Always unauthenticated, so a container probe needs no credential. `/healthz` is liveness
+    of this process alone; `/readyz` also reports the worker, the reference DB and the model key.
+  name: health

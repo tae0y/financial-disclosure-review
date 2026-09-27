@@ -1,0 +1,52 @@
+# docker/Dockerfile.api — the public gateway: validation, auth, the job store, OpenAPI.
+#
+# Deliberately the same wheel as the worker, so both run one pinned lock and the request schemas
+# cannot drift apart. It carries no Chromium: this process never renders a page.
+
+FROM ghcr.io/astral-sh/uv:0.9-python3.12-bookworm-slim AS builder
+
+WORKDIR /app
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+COPY pyproject.toml uv.lock README.md ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
+
+COPY src/ ./src/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
+
+
+FROM python:3.12-slim-bookworm AS runtime
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:$PATH" \
+    TZ=Asia/Seoul
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid appuser --no-create-home appuser
+
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --chown=appuser:appuser src/ ./src/
+RUN mkdir -p /app/data && chown appuser:appuser /app/data
+
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/healthz || exit 1
+
+CMD ["uvicorn", "financial_disclosure_review.serving.api.app:app", \
+     "--host", "0.0.0.0", "--port", "8000"]

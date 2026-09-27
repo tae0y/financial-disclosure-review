@@ -1,0 +1,58 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+
+# Dev / test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+tests/
+.pre-commit-config.yaml
+.editorconfig
+.python-version
+.vscode/
+.idea/
+.claude/
+.mcp.json
+
+# Notebooks and scratch work
+notebooks/
+scratchpad/
+ralph/
+
+# Runtime data: mounted as a volume, never baked in. The snapshot and site-rule folders are
+# hundreds of files, and the sqlite DBs are rebuilt by the agent entrypoint.
+data/
+logs/
+
+# Local docs and plans
+localdocs/
+docs/
+
+# Environment secrets — supplied by compose env_file at run time, never copied into a layer.
+.env
+.env.*
+!.env.example
+
+# Docker. The agent entrypoint is the one file the build needs from here.
+docker/
+!docker/entrypoint-agent.sh
+.dockerignore
+
+# OS
+.DS_Store

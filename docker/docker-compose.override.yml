@@ -1,0 +1,16 @@
+# docker/docker-compose.override.yml — local development.
+#
+# Publishes both ports to the host so the gateway can be curled and the worker debugged directly.
+# `cloudflared` is scaled to zero here, so no tunnel token is needed to run locally.
+services:
+  api:
+    ports:
+      - "8000:8000"
+
+  agent:
+    ports:
+      - "8100:8100"
+
+  cloudflared:
+    deploy:
+      replicas: 0

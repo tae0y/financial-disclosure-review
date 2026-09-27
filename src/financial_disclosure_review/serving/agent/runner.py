@@ -1,0 +1,184 @@
+"""Invoking the review graph once per request, and narrowing the final State for the wire.
+
+Blocking by design: Playwright's sync API and the model calls both block, so the HTTP layer hands
+this to a worker thread instead of pretending it is async.
+
+One thing the CLI never had to care about matters here. `core.usage` keeps the run meter in a
+module-level global, so a long-lived server process would carry one request's token spend into the
+next and trip the cap for good. Every run starts a fresh meter, and runs are serialized upstream
+(`FDR_AGENT_CONCURRENCY`, default 1) because that global cannot be shared by two runs at once.
+"""
+
+import time
+import uuid
+from datetime import datetime
+from typing import Any
+
+from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.sqlite import SqliteSaver
+
+from ...core.context import Context
+from ...core.state import empty_state
+from ...core.usage import start_run
+from ...graph.build import build_review_graph
+from ..schemas import Detail, RunResult
+from ..settings import AgentSettings
+
+
+def new_thread_id(prefix: str = "review") -> str:
+    """A sortable thread id with a random tail.
+
+    The CLI's second-resolution id is unique enough for one person at a terminal. Two API
+    submissions can land in the same millisecond, and a shared thread id means two runs writing
+    one checkpoint history, so the timestamp alone cannot be the identity.
+    """
+    return f"{prefix}-{datetime.now().strftime('%y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+
+
+def _context(settings: AgentSettings, model: str | None) -> Context:
+    return Context(
+        model=model or settings.model,
+        data_dir=settings.data_dir,
+        db_path=settings.resolved_db_path(),
+    )
+
+
+def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[str, Any]:
+    """A compact, size-bounded view of the final State.
+
+    `summary` reports counts and verdicts — what a caller polls for. `full` adds the per-item rows
+    and the plain-language HTML, which is the artifact a reviewer actually edits. Neither carries
+    the source page HTML or the snapshot list.
+    """
+    page = state.get("product_page") or {}
+    display = state.get("display_check") or {}
+    plain = state.get("plain_language") or {}
+    duty = state.get("explanation_duty_check") or {}
+    verification = state.get("verification") or {}
+    classification = state.get("classification") or {}
+
+    applied = [row for row in duty.get("items") or [] if row.get("applied")]
+    view: dict[str, Any] = {
+        "product_page": {
+            "url": page.get("url"),
+            "product": page.get("product"),
+            "html_chars": len(page.get("html") or ""),
+            "snapshot_count": len(page.get("snapshots") or []),
+        },
+        "classification": dict(classification),
+        "display_check": {
+            "status": (display.get("judgments") or {}).get("status"),
+            "reason": (display.get("judgments") or {}).get("reason"),
+            "item_count": len(display.get("items") or []),
+            "verdicts": [
+                {
+                    "code": row.get("code"),
+                    "verdict": row.get("verdict"),
+                    "reason": row.get("reason"),
+                }
+                for row in display.get("items") or []
+            ],
+        },
+        "plain_language": {
+            "accepted_blocks": len(plain.get("accepted_blocks") or []),
+            "contract_errors": len(plain.get("contract_errors") or []),
+            "html_chars": len(plain.get("html") or ""),
+        },
+        "explanation_duty_check": {
+            "applied": len(applied),
+            "item_count": len(duty.get("items") or []),
+            "fidelity_differences": len(duty.get("fidelity") or []),
+        },
+        "verification": {
+            "passed": verification.get("passed"),
+            "failed_modules": verification.get("failed_modules"),
+            "loop_count": verification.get("loop_count"),
+            "reasons": verification.get("reasons"),
+        },
+    }
+    if detail is Detail.full:
+        view["display_check"]["items"] = display.get("items") or []
+        view["plain_language"]["html"] = plain.get("html")
+        view["plain_language"]["items"] = plain.get("items") or []
+        view["plain_language"]["contract_error_rows"] = plain.get("contract_errors") or []
+        view["explanation_duty_check"]["items"] = duty.get("items") or []
+        view["explanation_duty_check"]["original"] = duty.get("original") or []
+        view["explanation_duty_check"]["plain"] = duty.get("plain") or []
+        view["explanation_duty_check"]["fidelity"] = duty.get("fidelity") or []
+    return view
+
+
+def _report(state: dict[str, Any]) -> dict[str, Any]:
+    """The report as-is; it is already reviewer-sized and carries no page HTML."""
+    return dict(state.get("report") or {})
+
+
+def _result(
+    state: dict[str, Any], thread_id: str, detail: Detail, elapsed: float, cost: dict[str, Any]
+) -> RunResult:
+    report = _report(state)
+    page = state.get("product_page") or {}
+    return RunResult(
+        thread_id=thread_id,
+        url=page.get("url"),
+        status=report.get("status"),
+        decision=report.get("decision"),
+        summary=summarize(state, detail),
+        report=report,
+        cost=cost,
+        elapsed_seconds=round(elapsed, 1),
+    )
+
+
+def run_review(
+    url: str,
+    settings: AgentSettings,
+    *,
+    model: str | None = None,
+    thread_id: str | None = None,
+    detail: Detail = Detail.summary,
+    max_calls: int | None = None,
+    max_usd: float | None = None,
+) -> RunResult:
+    """Review one URL from a fresh State, writing checkpoints under its own thread id."""
+    thread = thread_id or new_thread_id()
+    config: RunnableConfig = {"configurable": {"thread_id": thread}}
+    state = empty_state()
+    state["product_page"] = {"url": url}
+
+    meter = start_run(
+        max_calls=settings.max_calls if max_calls is None else max_calls,
+        max_usd=settings.max_usd if max_usd is None else max_usd,
+    )
+    started = time.time()
+    with SqliteSaver.from_conn_string(settings.resolved_checkpoints()) as saver:
+        final = build_review_graph(saver).invoke(state, config, context=_context(settings, model))
+    return _result(dict(final), thread, detail, time.time() - started, meter.summary())
+
+
+def run_rerun(
+    thread_id: str,
+    from_node: str,
+    settings: AgentSettings,
+    *,
+    model: str | None = None,
+    detail: Detail = Detail.summary,
+    max_calls: int | None = None,
+    max_usd: float | None = None,
+) -> RunResult:
+    """Resume a recorded thread at the checkpoint whose next node is `from_node`."""
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    meter = start_run(
+        max_calls=settings.max_calls if max_calls is None else max_calls,
+        max_usd=settings.max_usd if max_usd is None else max_usd,
+    )
+    started = time.time()
+    with SqliteSaver.from_conn_string(settings.resolved_checkpoints()) as saver:
+        graph = build_review_graph(saver)
+        before = next((s for s in graph.get_state_history(config) if from_node in s.next), None)
+        if before is None:
+            raise LookupError(
+                f"thread {thread_id!r} has no checkpoint whose next node is {from_node!r}"
+            )
+        final = graph.invoke(None, before.config, context=_context(settings, model))
+    return _result(dict(final), thread_id, detail, time.time() - started, meter.summary())

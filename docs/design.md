@@ -22,23 +22,26 @@ placement rules are in `localdocs/plan.src-layout.md`; the short form is:
 
 | Folder | Holds | Never holds |
 |---|---|---|
-| `core/` | code two or more domains share: State, Context, text, colour, display codes, threads | domain judgment |
+| `core/` | code two or more domains share: State, Context, text, colour, display codes, threads, the run meter | domain judgment |
 | `llm/` | the call devices: structured output, image input, retry, one tool-calling turn | prompt text |
 | `knowledge/` | reading and building reusable reference data (rubrics, later statutes and cases) | which items an item-owner picks |
 | `domain/<name>/` | judgment rules, prompts, response schemas, loop decisions | `langgraph`, `State`, another domain |
 | `graph/` | nodes, routing, retry branching, graph assembly | business logic |
+| `evaluation/` | the measurement harness: suites, gold cases, cassettes, metrics | anything a review calls |
+| `serving/` | the HTTP surface: gateway, worker, job store, request schemas | judgment of any kind |
 | `__main__.py` | the CLI | anything else |
 
 `domain/` holds the seven judging domains, one folder per State key: `product_page`,
 `classification`, `display_check`, `plain_language`, `explanation_duty_check`, `verification`,
 `report`.
 
-Import direction: `core → llm → knowledge → domain → graph → __main__`. Domains never import
-each other; their data meets only in State. A domain exports one entry function from its
+Import direction: `core → llm → knowledge → domain → graph → {__main__, serving}`. Domains never
+import each other; their data meets only in State. `serving/` and `__main__.py` are two entry
+points onto the same graph and never import each other. A domain exports one entry function from its
 `__init__.py`, and that function takes the State values it needs, not the whole State.
 
-Domains with no code yet (`report`) hold a stub that returns `{}`, so the graph still runs to
-END. `graph/retry.py` is a stub of the same kind.
+Every domain is built. `evaluation/` sits beside `graph/` rather than under it: it may read the
+domains, and no domain may read it.
 
 ## Data rules
 
@@ -96,7 +99,9 @@ START → preprocess_product_page → classify_type ─┬→ judge_display_meth
 
 judge_display_method → generate_plain_lang → judge_explanation_duty
       → verify_answer ─┬→ end_report → END
-                       └→ retry_dispatch → judge_display_method
+                       └→ retry_dispatch ─┬→ generate_plain_lang
+                                          ├→ judge_explanation_duty
+                                          └→ end_report   (되돌아갈 노드가 없을 때)
 ```
 
 - `route_after_classify` returns `END` when `classification.product_type` is `범위 밖` or
@@ -107,9 +112,14 @@ judge_display_method → generate_plain_lang → judge_explanation_duty
   before it. A plain-language retry then re-runs only what depends on it.
 - No `pre_*` nodes. Each module node prepares its own input at the top of the function.
   `preprocess_product_page` builds the page data that all modules share (Input).
-- All retries go through `retry_dispatch`. It links only to `judge_display_method` for now;
-  per-module branching (re-run only the failed module) is added there later.
-- `route_after_verify` returns `"end_report"` until the retry logic is built.
+- All retries go through `retry_dispatch`, which picks the earliest failed node so the rest
+  follows by the normal edges. `graph/retry.py` holds the policy; `docs/operations.md` states it
+  in full. Two rules matter: a module is retried only when the verification produced a
+  `requested_change` it can act on, and `display_check` is never retried because `judge_display`
+  takes no feedback — repeating the call on the same measurements would cost money for the same
+  answer, so those failures go to a person.
+- `MAX_LOOPS = 2`. When the loop is exhausted the run still ends at `end_report`; the report then
+  carries `status: 사람 검토 필요` and blocks the plain-language output from publication.
 
 ## State
 
@@ -122,8 +132,8 @@ One top-level key per module. A node writes only its own module's key and reads 
 | `display_check` | `DisplayCheck` | `items`, `judgments` |
 | `plain_language` | `PlainLanguage` | `items`, `draft`, `html`, `term_refs`, `accepted_blocks`, `contract_errors` |
 | `explanation_duty_check` | `ExplanationDutyCheck` | `items`, `original`, `plain`, `fidelity` |
-| `verification` | `Verification` | `passed`, `reasons`, `failed_modules`, `feedback`, `loop_count` |
-| `report` | `Report` | defined when `end_report` is built |
+| `verification` | `Verification` | `passed`, `reasons`, `failed_modules`, `feedback`, `loop_count`, `retry_target`, `retry_modules`, `retry_history` |
+| `report` | `Report` | `status`, `decision`, `actions`, `summary`, `findings`, `limits`, `cost`, `markdown` |
 
 - `product_page.product` holds `product_name`, `summary`, `evidence` only. It identifies the
   product; types are set by `classify_type` in `classification`.
@@ -133,7 +143,12 @@ One top-level key per module. A node writes only its own module's key and reads 
   and overwrites only the fields it changed.
 - `verification.feedback` is read by `generate_plain_lang` in the next round.
 - `explanation_duty_check.original` is fixed after the first round.
-- `report` is printed to check the result.
+- `report` is the run's output. `markdown` is the reviewer-facing document (written to
+  `data/reports/<thread>.md` by the CLI); the other fields are the same content as data. The
+  report adds no judgment of its own: it states what each module decided, turns every
+  `판정 불가` into a task for a person, and never reports a pass as legal compliance.
+- `verification.retry_target` / `retry_modules` / `retry_history` are written only by
+  `retry_dispatch`.
 
 ## Rubrics
 
@@ -188,3 +203,14 @@ Rubric drafts: `../05 법령·지침 원문 검증/카드사 가드레일 루브
   would need a Postgres saver.
 - Checkpoints store the full State (page HTML, judgments). Only public product pages are
   processed, so no personal data is stored.
+
+## Cost, caps and evaluation
+
+- `core/usage.py` meters every model call (tokens per step, derived cost, elapsed time) and
+  enforces two run caps before each call: `--max-calls` and `--max-usd`. The report prints the
+  meter, so cost is measured per run rather than estimated once. Details and the price assumption
+  are in `docs/operations.md`.
+- `evaluation/` is the measurement harness, not part of a review: three suites, gold cases under
+  `eval/cases/`, and a cassette of recorded model answers so the paid numbers can be re-derived
+  for free (`uv run python -m financial_disclosure_review evaluate`). `docs/evaluation.md` states
+  the design, the results and what the evaluation cannot see.
