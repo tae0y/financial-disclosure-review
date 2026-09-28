@@ -51,9 +51,9 @@ def main() -> int:
 
     original = ORIGINAL.read_text(encoding="utf-8").splitlines()
     rebuilt = report["markdown"].splitlines()
-    differing = [
-        (a, b) for a, b in zip(original, rebuilt, strict=False) if a != b
-    ] + ([("<length>", "<length>")] if len(original) != len(rebuilt) else [])
+    differing = [(a, b) for a, b in zip(original, rebuilt, strict=False) if a != b] + (
+        [("<length>", "<length>")] if len(original) != len(rebuilt) else []
+    )
     allowed = [pair for pair in differing if "원래 검토 실행" in pair[1]]
     unexpected = [pair for pair in differing if pair not in allowed]
     if unexpected:
