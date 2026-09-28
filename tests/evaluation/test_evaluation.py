@@ -109,13 +109,23 @@ class FakeDutyAsk:
             quote = self.QUOTES.get(code, "")
             if quote and locate_quote(text, quote) is not None:
                 items.append(
-                    {"code": code, "condition_status": "해당없음", "verdict": "적합",
-                     "quote": quote, "reason": "본문에 있음"}
+                    {
+                        "code": code,
+                        "condition_status": "해당없음",
+                        "verdict": "적합",
+                        "quote": quote,
+                        "reason": "본문에 있음",
+                    }
                 )
             else:
                 items.append(
-                    {"code": code, "condition_status": "해당없음", "verdict": "부적합",
-                     "quote": "", "reason": "본문에서 확인되지 않음"}
+                    {
+                        "code": code,
+                        "condition_status": "해당없음",
+                        "verdict": "부적합",
+                        "quote": "",
+                        "reason": "본문에서 확인되지 않음",
+                    }
                 )
         return {"items": items}
 
@@ -124,9 +134,7 @@ def fake_cassette(tmp_path) -> Cassette:
     return Cassette(tmp_path / "fake.json", mode="live", ask=FakeDutyAsk())
 
 
-def test_a_deleted_disclosure_is_detected_and_a_neutral_delete_flips_nothing(
-    tmp_path, monkeypatch
-):
+def test_a_deleted_disclosure_is_detected_and_a_neutral_delete_flips_nothing(tmp_path, monkeypatch):
     from financial_disclosure_review.evaluation import suites
 
     items = [
@@ -171,11 +179,19 @@ def test_the_plain_contract_suite_counts_a_clean_pair_and_a_defective_one():
         Context(),
         FakeConditionCassette(),
         [
-            {"id": "clean", "defect": None, "source_quote": "연회비는 20,000원입니다.",
-             "rewrite": "1년에 20,000원을 냅니다."},
-            {"id": "invented", "defect": "invented_number",
-             "expect_marker": "원문에 없는 수치 포함",
-             "source_quote": "연회비는 20,000원입니다.", "rewrite": "연회비는 12,000원입니다."},
+            {
+                "id": "clean",
+                "defect": None,
+                "source_quote": "연회비는 20,000원입니다.",
+                "rewrite": "1년에 20,000원을 냅니다.",
+            },
+            {
+                "id": "invented",
+                "defect": "invented_number",
+                "expect_marker": "원문에 없는 수치 포함",
+                "source_quote": "연회비는 20,000원입니다.",
+                "rewrite": "연회비는 12,000원입니다.",
+            },
         ],
     )
     metrics = metrics_for(result)
@@ -213,3 +229,110 @@ def test_the_plain_contract_suite_catches_a_condition_the_judge_flags():
     assert row["flagged"] is True
     assert row["correct"] is True
     assert row["marker_hit"] is True
+
+
+# ---------------------------------------------------------------- salted repeats
+
+
+def test_a_salt_keeps_a_repeat_apart_and_no_salt_keeps_the_old_key():
+    plain = call_key("gpt-5-mini", "Answer", "task", {"text": "가"})
+    assert plain == call_key("gpt-5-mini", "Answer", "task", {"text": "가"}, "")
+    assert plain != call_key("gpt-5-mini", "Answer", "task", {"text": "가"}, "repeat-2")
+
+
+def test_a_salted_ask_records_its_own_answer_and_replays_it(tmp_path):
+    answers = iter(["첫 답", "두 번째 답"])
+
+    def fake(model, schema, task, effort="low", **data):
+        assert "salt" not in data, "the salt must never reach the model"
+        return {"value": next(answers)}
+
+    path = tmp_path / "cassette.json"
+    recorder = Cassette(path, mode="record", ask=fake)
+    assert recorder.ask("m", Answer, "task", text="가")["value"] == "첫 답"
+    assert recorder.salted("repeat-2")("m", Answer, "task", text="가")["value"] == "두 번째 답"
+    recorder.save()
+
+    player = Cassette(path, mode="replay")
+    assert player.ask("m", Answer, "task", text="가")["value"] == "첫 답"
+    assert player.salted("repeat-2")("m", Answer, "task", text="가")["value"] == "두 번째 답"
+    with pytest.raises(CassetteMissError):
+        player.salted("repeat-3")("m", Answer, "task", text="가")
+
+
+# ---------------------------------------------------------------- keyword baseline
+
+
+def test_the_keyword_arm_counts_product_words_and_calls_no_model():
+    from financial_disclosure_review.evaluation.suites import keyword_classify
+
+    loan = {"product": {"product_name": "카드론"}, "html": "<p>카드론 금리 안내. 카드론 한도.</p>"}
+    insurance = {
+        "product": {"product_name": "자동차보험"},
+        "html": "<p>보험료 할인 특약. 보장 내용. 신용카드로 보험료 결제.</p>",
+    }
+    assert keyword_classify(loan)["product_type"] == "장기카드대출"
+    assert keyword_classify(loan)["page_type"] == "상품광고"
+    assert keyword_classify(insurance)["product_type"] == "범위 밖"
+
+
+# ---------------------------------------------------------------- stability
+
+
+class DriftingAsk:
+    """Answers F11 적합 on the first round and 판정 불가 afterwards; everything else steady."""
+
+    def __init__(self) -> None:
+        self.round = 0
+
+    def __call__(self, model, schema, task, effort="low", **data):
+        self.round += 1
+        items = []
+        for item in data["items"]:
+            drift = item["code"] == "F11" and self.round > 1
+            items.append(
+                {
+                    "code": item["code"],
+                    "condition_status": "불명확" if drift else "해당없음",
+                    "verdict": "판정 불가" if drift else "부적합",
+                    "quote": "",
+                    "reason": "테스트",
+                }
+            )
+            if item["code"] == "F11" and not drift:
+                items[-1].update(
+                    verdict="적합", quote=FakeDutyAsk.QUOTES["F11"], reason="본문에 있음"
+                )
+        return {"items": items}
+
+
+def test_the_stability_suite_names_an_item_whose_answer_moves_between_rounds(tmp_path, monkeypatch):
+    from financial_disclosure_review.evaluation import suites
+
+    items = [
+        {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
+        for code in ("F11", "F07")
+    ]
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, product_type: items)
+    monkeypatch.setattr(
+        suites, "classify_page", lambda page, model, ask: {"product_type": "신용카드"}
+    )
+    html_path = tmp_path / "page.html"
+    html_path.write_text(HTML, encoding="utf-8")
+    fixtures = tmp_path / "classify"
+    fixtures.mkdir()
+    (fixtures / "one.json").write_text(
+        json.dumps({"url": "u", "product": {}, "html": HTML, "expected": {}}), encoding="utf-8"
+    )
+    config = {"base_html": str(html_path), "classification": {"product_type": "신용카드"}}
+    cassette = Cassette(tmp_path / "c.json", mode="live", ask=DriftingAsk())
+
+    result = suites.run_stability(Context(model="fake"), cassette, fixtures, config, repeats=3)
+    metrics = metrics_for(result)
+
+    assert metrics["classification_stable"] == 1
+    assert metrics["duty_items"] == 2 and metrics["duty_stable"] == 1
+    assert metrics["duty_pass_flips"] == ["F11"]
+    assert metrics["duty_unstable"] == [
+        {"code": "F11", "verdicts": ["적합", "판정 불가", "판정 불가"]}
+    ]

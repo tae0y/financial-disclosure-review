@@ -20,9 +20,15 @@ class CassetteMissError(RuntimeError):
     """Replay was asked for a call the cassette does not hold."""
 
 
-def call_key(model: str, schema_name: str, task: str, data: dict) -> str:
+def call_key(model: str, schema_name: str, task: str, data: dict, salt: str = "") -> str:
+    """`salt` tells apart deliberate repeats of the same call (the stability suite asks the same
+    question three times). It is never sent to the model, and an empty salt leaves the key
+    exactly as it was before salts existed, so earlier recordings still match."""
+    body: dict[str, Any] = {"model": model, "schema": schema_name, "task": task, "data": data}
+    if salt:
+        body["salt"] = salt
     payload = json.dumps(
-        {"model": model, "schema": schema_name, "task": task, "data": data},
+        body,
         ensure_ascii=False,
         sort_keys=True,
         default=str,
@@ -52,7 +58,26 @@ class Cassette:
         self._ask = ask
 
     def ask(self, model: str, schema: type[BaseModel], task: str, effort: str = "low", **data):
-        key = call_key(model, schema.__name__, task, data)
+        return self.ask_salted("", model, schema, task, effort, **data)
+
+    def salted(self, salt: str):
+        """An `ask` whose recordings are kept apart from the unsalted ones under `salt`."""
+
+        def ask(model: str, schema: type[BaseModel], task: str, effort: str = "low", **data):
+            return self.ask_salted(salt, model, schema, task, effort, **data)
+
+        return ask
+
+    def ask_salted(
+        self,
+        salt: str,
+        model: str,
+        schema: type[BaseModel],
+        task: str,
+        effort: str = "low",
+        **data,
+    ):
+        key = call_key(model, schema.__name__, task, data, salt)
         if self.mode == "replay" or (self.mode == "record" and key in self.entries):
             entry = self.entries.get(key)
             if entry is None:
@@ -71,6 +96,7 @@ class Cassette:
                 "schema": schema.__name__,
                 "model": model,
                 "label": task.strip().splitlines()[0][:80],
+                **({"salt": salt} if salt else {}),
                 "answer": answer,
             }
         return answer
@@ -81,8 +107,12 @@ class Cassette:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(
             json.dumps(
-                {"note": "recorded model answers; replayed by financial_disclosure_review evaluate",
-                 "entries": self.entries},
+                {
+                    "note": (
+                        "recorded model answers; replayed by financial_disclosure_review evaluate"
+                    ),
+                    "entries": self.entries,
+                },
                 ensure_ascii=False,
                 indent=1,
             ),

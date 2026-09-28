@@ -47,9 +47,11 @@ def call_model(
     check,
     effort: str,
     salvage=None,
+    ask_fn=None,
     **data,
 ) -> dict:
     """One model step: at most 2 attempts, every attempt logged, the call cap checked before each.
+    `ask_fn` replaces `llm.client.ask` (the evaluation passes a cassette).
     A second answer that still fails validation goes to salvage(answer, problems) when given
     (it may downgrade single items); otherwise, or when the call itself keeps failing, it raises."""
     problems: list[str] = []
@@ -66,7 +68,7 @@ def call_model(
         started = time.time()
         invalid = False
         try:
-            answer = ask(ctx.model, schema, task, effort, **data)
+            answer = (ask_fn or ask)(ctx.model, schema, task, effort, **data)
             problems = check(answer)
             invalid = bool(problems)
             entry["ok"] = not problems
@@ -132,8 +134,11 @@ def judge_visual_readability(
     return result
 
 
-def judge_display(page: Mapping[str, Any], classification: Mapping[str, Any], ctx: Context) -> dict:
-    """Display-method judgment of one page. Returns the DisplayCheck fields items and judgments."""
+def judge_display(
+    page: Mapping[str, Any], classification: Mapping[str, Any], ctx: Context, ask_fn=None
+) -> dict:
+    """Display-method judgment of one page. Returns the DisplayCheck fields items and judgments.
+    `ask_fn` stands in for the structured model calls (label, verdict); vision is not replaced."""
     items = load_rubric(ctx.db_path, "card_guardrail_rubric")
     group = [i for i in items if i["group"].startswith("E.")]
     applied, skipped = [], []
@@ -219,6 +224,7 @@ def judge_display(page: Mapping[str, Any], classification: Mapping[str, Any], ct
         LABEL_TASK,
         check_labels,
         "medium",
+        ask_fn=ask_fn,
         columns=BLOCK_COLUMNS,
         blocks=[compact_block(b) for b in blocks],
         mandatory_items=mandatory_items,
@@ -345,6 +351,7 @@ def judge_display(page: Mapping[str, Any], classification: Mapping[str, Any], ct
             check_verdicts,
             "medium",
             salvage_verdicts,
+            ask_fn=ask_fn,
             columns=BLOCK_COLUMNS,
             assumptions=assumptions,
             items=evidence,

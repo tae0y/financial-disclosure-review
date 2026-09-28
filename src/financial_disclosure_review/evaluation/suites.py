@@ -5,10 +5,12 @@
 | `classification` | is a real page put in the right product type? | 영태's labels on six pages |
 | `duty-flip` | is a disclosure that left the page noticed? | the deletion (true by construction) |
 | `plain-contract` | is a rewrite that drifts caught? | the defect written into each pair |
+| `stability` | does the same input get the same answer? | the first answer (agreement, no label) |
 
 `duty-flip` also runs an ablation arm — the same rubric items, one call, no quote validation, no
 condition step, no retry — so the measured difference is this project's engineering rather than
-the model's general ability.
+the model's general ability. `classification` has a keyword-frequency arm for the same reason:
+what the three-step judgment adds over counting product words on the page.
 """
 
 import json
@@ -20,6 +22,7 @@ from pydantic import BaseModel
 from ..core.context import Context
 from ..core.text import locate_quote, visible_text
 from ..domain.classification import classify_page
+from ..domain.classification.schema import PAGE_TYPE_BY_PRODUCT
 from ..domain.explanation_duty_check.check import (
     explanation_scope,
     judge_original_side,
@@ -48,14 +51,45 @@ class AblationJudgments(BaseModel):
 
 # ---------------------------------------------------------------- classification
 
+# The comparison arm: the product words a reader would scan for, counted on the visible text.
+# Written from the product definitions (여전법·광고규정 terms), not tuned on the fixtures.
+KEYWORDS: dict[str, tuple[str, ...]] = {
+    "리볼빙": ("리볼빙", "일부결제금액이월", "결제비율"),
+    "장기카드대출": ("카드론", "장기카드대출"),
+    "단기카드대출": ("현금서비스", "단기카드대출"),
+    "할부금융·리스": ("할부금융", "오토할부", "자동차 할부", "리스"),
+    "신용카드": ("신용카드", "연회비", "카드 발급", "카드발급"),
+}
+OUT_OF_SCOPE_WORDS = ("보험료", "보험금", "특약", "예금", "적금", "만기", "보장")
 
-def run_classification(ctx: Context, cassette: Cassette, fixtures_dir: str | Path) -> dict:
-    """Six captured pages against 영태's labels. One to three calls per page."""
+
+def keyword_classify(page: dict) -> dict:
+    """Most-mentioned product type wins; more out-of-scope words than that means 범위 밖."""
+    text = " ".join(
+        [(page.get("product") or {}).get("product_name", ""), visible_text(page["html"])]
+    )
+    counts = {kind: sum(text.count(word) for word in words) for kind, words in KEYWORDS.items()}
+    outside = sum(text.count(word) for word in OUT_OF_SCOPE_WORDS)
+    best = max(counts, key=lambda kind: counts[kind])
+    reason = f"keyword counts {counts}, out-of-scope words {outside}"
+    if not counts[best] or outside > counts[best]:
+        return {"product_type": "범위 밖", "page_type": None, "reason": reason}
+    return {"product_type": best, "page_type": PAGE_TYPE_BY_PRODUCT[best], "reason": reason}
+
+
+def run_classification(
+    ctx: Context, cassette: Cassette, fixtures_dir: str | Path, arm: str = "pipeline"
+) -> dict:
+    """Six captured pages against 영태's labels. One to three calls per page on the pipeline arm,
+    none on the keyword arm."""
     rows = []
     for path in sorted(Path(fixtures_dir).glob("*.json")):
         fixture = json.loads(path.read_text(encoding="utf-8"))
         page = {key: fixture[key] for key in ("url", "product", "html")}
-        result = classify_page(page, ctx.model, ask=cassette.ask)
+        if arm == "keyword":
+            result = keyword_classify(page)
+        else:
+            result = classify_page(page, ctx.model, ask=cassette.ask)
         expected = fixture["expected"]
         rows.append(
             {
@@ -71,7 +105,8 @@ def run_classification(ctx: Context, cassette: Cassette, fixtures_dir: str | Pat
                 "reason_given": bool((result.get("reason") or "").strip()),
             }
         )
-    return {"suite": "classification", "rows": rows}
+    name = "classification" if arm == "pipeline" else f"classification/{arm}"
+    return {"suite": name, "arm": arm, "rows": rows}
 
 
 # ---------------------------------------------------------------- duty flip
@@ -197,10 +232,7 @@ def run_duty_flip(
             "verdicts": _counts(base_rows),
             "passed_with_quote": len(passed),
             "groundedness": _groundedness(base, base_text),
-            "rows": [
-                {**row, "quote": row["quote"][:140]}
-                for row in base_rows
-            ],
+            "rows": [{**row, "quote": row["quote"][:140]} for row in base_rows],
         },
         "rows": rows,
     }
@@ -254,9 +286,7 @@ def run_plain_contract(ctx: Context, cassette: Cassette, cases: list[dict]) -> d
         if not problems:
             to_judge.append({"id": case["id"], "quote": quote, "text": rewrite})
 
-    judgments = (
-        judge_condition_preservation(to_judge, ctx.model, cassette.ask) if to_judge else {}
-    )
+    judgments = judge_condition_preservation(to_judge, ctx.model, cassette.ask) if to_judge else {}
     for row in rows:
         judgment = judgments.get(row["case"])
         if judgment and judgment["verdict"] == "누락 가능":
@@ -269,6 +299,49 @@ def run_plain_contract(ctx: Context, cassette: Cassette, cases: list[dict]) -> d
             else None
         )
     return {"suite": "plain-contract", "rows": rows}
+
+
+# ---------------------------------------------------------------- stability
+
+
+def run_stability(
+    ctx: Context, cassette: Cassette, fixtures_dir: str | Path, config: dict, repeats: int = 3
+) -> dict:
+    """Ask the same questions `repeats` times and count how often the answer stays the same.
+
+    The first round is the recording the other suites already use (unsalted); rounds 2.. are
+    kept apart by a salt. No label is involved: the measure is agreement with itself.
+    """
+    salts = ["", *[f"repeat-{n}" for n in range(2, repeats + 1)]]
+    classification = []
+    for path in sorted(Path(fixtures_dir).glob("*.json")):
+        fixture = json.loads(path.read_text(encoding="utf-8"))
+        page = {key: fixture[key] for key in ("url", "product", "html")}
+        answers = [
+            classify_page(page, ctx.model, ask=cassette.salted(salt)).get("product_type")
+            for salt in salts
+        ]
+        classification.append(
+            {"case": path.stem, "answers": answers, "stable": len(set(answers)) == 1}
+        )
+
+    base_html = Path(config["base_html"]).read_text(encoding="utf-8")
+    base_text = visible_text(base_html)
+    items = _in_scope_items(ctx.db_path, config["classification"]["product_type"])
+    runs = [
+        judge_original_side(items, base_text, ctx.model, cassette.salted(salt)) for salt in salts
+    ]
+    duty = []
+    for item in items:
+        verdicts = [(run.get(item["code"]) or {}).get("verdict") for run in runs]
+        duty.append({"code": item["code"], "verdicts": verdicts, "stable": len(set(verdicts)) == 1})
+    return {
+        "suite": "stability",
+        "repeats": repeats,
+        "base_html": config["base_html"],
+        "classification": classification,
+        "duty": duty,
+    }
 
 
 def load_cases(path: str | Path) -> dict[str, Any]:

@@ -72,10 +72,57 @@ def plain_contract_metrics(result: dict) -> dict:
     }
 
 
+def stability_metrics(result: dict) -> dict:
+    classification, duty = result["classification"], result["duty"]
+    stable_duty = [row for row in duty if row["stable"]]
+    return {
+        "repeats": result["repeats"],
+        "classification_cases": len(classification),
+        "classification_stable": sum(1 for row in classification if row["stable"]),
+        "classification_unstable": [row["case"] for row in classification if not row["stable"]],
+        "duty_items": len(duty),
+        "duty_stable": len(stable_duty),
+        "duty_stability": rate(len(stable_duty), len(duty)),
+        # An item that is 적합 in one round and not in another is the costly kind of instability:
+        # the reviewer's to-do list would differ from run to run.
+        "duty_pass_flips": [
+            row["code"]
+            for row in duty
+            if "적합" in row["verdicts"] and len(set(row["verdicts"])) > 1
+        ],
+        "duty_unstable": [
+            {"code": row["code"], "verdicts": row["verdicts"]} for row in duty if not row["stable"]
+        ],
+    }
+
+
+def display_flip_metrics(result: dict) -> dict:
+    rows = result["rows"]
+    injected = [row for row in rows if row["kind"] == "결함 주입" and row["landed"]]
+    controls = [row for row in rows if row["kind"] == "대조군" and row["landed"]]
+    detected = [row for row in injected if row.get("detected")]
+    blamed = [row for row in controls if row.get("blamed_control")]
+    return {
+        "injected": len(injected),
+        "detected": len(detected),
+        "detection_rate": rate(len(detected), len(injected)),
+        "missed": [row["case"] for row in injected if not row.get("detected")],
+        "controls": len(controls),
+        "blamed_controls": len(blamed),
+        "blamed": [row["case"] for row in blamed],
+        "skipped": [row["case"] for row in rows if not row["landed"]],
+        "base_verdicts": {
+            base["page"]: f"{base['watch']} {base['verdict']}" for base in result["bases"]
+        },
+    }
+
+
 METRICS = {
     "classification": classification_metrics,
     "duty-flip": duty_flip_metrics,
     "plain-contract": plain_contract_metrics,
+    "stability": stability_metrics,
+    "display-flip": display_flip_metrics,
 }
 
 

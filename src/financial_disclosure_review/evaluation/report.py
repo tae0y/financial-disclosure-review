@@ -9,10 +9,7 @@ def _table(header: list[str], rows: list[list[Any]]) -> list[str]:
     return [
         "| " + " | ".join(header) + " |",
         "|" + "|".join(["---"] * len(header)) + "|",
-        *[
-            "| " + " | ".join(str(cell).replace("|", "\\|") for cell in row) + " |"
-            for row in rows
-        ],
+        *["| " + " | ".join(str(cell).replace("|", "\\|") for cell in row) + " |" for row in rows],
         "",
     ]
 
@@ -45,7 +42,27 @@ def render(run: dict) -> str:
     summary_rows = []
     for entry in run["suites"]:
         name, metrics = entry["result"]["suite"], entry["metrics"]
-        if name == "classification":
+        if name.startswith("display-flip"):
+            summary_rows.append(
+                [
+                    name,
+                    f"{metrics['detected']}/{metrics['injected']}",
+                    f"결함 탐지 {_pct(metrics['detection_rate'])},"
+                    f" 대조군 오지목 {metrics['blamed_controls']}/{metrics['controls']}",
+                    f"기준 판정 {metrics['base_verdicts']}",
+                ]
+            )
+        elif name == "stability":
+            summary_rows.append(
+                [
+                    name,
+                    f"{metrics['duty_stable']}/{metrics['duty_items']}",
+                    f"{metrics['repeats']}회 반복 동일 판정 {_pct(metrics['duty_stability'])}"
+                    f" · 분류 {metrics['classification_stable']}/{metrics['classification_cases']}",
+                    f"적합이 오간 항목 {metrics['duty_pass_flips'] or '없음'}",
+                ]
+            )
+        elif name.startswith("classification"):
             summary_rows.append(
                 [
                     name,
@@ -70,12 +87,65 @@ def render(run: dict) -> str:
                 [
                     name,
                     f"{metrics['caught']}/{metrics['defective']}",
-                    f"재현율 {_pct(metrics['recall'])},"
-                    f" 오탐률 {_pct(metrics['false_alarm_rate'])}",
+                    f"재현율 {_pct(metrics['recall'])}, 오탐률 {_pct(metrics['false_alarm_rate'])}",
                     f"미탐: {metrics['missed'] or '없음'}",
                 ]
             )
     lines += _table(["스위트", "적중", "지표", "비고"], summary_rows)
+
+    classification_arms = {
+        entry["result"].get("arm", "pipeline"): entry["metrics"]
+        for entry in run["suites"]
+        if entry["result"]["suite"].startswith("classification")
+    }
+    if len(classification_arms) > 1:
+        lines += [
+            "## 분류: 3단계 판정 대비 키워드 빈도 기준선",
+            "",
+            "같은 6개 페이지를 상품 낱말 빈도만으로 분류한 기준선(`keyword`)과 비교합니다."
+            " 기준선은 모델을 부르지 않습니다.",
+            "",
+        ]
+        lines += _table(
+            ["지표", *classification_arms],
+            [
+                [
+                    "정답 일치",
+                    *[f"{m['correct']}/{m['cases']}" for m in classification_arms.values()],
+                ],
+                ["정확도", *[_pct(m["accuracy"]) for m in classification_arms.values()]],
+                ["오분류", *[str(m["wrong"] or "없음") for m in classification_arms.values()]],
+            ],
+        )
+
+    display_arms = {
+        entry["result"]["arm"]: entry["metrics"]
+        for entry in run["suites"]
+        if entry["result"]["suite"].startswith("display-flip")
+    }
+    if len(display_arms) > 1:
+        lines += [
+            "## 표시방법: 라벨링 + 코드 측정 대비 코드 규칙만",
+            "",
+            "같은 렌더링 측정값과 같은 변형에 대해, 어떤 문구가 의무표시인지 모델이 라벨을 붙인 뒤"
+            " 코드가 재는 본 구성(`pipeline`)과, 문구 구분 없이 기준 미달 블록이 하나라도 있으면"
+            " 위반으로 보는 코드 규칙(`rules`)을 비교합니다.",
+            "",
+        ]
+        lines += _table(
+            ["지표", *display_arms],
+            [
+                [
+                    "주입한 위반 탐지(해당 블록 지목)",
+                    *[f"{m['detected']}/{m['injected']}" for m in display_arms.values()],
+                ],
+                [
+                    "대조군 블록을 위반으로 지목",
+                    *[f"{m['blamed_controls']}/{m['controls']}" for m in display_arms.values()],
+                ],
+                ["기준 페이지 판정", *[str(m["base_verdicts"]) for m in display_arms.values()]],
+            ],
+        )
 
     arms = {
         entry["result"]["arm"]: entry["metrics"]
@@ -116,7 +186,76 @@ def render(run: dict) -> str:
     for entry in run["suites"]:
         result, metrics = entry["result"], entry["metrics"]
         lines += [f"## 상세 — {result['suite']}", ""]
-        if result["suite"] == "classification":
+        if result["suite"].startswith("display-flip"):
+            lines += _table(
+                ["기준 페이지", "관찰 항목", "기준 판정", "기준 근거 블록", "전체 판정"],
+                [
+                    [
+                        base["page"],
+                        base["watch"],
+                        base["verdict"],
+                        ", ".join(base["block_ids"]) or "-",
+                        base["all"],
+                    ]
+                    for base in result["bases"]
+                ],
+            )
+            lines += _table(
+                ["케이스", "유형", "루브릭", "대상 블록", "변형 전", "변형 후", "지목", "결과"],
+                [
+                    [
+                        row["case"],
+                        row["kind"],
+                        row["rubric"] or "-",
+                        row["block"] or "-",
+                        row["base_verdict"],
+                        row["after_verdict"] or "-",
+                        {True: "O", False: "X", None: "-"}[row.get("cited")],
+                        "탐지"
+                        if row.get("detected")
+                        else "미탐"
+                        if row.get("detected") is False
+                        else "오지목"
+                        if row.get("blamed_control")
+                        else "정상"
+                        if row.get("blamed_control") is False
+                        else row.get("note") or "-",
+                    ]
+                    for row in result["rows"]
+                ],
+            )
+        elif result["suite"] == "stability":
+            lines += [
+                f"- 반복 횟수: {result['repeats']}회 (1회차는 다른 스위트가 쓰는 녹음, 2회차부터"
+                " 새로 녹음)",
+                f"- 설명의무 기준 페이지: `{result['base_html']}`",
+                "",
+            ]
+            lines += _table(
+                ["분류 케이스", "회차별 판정", "동일"],
+                [
+                    [
+                        row["case"],
+                        " / ".join(map(str, row["answers"])),
+                        "O" if row["stable"] else "X",
+                    ]
+                    for row in result["classification"]
+                ],
+            )
+            lines += _table(
+                ["설명의무 항목", "회차별 판정", "동일"],
+                [
+                    [
+                        row["code"],
+                        " / ".join(map(str, row["verdicts"])),
+                        "O" if row["stable"] else "X",
+                    ]
+                    for row in result["duty"]
+                    if not row["stable"]
+                ]
+                or [["(모두 동일)", "-", "O"]],
+            )
+        elif result["suite"].startswith("classification"):
             lines += _table(
                 ["케이스", "정답 유형", "판정 유형", "정답 화면", "판정 화면", "일치"],
                 [

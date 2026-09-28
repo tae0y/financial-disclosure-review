@@ -1,0 +1,30 @@
+{
+ "purpose": "표시방법 검토가 실제로 화면을 보고 있는지 확인한다. 실제 검토에서 수집한 렌더링 측정값(글자 크기·색)에서 의무표시 문구 블록 하나만 규정 미만으로 바꾸고, 해당 항목이 부적합으로 바뀌며 그 블록을 근거로 드는지 본다. 같은 방식으로 의무표시가 아닌 문구를 바꾼 대조군은 판정이 바뀌지 않아야 한다.",
+ "label_source": "주입 자체. 글자 크기를 9px(6.75pt, 규정 8pt 미만)로, 글자색을 rgb(204,204,204)(흰 배경 대비 약 1.6:1, 기준 4.5:1 미만)로 바꾸었으므로 위반이 참이다. 대상 블록이 의무표시라는 판단은 모델 라벨이 아니라 루브릭 항목(rubric 필드)의 필수 문구와의 대응으로 정했다.",
+ "mutations": {
+  "shrink": {"font_size": "9px"},
+  "fade": {"color": "rgb(204, 204, 204)"}
+ },
+ "pages": [
+  {
+   "id": "card-loan",
+   "fixture": "eval/fixtures/display_lottecard_card_loan.json",
+   "watch": "E02",
+   "cases": [
+    {"id": "shrink-A01", "kind": "shrink", "rubric": "A01", "text": "계약을 체결하기 전 금융상품설명서와 약관을 참고바랍니다."},
+    {"id": "shrink-A11", "kind": "shrink", "rubric": "A11", "text": "상환능력에 비해 대출금이 과도할 경우 귀하의 개인신용평점이 하락할 수 있습니다."},
+    {"id": "shrink-control", "kind": "shrink", "rubric": null, "text": "결혼, 내집마련, 사업자금이 필요할때 목돈이 필요한 순간에도 내 상황에 맞게 빌리세요."}
+   ]
+  },
+  {
+   "id": "loca-classic",
+   "fixture": "eval/fixtures/display_lottecard_loca_classic.json",
+   "watch": "E04",
+   "cases": [
+    {"id": "fade-A11", "kind": "fade", "rubric": "A11", "text": "상환능력에 비해 신용카드 사용액이 과도할 경우 귀하의 개인신용평점이 하락할 수 있습니다."},
+    {"id": "fade-A13", "kind": "fade", "rubric": "A13", "text": "일정기간 원리금을 연체할 경우, 모든 원리금을 변제할 의무가 발생할 수 있습니다."},
+    {"id": "fade-control", "kind": "fade", "rubric": null, "text": "지난달(1일 ~ 말일) 이용금액"}
+   ]
+  }
+ ]
+}

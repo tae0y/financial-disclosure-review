@@ -132,6 +132,7 @@ def evaluate(args: argparse.Namespace) -> int:
         eval_dir=args.eval_dir,
         max_flips=args.flips,
         arms=arms,
+        repeats=args.repeats,
     )
     folder = Path(args.eval_dir) / "results"
     folder.mkdir(parents=True, exist_ok=True)
@@ -235,7 +236,12 @@ def parser() -> argparse.ArgumentParser:
     )
     check.add_argument("--flips", type=int, default=3, help="how many disclosures to delete")
     check.add_argument(
-        "--ablation", action="store_true", help="also run the no-validation comparison arm"
+        "--ablation",
+        action="store_true",
+        help="also run the comparison arms (duty-flip without validation, keyword classification)",
+    )
+    check.add_argument(
+        "--repeats", type=int, default=3, help="rounds of the same questions for --suite stability"
     )
     check.set_defaults(run=evaluate)
     return root

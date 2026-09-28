@@ -15,11 +15,18 @@ from typing import Any
 from ..core.context import Context
 from ..core.usage import current, start_run
 from .cassette import Cassette
+from .display_flip import run_display_flip
 from .metrics import metrics_for
 from .report import render
-from .suites import load_cases, run_classification, run_duty_flip, run_plain_contract
+from .suites import (
+    load_cases,
+    run_classification,
+    run_duty_flip,
+    run_plain_contract,
+    run_stability,
+)
 
-SUITES = ("classification", "duty-flip", "plain-contract")
+SUITES = ("classification", "duty-flip", "display-flip", "plain-contract", "stability")
 
 LIMITS = [
     "표본이 작습니다. 분류 6건, 결함 주입 3건과 대조군 1건, 쉬운말 계약 케이스는 파일에 적힌"
@@ -35,6 +42,10 @@ LIMITS = [
 ]
 
 
+def _fixtures() -> Path:
+    return Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "classify"
+
+
 def default_eval_dir() -> Path:
     return Path(__file__).resolve().parents[3] / "eval"
 
@@ -46,6 +57,7 @@ def run_evaluation(
     eval_dir: str | Path | None = None,
     max_flips: int = 3,
     arms: tuple[str, ...] = ("pipeline", "ablation"),
+    repeats: int = 3,
 ) -> dict[str, Any]:
     """Run the named suites and return the whole run as data. Caller writes it out."""
     root = Path(eval_dir) if eval_dir else default_eval_dir()
@@ -54,8 +66,9 @@ def run_evaluation(
     results = []
 
     if "classification" in suites:
-        fixtures = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "classify"
-        results.append(run_classification(ctx, cassette, fixtures))
+        results.append(run_classification(ctx, cassette, _fixtures()))
+        if "ablation" in arms:
+            results.append(run_classification(ctx, cassette, _fixtures(), arm="keyword"))
     if "duty-flip" in suites:
         config = load_cases(root / "cases" / "duty_flip.json")
         config["base_html"] = str(
@@ -63,9 +76,21 @@ def run_evaluation(
         )
         for arm in arms:
             results.append(run_duty_flip(ctx, cassette, config, arm=arm, max_flips=max_flips))
+    if "display-flip" in suites:
+        config = load_cases(root / "cases" / "display_flip.json")
+        repo = Path(__file__).resolve().parents[3]
+        results.append(run_display_flip(ctx, cassette, config, repo))
+        if "ablation" in arms:
+            results.append(run_display_flip(ctx, cassette, config, repo, arm="rules"))
     if "plain-contract" in suites:
         cases = load_cases(root / "cases" / "plain_contract.json")
         results.append(run_plain_contract(ctx, cassette, cases["cases"]))
+    if "stability" in suites:
+        config = load_cases(root / "cases" / "duty_flip.json")
+        config["base_html"] = str(
+            (Path(__file__).resolve().parents[3] / config["base_html"]).resolve()
+        )
+        results.append(run_stability(ctx, cassette, _fixtures(), config, repeats))
 
     saved = cassette.save()
     return {
