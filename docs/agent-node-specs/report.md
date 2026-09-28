@@ -47,8 +47,15 @@ draft unpublished. The reading changes what the reviewer is told, not what the t
 
 Frontmatter first (`ai-generated: true`, `human-review: false`), so a generated report can never
 be mistaken for a reviewed one. Then: 담당자 조치 목록, 검토 요약, 확인이 필요한 항목, 표시방법
-상세, 설명의무 상세(원문·쉬운말·의미 차이 한 줄에), 쉬운말 변환 결과와 용어 풀이, 자동 검증 결과,
-비용과 소요시간, 한계와 가정.
+상세, 설명의무 상세(원문·독자 맞춤 설명·의미 차이 한 줄에), 독자 맞춤 설명 결과(프로필, 단위, 사실
+원장 대조, 판정 대상이 아닌 운영 통제), 자동 검증 결과, 비용과 소요시간, 한계와 가정, 페이지 수집
+agent 기록(상태·중단 사유·조사 공백·행동 로그), 증거 카드와 조사 공백, 참고 사례(판정에 사용하지
+않음). The last three are appended so earlier section numbers stay stable.
+
+Collection comes first in the status: a page with no collected html reads `수집 실패` or `조사
+불충분`, never a classification problem, and an open evidence gap keeps a clean run from reading
+`검토 완료`. A checkpoint written before the persona explanation (`plain_language`) still
+renders through the legacy branch of section 6.
 
 Two of those sections exist to stop the report from overclaiming. 자동 검증 결과 repeats that the
 verification only checked citation validity and cross-module contradictions, and 한계와 가정

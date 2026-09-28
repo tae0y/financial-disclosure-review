@@ -73,6 +73,10 @@ lexical signals that steer exploration -- they never become a verdict.
   `interact expand`.
 - `hidden_text`: a DOM text block hidden by default. Closes once it is no longer hidden in a
   later `observe()`; starts `unresolved` when no actionable control exists anywhere on the page.
+  Hidden means *rendered* hidden (computed `display`/`visibility`/`opacity`, a zero-size box, or a
+  zero-height `overflow: hidden` ancestor), not only the `hidden`/`aria-hidden`/inline-style
+  attributes: a stylesheet-collapsed accordion is hidden text (fixed after the 2026-09-29 live run,
+  where a DaisyUI page read as fully open).
 - `benefit_without_condition`: a visible benefit/rate signal with no visible condition/limit
   signal anywhere on the page. Reported only -- never closes the exploration and never changes
   `product_page.status`.

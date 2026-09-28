@@ -175,6 +175,47 @@ in one round and not in another: eight moved between 판정 불가 and 적합, t
 reproducible for about a quarter of the explanation-duty items. Source:
 `eval/results/260928-184936-stability-record.md`.
 
+### 6. Evidence agent, cards, reference cases and reader explanation (2026-09-29)
+
+Added with the bounded evidence agent, evidence cards, report-only reference cases and the persona
+explanation (branch `agentic-evidence-persona`). The five suites above replay unchanged after this
+work (80 hits, 0 misses, same numbers): none of their prompts or inputs changed.
+
+`uv run python eval/agentic_eval.py [--record]` runs on the two real lottecard pages in
+`eval/fixtures/` against a 25-entry gold set in `eval/fixtures/gold/evidence_cards.json` (both
+local only: `eval/fixtures/` is gitignored). Recording cost $0.0981 (13 calls); replay is free.
+
+| Measure | 카드론 (131 sources) | LOCA CLASSIC (89 sources) |
+|---|---|---|
+| Cards kept / rejected by code | 45 / 0 | 28 / 0 |
+| Card quote resolves in its source | 45/45 | 28/28 |
+| Gold quotes covered (risk-only) | 11/12 (10/11) | 10/13 (9/12) |
+| Reference links at threshold 10 | 0 | 2 (1 plausible, 1 weak; 0 of the 3 gold links) |
+| Explanation units accepted / reverted | 35 / 0 | 17 / 0 |
+| Analogies kept on rate/fee/warning cards | 0 (2 dropped by code) | 0 |
+| Fact-ledger values preserved, decided by code | 40/40 | 25/25 |
+| Generation-layer mutations caught (drop fact, invent number, verdict word, risk analogy) | 19/19 | 15/15 |
+| Ledger-layer mutations caught (value changed or dropped in the assembled text) | 4/4 | 1/4 |
+
+The generation layer (`review_unit`) is the gate that matters in a run: a unit that drops a
+ledger value or invents a number never reaches the page. The ledger layer is a second net over
+the assembled page text; it misses a change when the same value or wording still appears
+elsewhere on the page (for example `최대` dropped from one line while other lines keep it).
+
+Reference links are the weakest part. On the gold cards, lexical overlap with 19 short case
+summaries does not separate true links from shared vocabulary (threshold 4: 3/3 found with 18
+false links; 10: 0/3 with 0), so the default threshold favours no link
+(`docs/agent-node-specs/reference_cases.md`).
+
+**Live run of the page agent** (디지로카 Las Vegas, the page the 2026-09-28 audit found with 85
+collapsed blocks). The first run ended `완료/full_coverage` because `observe()` read visibility
+from html attributes only and counted the DaisyUI accordions as open; fixed in `ac6a11f`. The
+rerun (thread `live-260929-lasvegas-2`, $0.1562, 19 calls, 391 s) ended `조사 불충분 /
+no_viable_control`: 66 hidden text blocks, 29 unresolved `hidden_text` gaps, 7 agent steps, one
+blocked expand (the accordion container's text contains `결제`, which the refusal list reads as a
+payment action; the accordions open through a checkbox input the tools never click). The report
+lists the 29 gaps as the reviewer's first action instead of passing the page.
+
 ## Model comparison
 
 The same cassette-backed suites run with `--model`; each model has its own cassette.
