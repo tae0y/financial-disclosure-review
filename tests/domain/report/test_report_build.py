@@ -10,8 +10,14 @@ PAGE = {
 CLASSIFICATION = {"product_type": "신용카드", "page_type": "상품광고", "reason": "3단계 통과"}
 DISPLAY_OK = {
     "items": [
-        {"code": "E02", "verdict": "적합", "block_ids": ["v1-3"], "quotes": ["연회비 1만원"],
-         "measured": [], "reason": "9pt 이상"},
+        {
+            "code": "E02",
+            "verdict": "적합",
+            "block_ids": ["v1-3"],
+            "quotes": ["연회비 1만원"],
+            "measured": [],
+            "reason": "9pt 이상",
+        },
     ],
     "judgments": {"status": "완료", "assumptions": {"font_size": "px x 0.75"}, "limits": {}},
 }
@@ -24,10 +30,24 @@ PLAIN_OK = {
 }
 DUTY_OK = {
     "items": [{"code": "설명01", "applied": True, "condition_status": "성립", "reason": ""}],
-    "original": [{"code": "설명01", "condition_status": "성립", "verdict": "적합",
-                  "quote": "연회비 1만원", "reason": "표기됨"}],
-    "plain": [{"code": "설명01", "condition_status": "성립", "verdict": "적합",
-               "quote": "1년에 1만원", "reason": "유지됨"}],
+    "original": [
+        {
+            "code": "설명01",
+            "condition_status": "성립",
+            "verdict": "적합",
+            "quote": "연회비 1만원",
+            "reason": "표기됨",
+        }
+    ],
+    "plain": [
+        {
+            "code": "설명01",
+            "condition_status": "성립",
+            "verdict": "적합",
+            "quote": "1년에 1만원",
+            "reason": "유지됨",
+        }
+    ],
     "fidelity": [],
 }
 PASSED = {"passed": True, "reasons": [], "failed_modules": [], "feedback": [], "loop_count": 1}
@@ -81,8 +101,13 @@ def test_the_actions_are_grouped_by_target_rather_than_one_line_per_item():
     duty = {
         **DUTY_OK,
         "original": [
-            {"code": f"설명{n:02d}", "condition_status": "성립", "verdict": "부적합",
-             "quote": "연회비 1만원", "reason": "누락"}
+            {
+                "code": f"설명{n:02d}",
+                "condition_status": "성립",
+                "verdict": "부적합",
+                "quote": "연회비 1만원",
+                "reason": "누락",
+            }
             for n in range(1, 16)
         ],
     }
@@ -98,8 +123,14 @@ def test_an_unjudged_display_item_becomes_a_human_task_not_a_pass():
     display = {
         **DISPLAY_OK,
         "items": [
-            {"code": "E04", "verdict": "판정 불가", "block_ids": [], "quotes": [],
-             "measured": [], "reason": "이미지 안 글자는 측정 불가"}
+            {
+                "code": "E04",
+                "verdict": "판정 불가",
+                "block_ids": [],
+                "quotes": [],
+                "measured": [],
+                "reason": "이미지 안 글자는 측정 불가",
+            }
         ],
     }
     result = report(display=display)
@@ -111,8 +142,15 @@ def test_an_unjudged_display_item_becomes_a_human_task_not_a_pass():
 def test_a_violation_blocks_the_plain_language_from_being_published():
     duty = {
         **DUTY_OK,
-        "original": [{"code": "설명01", "condition_status": "성립", "verdict": "부적합",
-                      "quote": "연회비 1만원", "reason": "중도해지 손실 문구 없음"}],
+        "original": [
+            {
+                "code": "설명01",
+                "condition_status": "성립",
+                "verdict": "부적합",
+                "quote": "연회비 1만원",
+                "reason": "중도해지 손실 문구 없음",
+            }
+        ],
     }
     result = report(duty=duty)
     assert result["status"] == "사람 검토 필요"
@@ -186,8 +224,14 @@ def display_with(code: str, verdict: str = "부적합") -> dict:
     return {
         **DISPLAY_OK,
         "items": [
-            {"code": code, "verdict": verdict, "block_ids": [], "quotes": [], "measured": [],
-             "reason": "측정값 미달"}
+            {
+                "code": code,
+                "verdict": verdict,
+                "block_ids": [],
+                "quotes": [],
+                "measured": [],
+                "reason": "측정값 미달",
+            }
         ],
     }
 
@@ -196,8 +240,13 @@ def duty_with(code: str) -> dict:
     return {
         **DUTY_OK,
         "original": [
-            {"code": code, "condition_status": "해당없음", "verdict": "부적합", "quote": "",
-             "reason": "누락"}
+            {
+                "code": code,
+                "condition_status": "해당없음",
+                "verdict": "부적합",
+                "quote": "",
+                "reason": "누락",
+            }
         ],
     }
 
@@ -242,8 +291,13 @@ def test_a_rebuilt_report_carries_the_reviews_own_cost_forward():
     """Rebuilding from a checkpoint makes no call; the reviewer must still see what the review
     cost, not the rebuild's zero."""
     recorded = {
-        "calls": 20, "elapsed_seconds": 513.1, "input_tokens": 160934, "output_tokens": 53767,
-        "usd": 0.147718, "krw": 206.8, "usd_krw": 1400.0,
+        "calls": 20,
+        "elapsed_seconds": 513.1,
+        "input_tokens": 160934,
+        "output_tokens": 53767,
+        "usd": 0.147718,
+        "krw": 206.8,
+        "usd_krw": 1400.0,
         "by_step": {"ExplanationJudgments": {"calls": 3, "input": 1, "output": 1, "usd": 0.06}},
         "caps": {"max_calls": 60, "max_usd": 1.0},
     }
@@ -260,7 +314,13 @@ def test_a_run_that_made_calls_reports_its_own_cost_not_the_previous_one():
     start_run()
     current().record("gpt-5-mini", "ExplanationJudgments", 1000, 500)
     result = build_report(
-        PAGE, CLASSIFICATION, DISPLAY_OK, PLAIN_OK, DUTY_OK, PASSED, {"max_loops": 2},
+        PAGE,
+        CLASSIFICATION,
+        DISPLAY_OK,
+        PLAIN_OK,
+        DUTY_OK,
+        PASSED,
+        {"max_loops": 2},
         previous_cost={"calls": 99, "usd": 9.9},
     )
     assert result["cost"]["calls"] == 1

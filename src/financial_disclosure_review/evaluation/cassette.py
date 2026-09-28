@@ -11,9 +11,17 @@ changes the key, so a replay cannot silently answer a different question than th
 import json
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel
+
+
+class Asks(Protocol):
+    """Anything with a cassette-shaped `ask`: the cassette itself, or a test double."""
+
+    def ask(
+        self, model: str, schema: type[BaseModel], task: str, effort: str = "low", **data: Any
+    ) -> Any: ...
 
 
 class CassetteMissError(RuntimeError):

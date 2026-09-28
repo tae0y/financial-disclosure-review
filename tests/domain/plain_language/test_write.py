@@ -145,9 +145,7 @@ def test_a_synonym_for_a_condition_word_is_not_rejected(ctx, blocks):
     조건 보존 여부는 이제 글자 대조가 아니라 judge_condition_preservation의 정성 판단이므로,
     기본 판정(유지)인 가짜 ask에서는 이 블록이 거부되지 않는다."""
     late = next(b["id"] for b in blocks if "연체" in b["quote"])
-    fake = fake_ask(
-        {late: "연체하면 최대 연 20% 연체이자가 붙고, 신용점수가 떨어질 수 있습니다."}
-    )
+    fake = fake_ask({late: "연체하면 최대 연 20% 연체이자가 붙고, 신용점수가 떨어질 수 있습니다."})
     result = generate_plain(PAGE, CLASSIFICATION, [], ctx, ask=fake)
 
     assert late in {b["source_id"] for b in result["accepted_blocks"]}, errors_of(result)
@@ -200,9 +198,7 @@ def test_the_source_quote_guard_judges_a_quote_that_is_not_in_the_page(blocks):
 def feedback_aware_ask(model, schema, task, effort="low", **data):
     if "blocks" not in data:
         return {
-            "items": [
-                {"id": e["id"], "verdict": "유지", "reason": "테스트"} for e in data["items"]
-            ]
+            "items": [{"id": e["id"], "verdict": "유지", "reason": "테스트"} for e in data["items"]]
         }
     wanted = {f["source_id"]: f["requested_change"] for f in data.get("previous_feedback") or []}
     return {

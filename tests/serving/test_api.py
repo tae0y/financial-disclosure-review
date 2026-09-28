@@ -72,6 +72,7 @@ def build(tmp_path, agent: StubAgent, **overrides) -> tuple[TestClient, StubAgen
 def wait_for(client: TestClient, job_id: str, *, headers=None, timeout: float = 5.0) -> dict:
     """Poll the way a caller does, until the job leaves queued/running."""
     deadline = time.time() + timeout
+    body: dict = {}
     while time.time() < deadline:
         body = client.get(f"/v1/reviews/{job_id}", headers=headers or AUTH).json()
         if body["status"] not in ("queued", "running"):

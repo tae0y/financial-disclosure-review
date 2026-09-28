@@ -1,5 +1,6 @@
 """The job store: the row is the API contract, so no path may leave it mid-flight."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -9,7 +10,7 @@ from financial_disclosure_review.serving.schemas import JobStatus, RunResult
 
 
 @pytest.fixture
-def store(tmp_path) -> JobStore:
+def store(tmp_path) -> Iterator[JobStore]:
     opened = JobStore(str(tmp_path / "jobs.sqlite"))
     yield opened
     opened.close()

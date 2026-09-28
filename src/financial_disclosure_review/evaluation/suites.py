@@ -33,7 +33,7 @@ from ..domain.explanation_duty_check.check import (
 )
 from ..domain.plain_language.contract import verify_block, verify_source_quote
 from ..domain.plain_language.judge import judge_condition_preservation
-from .cassette import Cassette
+from .cassette import Asks, Cassette
 from .defects import longest_unused_sentence, remove_quote
 
 ABLATION_TASK = """당신은 카드회사 상품광고 페이지 원문(text)이 설명의무 기준(items)을 지켰는지
@@ -317,7 +317,7 @@ def _groundedness(verdicts: dict, text: str) -> dict:
 # ---------------------------------------------------------------- plain contract
 
 
-def run_plain_contract(ctx: Context, cassette: Cassette, cases: list[dict]) -> dict:
+def run_plain_contract(ctx: Context, cassette: Asks, cases: list[dict]) -> dict:
     """The rewrite contract against pairs whose defect is known.
 
     Numbers/absolute-phrase/hedge are decidable from the two strings, so those run for free.

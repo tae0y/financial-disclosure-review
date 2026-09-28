@@ -5,7 +5,7 @@ is gitignored (it also holds whole pages). A number a reader cannot open is only
 copies the cost of each finished review — calls, tokens, dollars, seconds, per step — into
 `eval/results/<date>-cost-ledger.{json,md}`. It makes no model call.
 
-    uv run python eval/cost_ledger.py [--checkpoints data/checkpoints.sqlite]
+    uv run python eval/cost_ledger.py [--checkpoints data/checkpoints.sqlite] [--out-dir DIR]
 """
 
 import argparse
@@ -22,10 +22,13 @@ ROOT = Path(__file__).resolve().parent.parent
 def finished_reviews(checkpoints: str) -> list[dict]:
     rows = []
     with SqliteSaver.from_conn_string(checkpoints) as saver:
-        threads = sorted({c.config["configurable"]["thread_id"] for c in saver.list(None)})
+        configs = [c.config.get("configurable") or {} for c in saver.list(None)]
+        threads = sorted({cfg["thread_id"] for cfg in configs if cfg.get("thread_id")})
         for thread in threads:
             latest = saver.get_tuple({"configurable": {"thread_id": thread}})
-            state = latest.checkpoint["channel_values"] if latest else {}
+            if latest is None:
+                continue
+            state = latest.checkpoint["channel_values"]
             report = state.get("report") or {}
             cost = report.get("cost") or {}
             if not cost.get("calls") or cost.get("carried_forward"):
@@ -63,7 +66,8 @@ def render(rows: list[dict], source: str) -> str:
         "",
         f"- 작성: {datetime.now():%Y-%m-%d %H:%M} · 출처: `{source}`의 스레드별 `report.cost`",
         "- 모델 호출 없이 체크포인트에서 옮겨 적었습니다(`uv run python eval/cost_ledger.py`).",
-        "- 보고서만 다시 만든 스레드(비용 0회 또는 이월 표시)는 원래 검토 비용이 아니므로 뺐습니다.",
+        "- 보고서만 다시 만든 스레드(비용 0회 또는 이월 표시)는 원래 검토 비용이 아니므로"
+        " 뺐습니다.",
         "",
         "| 스레드 | 상품 | 유형 | 판정 | 호출 | 입력 tokens | 출력 tokens | 비용 | 소요 |",
         "|---|---|---|---|---|---|---|---|---|",
@@ -92,9 +96,16 @@ def render(rows: list[dict], source: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoints", default=str(ROOT / "data" / "checkpoints.sqlite"))
+    parser.add_argument(
+        "--out-dir",
+        default=str(ROOT / "eval" / "results"),
+        help="where the ledger files go (a temporary folder leaves the repository untouched)",
+    )
     args = parser.parse_args()
     rows = finished_reviews(args.checkpoints)
-    stem = ROOT / "eval" / "results" / f"{datetime.now():%y%m%d-%H%M%S}-cost-ledger"
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stem = out_dir / f"{datetime.now():%y%m%d-%H%M%S}-cost-ledger"
     source = Path(args.checkpoints).name
     stem.with_suffix(".json").write_text(
         json.dumps({"source": source, "reviews": rows}, ensure_ascii=False, indent=1),
@@ -104,7 +115,7 @@ def main() -> int:
     stem.with_suffix(".md").write_text(render(rows, source), encoding="utf-8", newline="\n")
     for row in rows:
         print(f"{row['thread']}: {row['calls']} calls, ${row['usd']}, {row['elapsed_seconds']}s")
-    print(f"written: {stem.with_suffix('.md').relative_to(ROOT)}")
+    print(f"written: {stem.with_suffix('.md')}")
     return 0
 
 

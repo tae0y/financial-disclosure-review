@@ -45,9 +45,7 @@ def test_a_passed_verification_is_never_retried():
 
 
 def test_a_failure_with_actionable_feedback_goes_back_to_the_owning_node():
-    v = verification(
-        failed_modules=["plain_language"], feedback=[feedback_for("plain_language")]
-    )
+    v = verification(failed_modules=["plain_language"], feedback=[feedback_for("plain_language")])
     assert retryable_modules(v) == ["plain_language"]
     assert should_retry(v) is True
     assert route_after_verify(state_of(v)) == "retry_dispatch"  # type: ignore[arg-type]
@@ -103,4 +101,4 @@ def test_every_round_is_recorded_in_the_history():
 
 
 def test_an_empty_target_ends_the_run_rather_than_looping():
-    assert route_after_retry(state_of(verification(retry_target="")))  == "end_report"  # type: ignore[arg-type]
+    assert route_after_retry(state_of(verification(retry_target=""))) == "end_report"  # type: ignore[arg-type]
