@@ -18,6 +18,29 @@ STATUS_UNJUDGED = "판정 불가"
 PUBLISH_BLOCKED = "쉬운말 자동 게시 불가 — 원문 유지"
 PUBLISH_ALLOWED = "담당자 확인 후 쉬운말 게시 가능"
 
+SEVERITY_VIOLATION = "위반"
+SEVERITY_SHORTFALL = "권고 미충족"
+AD_PAGE_TYPES = ("상품광고", "업무광고")
+# Rubric `binding` levels that bind a page directly when the rule is about that kind of page.
+DIRECT_BINDINGS = ("법령", "협회 자율규제")
+
+
+def severity(module: str, binding: str | None, page_type: str | None) -> tuple[str, str]:
+    """How a 부적합 is to be read: (위반 | 권고 미충족, the basis in words).
+
+    A public product page is an advertisement (금소법 제22조). Advertising rules and the
+    association's display rules bind it directly, so their 부적합 is a 위반. The explanation duty
+    (제19조) arises when a contract is solicited, so on an advertising page its items are applied
+    by analogy (준용) and a 부적합 is a 권고 미충족. Guidelines, reference standards and the
+    project's own design never make a 위반. An item whose binding is unknown keeps the stricter
+    reading.
+    """
+    if binding and binding not in DIRECT_BINDINGS:
+        return SEVERITY_SHORTFALL, binding
+    if module == "explanation_duty_check" and page_type in AD_PAGE_TYPES:
+        return SEVERITY_SHORTFALL, "설명의무 준용"
+    return SEVERITY_VIOLATION, binding or "구속력 미상"
+
 
 def _table(rows: list[list[str]], header: list[str]) -> list[str]:
     if not rows:
@@ -42,15 +65,29 @@ def _unjudged(rows: Any) -> int:
     return sum(1 for row in rows or [] if row.get("verdict") == "판정 불가")
 
 
+def _step_costs(by_step: Mapping[str, Any]) -> str:
+    """Where the calls went, most expensive first, e.g. `ExplanationJudgments 4회 $0.0612`."""
+    return ", ".join(
+        f"{step} {entry.get('calls', 0)}회 ${float(entry.get('usd', 0)):.4f}"
+        for step, entry in sorted(by_step.items(), key=lambda kv: -float(kv[1].get("usd", 0)))
+    )
+
+
 def _clip(text: str, limit: int = 120) -> str:
     text = " ".join((text or "").split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def _findings(
-    display: Mapping[str, Any], duty: Mapping[str, Any], plain: Mapping[str, Any]
+    display: Mapping[str, Any],
+    duty: Mapping[str, Any],
+    plain: Mapping[str, Any],
+    bindings: Mapping[str, str] | None = None,
+    page_type: str | None = None,
 ) -> list[dict]:
-    """Every row a reviewer has to look at: a violation, or something the run could not decide."""
+    """Every row a reviewer has to look at: a violation, or something the run could not decide.
+    A 부적합 row also says whether it is a 위반 or a 권고 미충족 (`severity`, `basis`)."""
+    bindings = bindings or {}
     found: list[dict] = []
     for row in display.get("items") or []:
         if row.get("verdict") in ("부적합", "판정 불가"):
@@ -77,6 +114,11 @@ def _findings(
                         "quotes": [row.get("quote", "")] if row.get("quote") else [],
                     }
                 )
+    for row in found:
+        if row["verdict"] == "부적합":
+            row["severity"], row["basis"] = severity(
+                row["module"], bindings.get(row["code"]), page_type
+            )
     for row in duty.get("fidelity") or []:
         found.append(
             {
@@ -136,9 +178,19 @@ def _status(
         )
     # 항목을 한 줄씩 나열하면 조치 목록이 수십 줄이 됩니다. 담당자가 화면 단위로 일하므로
     # 대상(표시방법·원문·쉬운말)별로 묶고 코드만 보여 줍니다.
-    for target in sorted({row["target"] for row in violations}):
-        codes = sorted({row["code"] for row in violations if row["target"] == target})
-        actions.append(f"{target} 위반 {len(codes)}건 확인·수정: {_codes(codes)}")
+    levels = sorted(
+        {(row["target"], row.get("severity", SEVERITY_VIOLATION)) for row in violations}
+    )
+    for target, level in levels:
+        rows = [
+            row
+            for row in violations
+            if row["target"] == target and row.get("severity", SEVERITY_VIOLATION) == level
+        ]
+        codes = sorted({row["code"] for row in rows})
+        bases = sorted({row["basis"] for row in rows if row.get("basis")})
+        basis = f"({', '.join(bases)})" if bases else ""
+        actions.append(f"{target} {level}{basis} {len(codes)}건 확인·수정: {_codes(codes)}")
     diffs = [f for f in findings if str(f["verdict"]).startswith("의미 차이")]
     if diffs:
         actions.append(
@@ -179,14 +231,23 @@ def build_report(
     duty: Mapping[str, Any],
     verification: Mapping[str, Any],
     stop: Mapping[str, Any] | None = None,
+    bindings: Mapping[str, str] | None = None,
+    previous_cost: Mapping[str, Any] | None = None,
 ) -> dict:
     """The Report fields. `markdown` is the reviewer-facing document; the rest is the same
     content as data, so a caller can render it another way. `stop` is the retry policy's account
-    of why the run ended where it did; the graph layer owns that policy and passes it in."""
+    of why the run ended where it did; the graph layer owns that policy and passes it in.
+
+    `bindings` maps a rubric code to its binding level, so a 부적합 reads as 위반 or 권고 미충족.
+    `previous_cost` is the cost already on this thread's report: when this call made no model
+    call (only the report was rebuilt from a checkpoint), the review's own cost is carried
+    forward instead of the rebuild's zero."""
     stop = stop or {}
-    findings = _findings(display, duty, plain)
+    findings = _findings(display, duty, plain, bindings, classification.get("page_type"))
     status, decision, actions = _status(classification, display, verification, findings, stop)
     cost = current().summary()
+    if not cost.get("calls") and previous_cost and previous_cost.get("calls"):
+        cost = {**previous_cost, "carried_forward": True}
     product = page.get("product") or {}
     duty_items = duty.get("items") or []
     applied = [row for row in duty_items if row.get("applied")]
@@ -216,6 +277,8 @@ def build_report(
         "verification_passed": verification.get("passed"),
         "verification_loops": verification.get("loop_count"),
         "findings": len(findings),
+        "violations": sum(1 for row in findings if row.get("severity") == SEVERITY_VIOLATION),
+        "shortfalls": sum(1 for row in findings if row.get("severity") == SEVERITY_SHORTFALL),
     }
     limits = _limits(display, plain, duty)
     return {
@@ -227,8 +290,20 @@ def build_report(
         "limits": limits,
         "cost": cost,
         "markdown": _markdown(
-            page, classification, display, plain, duty, verification, stop, status, decision,
-            actions, summary, findings, limits, cost,
+            page,
+            classification,
+            display,
+            plain,
+            duty,
+            verification,
+            stop,
+            status,
+            decision,
+            actions,
+            summary,
+            findings,
+            limits,
+            cost,
         ),
     }
 
@@ -336,6 +411,11 @@ def _markdown(
             ],
             ["검토 영역", "검토 항목", "위반·반려", "판정 불가·차이"],
         ),
+        f"부적합 {summary['violations'] + summary['shortfalls']}건 중 위반"
+        f" {summary['violations']}건, 권고 미충족 {summary['shortfalls']}건입니다. 광고 규정과"
+        " 협회 표시 규정은 공개 상품 페이지(광고)에 직접 적용되어 위반으로 읽고, 설명의무 항목은"
+        " 계약 권유 단계의 의무를 광고 화면에 준용한 것이어서 권고 미충족으로 읽습니다.",
+        "",
         "## 3. 확인이 필요한 항목",
         "",
         *_table(
@@ -344,12 +424,13 @@ def _markdown(
                     row["code"],
                     row["target"],
                     str(row["verdict"]),
+                    f"{row['severity']}({row['basis']})" if row.get("severity") else "-",
                     _clip(row["reason"], 160),
                     _clip(" / ".join(row["quotes"]), 80),
                 ]
                 for row in findings
             ],
-            ["항목", "대상", "판정", "사유", "인용"],
+            ["항목", "대상", "판정", "구분", "사유", "인용"],
         ),
         "## 4. 표시방법 검토 상세",
         "",
@@ -411,8 +492,7 @@ def _markdown(
         "",
         f"- 통과: {verification.get('passed')}",
         f"- 실패 모듈: {verification.get('failed_modules') or '없음'}",
-        f"- 검증 루프: {verification.get('loop_count')}회"
-        f" (최대 {stop.get('max_loops', '-')}회)",
+        f"- 검증 루프: {verification.get('loop_count')}회 (최대 {stop.get('max_loops', '-')}회)",
         f"- 중단 사유: {stop.get('reason') or '없음(통과)'}"
         + (f" — {stop['detail']}" if stop.get("detail") else ""),
         f"- 재시도 이력: {verification.get('retry_history') or '없음'}",
@@ -423,8 +503,12 @@ def _markdown(
         "",
         "## 8. 비용과 소요시간",
         "",
-        "아래 수치는 **이 문서를 만든 실행**에서 발생한 것입니다. 체크포인트에서 보고서만 다시"
-        " 만들면 모델 호출이 0회로 찍히며, 그때는 원래 검토의 비용이 아닙니다.",
+        (
+            "아래 수치는 **원래 검토 실행**에서 기록된 값입니다. 이 문서는 체크포인트에서 모델"
+            " 호출 없이 다시 만들었고, 다시 만드는 데 든 비용은 없습니다."
+            if cost.get("carried_forward")
+            else "아래 수치는 **이 문서를 만든 실행**에서 발생한 것입니다."
+        ),
         "",
         f"- 모델 호출 {cost.get('calls')}회, 입력 {cost.get('input_tokens'):,} tokens,"
         f" 출력 {cost.get('output_tokens'):,} tokens",
@@ -432,10 +516,11 @@ def _markdown(
         f"- 소요시간 {cost.get('elapsed_seconds')}초",
         f"- 상한: {cost.get('caps')}",
         *(
-            ["- 이 실행은 모델을 부르지 않았습니다(체크포인트에서 보고서만 재생성)."]
+            ["- 이 실행은 모델을 부르지 않았고, 원래 실행의 비용 기록도 없습니다."]
             if not cost.get("calls")
             else []
         ),
+        *([f"- 단계별: {_step_costs(cost['by_step'])}"] if cost.get("by_step") else []),
         "",
         "## 9. 한계와 가정",
         "",
