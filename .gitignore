@@ -231,6 +231,9 @@ data/output/
 data/runs/
 data/chroma/
 data/review/
+# Downloaded persona dataset (~2GB, fetched by `fetch-personas`) and live-run data dirs.
+data/personas/
+data/live*/
 
 # PyPI configuration file
 .pypirc
