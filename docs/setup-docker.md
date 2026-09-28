@@ -16,8 +16,8 @@ the internet is not the one driving a browser.
 
 - Docker Desktop, or Docker Engine with the Compose plugin
 - A `.env` at the repository root
-- The rubric yaml folder on the host (`05 법령·지침 원문 검증/카드사 가드레일 루브릭`) — checked
-  into the repository, no separate checkout needed
+- The rubric yaml folder on the host (`assets/`) — checked into the repository, no separate
+  checkout needed
 
 ## Environment
 
@@ -38,8 +38,7 @@ Two worth setting deliberately:
   way to start an unauthenticated instance. Issue one with
   `uv run python -m financial_disclosure_review.serving.token`.
 - **`FDR_RUBRIC_HOST_DIR`** — the host path mounted read-only at `/app/rubrics`. The default is
-  the copy checked into this repository (`05 법령·지침 원문 검증/카드사 가드레일 루브릭`); set it
-  only if you keep the yaml elsewhere.
+  the copy checked into this repository (`assets/`); set it only if you keep the yaml elsewhere.
 
 ## The reference DB
 

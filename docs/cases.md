@@ -12,7 +12,7 @@ created: 2026-09-27
 
 ## 코퍼스 파일
 
-`../05 법령·지침 원문 검증/카드사 가드레일 루브릭/case_corpus.yaml` (19건)
+`../assets/case_corpus.yaml` (19건)
 
 루브릭 YAML과 같은 폴더, 즉 같은 신뢰 경계에 두었습니다. 근거는 세 가지입니다.
 
@@ -20,7 +20,7 @@ created: 2026-09-27
   `data/output/`, `*.sqlite`를 빼고 있어, 사람이 손으로 만든 코퍼스를 두기에 맞지 않습니다.
 - 사례에는 루브릭과 똑같은 규율이 필요합니다. 항목마다 공식 1차 출처 URL이 있어야 하고
   (`sources[].official_url` 원칙), 사람 검토를 받아야 합니다.
-- `Context.default_rubric_dir()`가 이미 이 폴더를 찾아 올라가므로, `build-cases`가 같은 조회 함수를
+- `Context.default_rubric_dir()`가 이미 이 폴더를 가리키므로, `build-cases`가 같은 조회 함수를
   재사용합니다. 경로 찾기 규칙을 새로 만들지 않았습니다.
 
 형식은 루브릭과 같은 YAML(`items:` 목록 하나)입니다. 여러 줄 한국어 인용문을 블록 스칼라로 읽기
