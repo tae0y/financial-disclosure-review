@@ -261,6 +261,24 @@ def test_health_routes_answer_without_a_token(tmp_path, stub) -> None:
         assert client.get("/readyz").status_code == 200
 
 
+def test_cors_preflight_allows_the_frontend_bearer_request(tmp_path, stub, monkeypatch) -> None:
+    origin = "https://finalproject-phi-sooty.vercel.app"
+    monkeypatch.setenv("FDR_CORS_ORIGINS", origin)
+    client, _ = build(tmp_path, stub)
+    with client:
+        response = client.options(
+            "/v1/reviews",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization,content-type",
+            },
+        )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    assert "authorization" in response.headers["access-control-allow-headers"].lower()
+
+
 def test_a_job_cut_off_by_shutdown_is_interrupted_not_running(tmp_path) -> None:
     """A row left `running` would make a caller poll for ever, so shutdown closes it out."""
 

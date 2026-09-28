@@ -55,7 +55,8 @@ services:
       FDR_AGENT_URL: http://agent:8100
       FDR_JOBS_DB: /app/data/jobs.sqlite
       FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-1}
-      FDR_CORS_ORIGINS: ${FDR_CORS_ORIGINS:-}
+      # Read browser origins from env_file.  A Compose interpolation here would resolve against
+      # the shell/project environment and can overwrite ../.env with an empty value.
       FDR_RUN_TIMEOUT: ${FDR_RUN_TIMEOUT:-1800}
       FDR_JOB_RETENTION_DAYS: ${FDR_JOB_RETENTION_DAYS:-30}
       FDR_LOG_LEVEL: ${FDR_LOG_LEVEL:-INFO}

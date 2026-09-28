@@ -264,7 +264,10 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
             CORSMiddleware,
             allow_origins=origins,
             allow_methods=["GET", "POST"],
-            allow_headers=["X-API-Key", "Content-Type"],
+            # Browser callers authenticate with the documented bearer scheme.  It must be
+            # allowed here too, otherwise a cross-origin POST fails during its OPTIONS
+            # preflight before the request reaches the authentication dependency.
+            allow_headers=["Authorization", "Content-Type"],
         )
 
     @app.get("/healthz", response_model=Health, tags=["health"], operation_id="getHealth")
