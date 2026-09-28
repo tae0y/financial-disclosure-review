@@ -40,6 +40,7 @@ def _context(settings: AgentSettings, model: str | None) -> Context:
         model=model or settings.model,
         data_dir=settings.data_dir,
         db_path=settings.resolved_db_path(),
+        allowed_hosts=settings.allowed_hosts,
     )
 
 

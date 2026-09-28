@@ -11,6 +11,7 @@ from playwright.sync_api import Error as PlaywrightError
 from ...core.color import contrast_ratio
 from ...core.context import Context
 from ...core.text import digest
+from ...core.urls import url_problem
 from .html import extract_pieces
 
 SNAPSHOT_STYLES = [
@@ -264,11 +265,25 @@ class PageSession:
             main_frame = request.is_navigation_request() and request.frame == self.page.main_frame
         except PlaywrightError:
             main_frame = False
-        if main_frame and not self.allow_nav:
-            self.blocked.append(request.url)
-            route.abort()
-        else:
+        if not main_frame:
             route.continue_()
+            return
+
+        # A redirect is another main-frame request. Validate it before it leaves the browser,
+        # not just after page.goto() returns, so a public URL cannot pivot the worker to a
+        # loopback, private, link-local or allow-list-excluded destination.
+        problem = url_problem(request.url, self.ctx.allowed_hosts)
+        if problem:
+            self.blocked.append(request.url)
+            self.log("blocked_navigation", url=request.url, reason=problem)
+            route.abort()
+            return
+        if not self.allow_nav:
+            self.blocked.append(request.url)
+            self.log("blocked_navigation", url=request.url, reason="not requested by the reviewer")
+            route.abort()
+            return
+        route.continue_()
 
     def viewport(self) -> dict:
         return dict(self.page.viewport_size)
@@ -290,6 +305,9 @@ class PageSession:
             ) from error
         finally:
             self.allow_nav = False
+        problem = url_problem(self.page.url, self.ctx.allowed_hosts)
+        if problem:
+            raise PageBlocked(f"navigation landed on refused URL {self.page.url}: {problem}")
         if response is not None and response.status >= 400:
             raise PageBlocked(f"HTTP {response.status} {response.status_text} for {url}")
         try:

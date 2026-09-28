@@ -24,6 +24,7 @@ items:
   text: |
     평균 이자율 언급 없이 최소 및 최대 이자율 범위만 안내하고, 광고 첫 화면에 일반 소비자가
     적용받기 어려운 최소이자율만 표기하여 소비자의 올바른 의사결정을 저해.
+  text_sha256: a3547454a8394a745b0cd36f1590221aeecb710c679d6a7eb1ad9f3d84bfb313
   retrieved_at: '2026-09-27'
 
 - case_id: case.test_revolving_legibility
@@ -49,6 +50,7 @@ items:
   text: |
     리볼빙 가입화면 안내문의 글자 크기가 작거나 모두 검은색으로 기재되어 중요사항에 대해
     금융소비자가 명확히 인지하지 못할 우려.
+  text_sha256: 769f40ed5ce1c2669ba3debdfded5a9bbaf4e047e7dcee49deebf39556e75ebd
   retrieved_at: '2026-09-27'
 
 - case_id: case.test_card_benefit_condition
@@ -74,6 +76,7 @@ items:
   text: |
     무이자할부를 이용할 경우 실적 산정, 포인트 적립 및 할인 등이 제외되는 조건임에도 이를
     홈페이지 또는 홍보물을 통해 안내하지 않고 있어 혜택을 비교·선택하기 어렵다.
+  text_sha256: a894e08a9071465606cd2e2fd4e4ae6e664d67178d3014544edbb3855af2e5cb
   retrieved_at: '2026-09-27'
 
 - case_id: case.test_loan_eligibility
@@ -98,4 +101,5 @@ items:
   text: |
     일정한 대출거절요건에 해당하는 고객에게는 대출을 불허함에도 불구하고, 마치 특정 연령대의
     모든 소비자에게 대출을 허용해주는 것처럼 광고하는 행위.
+  text_sha256: 61b2c399a497f880df85f9506f410f174270f0544c7b945cf950fc0fd1dc5c55
   retrieved_at: '2026-09-27'

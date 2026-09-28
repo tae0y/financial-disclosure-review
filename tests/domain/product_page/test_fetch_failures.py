@@ -42,6 +42,18 @@ def test_a_private_address_is_refused_before_a_browser_starts(monkeypatch, tmp_p
         )
 
 
+def test_an_allow_list_is_refused_before_a_browser_starts(monkeypatch, tmp_path):
+    def no_browser():
+        raise AssertionError("the browser must not start for a refused URL")
+
+    monkeypatch.setattr(fetch_module, "sync_playwright", no_browser)
+    with pytest.raises(ValueError, match="not in the allowed list"):
+        fetch_product_page(
+            "https://8.8.8.8/card",
+            Context(data_dir=str(tmp_path), allowed_hosts=("lottecard.co.kr",)),
+        )
+
+
 def test_a_discovered_rule_that_fails_its_own_replay_raises_and_saves_nothing(
     monkeypatch, tmp_path
 ):

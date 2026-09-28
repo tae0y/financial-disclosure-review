@@ -130,6 +130,35 @@ def render(run: dict) -> str:
             ],
         )
 
+    plain_arms = {
+        entry["result"].get("arm", "pipeline"): entry["metrics"]
+        for entry in run["suites"]
+        if entry["result"]["suite"].startswith("plain-contract")
+    }
+    if len(plain_arms) > 1:
+        lines += [
+            "## 쉬운말 계약 검사: 의미 판정 포함 대비 기계 검사만",
+            "",
+            "같은 13개 문장쌍에서 현행 구성(`pipeline`)과 수치·단정·인용문만 대조하는 "
+            "기계 검사(`mechanical`)를 비교합니다. 후자는 조건·예외·불이익의 의미 보존을 "
+            "판정하는 모델 호출을 의도적으로 빼고 실제로 실행합니다.",
+            "",
+        ]
+        lines += _table(
+            ["지표", *plain_arms],
+            [
+                [
+                    "주입 결함 적발",
+                    *[f"{m['caught']}/{m['defective']}" for m in plain_arms.values()],
+                ],
+                [
+                    "무결함 대조군 오탐",
+                    *[f"{m['false_alarms']}/{m['clean']}" for m in plain_arms.values()],
+                ],
+                ["놓친 케이스", *[str(m["missed"] or "없음") for m in plain_arms.values()]],
+            ],
+        )
+
     display_arms = {
         entry["result"]["arm"]: entry["metrics"]
         for entry in run["suites"]

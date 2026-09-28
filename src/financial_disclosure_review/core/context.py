@@ -33,3 +33,6 @@ class Context:
     viewport_height: int = 800
     max_turns: int = 20
     max_visits: int = 3
+    # A deployment can narrow the public sites a review may reach. This setting travels with the
+    # graph so the browser checks the same allow-list again for every redirect target.
+    allowed_hosts: tuple[str, ...] = ()

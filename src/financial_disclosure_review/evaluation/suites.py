@@ -345,14 +345,23 @@ def _groundedness(verdicts: dict, text: str) -> dict:
 # ---------------------------------------------------------------- plain contract
 
 
-def run_plain_contract(ctx: Context, cassette: Asks, cases: list[dict]) -> dict:
+def run_plain_contract(
+    ctx: Context,
+    cassette: Asks,
+    cases: list[dict],
+    arm: Literal["pipeline", "mechanical"] = "pipeline",
+) -> dict:
     """The rewrite contract against pairs whose defect is known.
 
     Numbers/absolute-phrase/hedge are decidable from the two strings, so those run for free.
     Whether a condition/exception/limit/penalty survived in meaning is not, so a pair that clears
     the mechanical checks goes through `judge_condition_preservation` on `cassette.ask` — one
-    model call per case (paid on `--live --record`, free on replay).
+    model call per case (paid on `--live --record`, free on replay). The `mechanical` arm runs
+    exactly the same pairs and deterministic checks but deliberately omits that semantic model
+    judgment, making the added value measurable rather than inferred from a no-op configuration.
     """
+    if arm not in ("pipeline", "mechanical"):
+        raise ValueError(f"unknown plain-contract arm {arm!r}")
     rows = []
     to_judge: list[dict] = []
     for case in cases:
@@ -369,7 +378,7 @@ def run_plain_contract(ctx: Context, cassette: Asks, cases: list[dict]) -> dict:
             "expect_marker": case.get("expect_marker", ""),
         }
         rows.append(row)
-        if not problems:
+        if arm == "pipeline" and not problems:
             to_judge.append({"id": case["id"], "quote": quote, "text": rewrite})
 
     judgments = judge_condition_preservation(to_judge, ctx.model, cassette.ask) if to_judge else {}
@@ -384,7 +393,8 @@ def run_plain_contract(ctx: Context, cassette: Asks, cases: list[dict]) -> dict:
             if row["expect_marker"]
             else None
         )
-    return {"suite": "plain-contract", "rows": rows}
+    name = "plain-contract" if arm == "pipeline" else f"plain-contract/{arm}"
+    return {"suite": name, "arm": arm, "rows": rows}
 
 
 # ---------------------------------------------------------------- stability

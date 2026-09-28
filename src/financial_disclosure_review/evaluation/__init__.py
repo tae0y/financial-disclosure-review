@@ -114,6 +114,8 @@ def _run_suites(
     if "plain-contract" in suites:
         cases = load_cases(root / "cases" / "plain_contract.json")
         results.append(run_plain_contract(ctx, cassette, cases["cases"]))
+        if "ablation" in arms:
+            results.append(run_plain_contract(ctx, cassette, cases["cases"], arm="mechanical"))
     if "stability" in suites:
         config = load_cases(root / "cases" / "duty_flip.json")
         config["base_html"] = str(

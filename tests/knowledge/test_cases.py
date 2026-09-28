@@ -173,6 +173,7 @@ def test_the_schema_check_reports_a_missing_field():
         ({"official_primary_url": "http://example.test/x"}, "official_primary_url"),
         ({"official_primary_url": None}, "official_primary_url"),
         ({"text": "   "}, "text is empty"),
+        ({"text_sha256": "not-a-sha"}, "text_sha256"),
         ({"product_types": []}, "product_types"),
         ({"source_tier": "1"}, "source_tier"),
     ],
@@ -232,6 +233,14 @@ def test_the_embedded_text_carries_the_fields_a_query_is_about():
     assert "리볼빙" in text and "C03" in text
     assert item["issue"] in text and item["mvp_signal"] in text
     assert item["case_id"] not in text  # bookkeeping fields stay out of the vector
+
+
+def test_a_case_text_hash_is_preserved_and_must_match_the_embedded_excerpt(db_path):
+    case = load_cases(db_path)[0]
+    assert len(case["text_sha256"]) == 64
+    assert case["text_sha256"] == yaml.safe_load(
+        (CORPUS / "case_corpus.yaml").read_text()
+    )["items"][0]["text_sha256"]
 
 
 def test_case_summary_names_the_institution_and_the_issue():

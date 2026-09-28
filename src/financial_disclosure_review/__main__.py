@@ -240,7 +240,10 @@ def parser() -> argparse.ArgumentParser:
     check.add_argument(
         "--ablation",
         action="store_true",
-        help="also run the comparison arms (duty-flip without validation, keyword classification)",
+        help=(
+            "also run comparison arms (duty-flip without validation, keyword classification, "
+            "plain-contract without semantic judgment)"
+        ),
     )
     check.add_argument(
         "--repeats", type=int, default=3, help="rounds of the same questions for --suite stability"

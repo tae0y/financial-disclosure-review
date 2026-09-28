@@ -10,6 +10,7 @@ calls a paid embedding model, so it is its own command (`build-cases`).
 
 import sqlite3
 from contextlib import closing
+from hashlib import sha256
 from pathlib import Path
 
 import yaml
@@ -36,6 +37,7 @@ CASE_FIELDS: dict[str, type | tuple[type, ...]] = {
     "page_only_detectability": str,
     "related_checklist": list,
     "text": str,
+    "text_sha256": str,
     "retrieved_at": str,
 }
 LIST_FIELDS = ("product_types", "related_checklist")
@@ -70,6 +72,7 @@ def case_schema(dimensions: int) -> list[str]:
             mvp_signal TEXT NOT NULL,
             page_only_detectability TEXT NOT NULL,
             text TEXT NOT NULL,                 -- the quoted source wording, and what is embedded
+            text_sha256 TEXT NOT NULL,          -- SHA-256 of text.strip(), for reproducibility
             retrieved_at TEXT NOT NULL
         )""",
         """CREATE TABLE case_product_types (
@@ -130,6 +133,8 @@ def case_schema_problems(items: list[dict]) -> list[str]:
             problems.append(f"{where}: official_primary_url is {url!r}, not an https URL")
         if not isinstance(item.get("text"), str) or not (item.get("text") or "").strip():
             problems.append(f"{where}: text is empty, so there is nothing to embed")
+        elif item.get("text_sha256") != sha256(item["text"].strip().encode("utf-8")).hexdigest():
+            problems.append(f"{where}: text_sha256 does not match text.strip()")
     codes = [item.get("case_id") for item in items]
     problems += [
         f"case_id {code} appears {codes.count(code)} times"

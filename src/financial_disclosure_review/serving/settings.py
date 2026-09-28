@@ -41,6 +41,10 @@ class AgentSettings:
     max_calls: int = field(default_factory=lambda: _int("FDR_MAX_CALLS", 60))
     max_usd: float = field(default_factory=lambda: _float("FDR_MAX_USD", 1.0))
     concurrency: int = field(default_factory=lambda: _int("FDR_AGENT_CONCURRENCY", 1))
+    # Keep the worker's browser guard aligned with the public gateway's admission rule. The
+    # worker also accepts direct internal requests while debugging, so the check cannot live
+    # only in ApiSettings.
+    allowed_hosts: tuple[str, ...] = field(default_factory=lambda: _tokens("FDR_ALLOWED_HOSTS"))
 
     def resolved_db_path(self) -> str:
         return self.db_path or str(Path(self.data_dir) / "reference.sqlite")

@@ -4,6 +4,7 @@ import pytest
 from playwright.sync_api import sync_playwright
 
 from financial_disclosure_review.core.context import Context
+from financial_disclosure_review.domain.product_page import session as session_module
 from financial_disclosure_review.domain.product_page.session import (
     PageSession,
     bounds_overlap,
@@ -187,3 +188,41 @@ def test_the_selected_view_is_captured_as_a_state(session):
     session.snapshot("default", "with a view")
     assert len(session.states) == 1
     assert "커피 전문점" in session.states[0][0]["text"]
+
+
+def test_the_navigation_guard_refuses_a_private_redirect_even_when_goto_allowed_it(
+    session, monkeypatch
+):
+    """Redirect targets must be checked while `goto()` has navigation open."""
+
+    class Request:
+        url = "http://169.254.169.254/latest/meta-data/"
+        frame = session.page.main_frame
+
+        def is_navigation_request(self):
+            return True
+
+    class Route:
+        request = Request()
+
+        def __init__(self):
+            self.action = ""
+
+        def abort(self):
+            self.action = "aborted"
+
+        def continue_(self):
+            self.action = "continued"
+
+    monkeypatch.setattr(session_module, "url_problem", lambda *_: "non-public address")
+    session.allow_nav = True
+    route = Route()
+    session.guard_navigation(route)
+
+    assert route.action == "aborted"
+    assert session.blocked == [Request.url]
+    assert session.actions[-1] == {
+        "type": "blocked_navigation",
+        "url": Request.url,
+        "reason": "non-public address",
+    }

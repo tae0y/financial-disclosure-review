@@ -21,6 +21,7 @@ CASE_COLUMNS = (
     "mvp_signal",
     "page_only_detectability",
     "text",
+    "text_sha256",
     "retrieved_at",
 )
 

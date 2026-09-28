@@ -372,6 +372,35 @@ def test_the_plain_contract_suite_catches_a_condition_the_judge_flags():
     assert row["marker_hit"] is True
 
 
+def test_the_plain_contract_mechanical_arm_is_a_real_no_model_comparison():
+    class NeverCallCassette:
+        def ask(self, *args, **kwargs):
+            raise AssertionError("the mechanical comparison must not ask the model")
+
+    cases = [
+        {
+            "id": "condition-drop",
+            "defect": "condition_dropped",
+            "expect_marker": "조건·불이익 관련 뜻 누락 가능",
+            "source_quote": "전월 실적 30만원 이상이면 5천원이 적립됩니다.",
+            "rewrite": "전월 실적 30만원일 때 5천원이 적립됩니다.",
+        },
+        {
+            "id": "invented-number",
+            "defect": "invented_number",
+            "expect_marker": "원문에 없는 수치 포함",
+            "source_quote": "연회비는 국내전용 20,000원입니다.",
+            "rewrite": "연회비는 국내전용 12,000원입니다.",
+        },
+    ]
+    result = run_plain_contract(Context(), NeverCallCassette(), cases, arm="mechanical")
+    metrics = metrics_for(result)
+
+    assert result["suite"] == "plain-contract/mechanical"
+    assert metrics["caught"] == 1
+    assert metrics["missed"] == ["condition-drop"]
+
+
 # ---------------------------------------------------------------- salted repeats
 
 
