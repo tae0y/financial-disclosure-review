@@ -16,7 +16,7 @@ from ..domain.report import build_report
 from ..domain.verification import verify
 from ..knowledge.rubrics import rubric_bindings
 from ..knowledge.search import search_cases_for
-from .retry import MAX_LOOPS, escalation, plan_retry
+from .retry import MAX_LOOPS, RETRY_KEYS, escalation, plan_retry
 
 
 def preprocess_product_page(state: State, runtime: Runtime[Context]) -> dict:
@@ -152,14 +152,20 @@ def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
 def verify_answer(state: State, runtime: Runtime[Context]) -> dict:
     print("[verify_answer]")
     previous = state.get("verification") or {}
+    # verify() answers for this round only; the retry bookkeeping `retry_dispatch` wrote on
+    # earlier rounds is kept so the report can show how many rounds were spent and why.
+    kept = {key: previous[key] for key in RETRY_KEYS if key in previous}
     return {
-        "verification": verify(
-            state.get("product_page") or {},
-            state.get("display_check") or {},
-            state.get("plain_language") or {},
-            state.get("explanation_duty_check") or {},
-            int(previous.get("loop_count") or 0),
-        )
+        "verification": {
+            **kept,
+            **verify(
+                state.get("product_page") or {},
+                state.get("display_check") or {},
+                state.get("plain_language") or {},
+                state.get("explanation_duty_check") or {},
+                int(previous.get("loop_count") or 0),
+            ),
+        }
     }
 
 

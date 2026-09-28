@@ -143,3 +143,19 @@ def test_a_node_keeps_the_fields_its_module_already_had():
         product_page={"html": "<p>x</p>", "snapshots": [{}]},
     )
     assert judge_display_method(state, RUNTIME)["display_check"]["note"] == "이전 회차"
+
+
+def test_verify_answer_keeps_the_retry_history_of_earlier_rounds():
+    """2026-09-28 감사 P0-2: 2회차 검증이 retry_* 필드를 지워 보고서가 '재시도 이력: 없음'을
+    출력했습니다. 검증은 이번 회차 결과만 덮어쓰고 재시도 기록은 남겨야 합니다."""
+    state = empty_state()
+    state["verification"] = {
+        "loop_count": 1,
+        "retry_target": "judge_explanation_duty",
+        "retry_modules": ["explanation_duty_check"],
+        "retry_history": [{"loop": 1, "target": "judge_explanation_duty"}],
+    }
+    verification = verify_answer(state, RUNTIME)["verification"]
+    assert verification["loop_count"] == 2
+    assert verification["retry_history"] == [{"loop": 1, "target": "judge_explanation_duty"}]
+    assert verification["retry_target"] == "judge_explanation_duty"

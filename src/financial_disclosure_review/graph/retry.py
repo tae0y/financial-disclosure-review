@@ -12,6 +12,8 @@ RETRYABLE: dict[str, str] = {
     "plain_language": "generate_plain_lang",
     "explanation_duty_check": "judge_explanation_duty",
 }
+# Verification fields owned by `retry_dispatch`; `verify_answer` carries them across rounds.
+RETRY_KEYS = ("retry_target", "retry_modules", "retry_history")
 # Graph order, so a retry restarts at the earliest failed node and the rest follows by edges.
 NODE_ORDER = ["generate_plain_lang", "judge_explanation_duty"]
 

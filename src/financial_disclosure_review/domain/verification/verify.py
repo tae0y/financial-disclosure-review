@@ -177,6 +177,10 @@ def verify(
                         f"explanation_duty_check.{label} {code}: 판정 불가 ({reason})",
                     )
                     continue
+                # A missing explanation cannot be quoted, so 부적합 may cite nothing (the prompt
+                # asks for an empty quote there). A quote that is given must still be real.
+                if verdict == "부적합" and not quote:
+                    continue
                 if not quote or locate_quote(text, quote) is None:
                     fail(
                         "explanation_duty_check",

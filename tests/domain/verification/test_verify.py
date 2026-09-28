@@ -174,3 +174,18 @@ def test_the_loop_count_carries_the_previous_value_forward():
     state = sound_input()
     state["loop_count"] = 2
     assert run(state)["loop_count"] == 3
+
+
+def test_a_nonconforming_row_may_cite_nothing_because_the_explanation_is_missing():
+    """부적합은 '설명이 없다'는 판정이라 인용할 문장이 없습니다. 빈 인용을 실패로 보면 재시도가
+    같은 답으로 끝나고 상태가 늘 '사람 검토 필요'가 됩니다(2026-09-28 감사 P0-1)."""
+    state = sound_input()
+    state["explanation_duty_check"]["original"][0].update(verdict="부적합", quote="")
+    result = run(state)
+    assert "explanation_duty_check" not in result["failed_modules"], result["reasons"]
+
+
+def test_a_conforming_row_still_needs_a_quote():
+    state = sound_input()
+    state["explanation_duty_check"]["original"][0].update(verdict="적합", quote="")
+    assert "explanation_duty_check" in run(state)["failed_modules"]
