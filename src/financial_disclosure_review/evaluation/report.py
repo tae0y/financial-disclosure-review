@@ -59,7 +59,8 @@ def render(run: dict) -> str:
                     f"{metrics['duty_stable']}/{metrics['duty_items']}",
                     f"{metrics['repeats']}회 반복 동일 판정 {_pct(metrics['duty_stability'])}"
                     f" · 분류 {metrics['classification_stable']}/{metrics['classification_cases']}",
-                    f"적합이 오간 항목 {metrics['duty_pass_flips'] or '없음'}",
+                    f"적합이 오간 항목 {metrics['duty_pass_flips'] or '없음'}"
+                    f" · 흔들림 유형 {metrics.get('duty_unstable_kinds') or '없음'}",
                 ]
             )
             for arm, base in metrics.get("baseline", {}).items():
@@ -68,7 +69,8 @@ def render(run: dict) -> str:
                         f"stability/{arm}",
                         f"{base['duty_stable']}/{base['duty_items']}",
                         f"{metrics['repeats']}회 반복 동일 판정 {_pct(base['duty_stability'])}",
-                        f"적합이 오간 항목 {base['duty_pass_flips'] or '없음'}",
+                        f"적합이 오간 항목 {base['duty_pass_flips'] or '없음'}"
+                        f" · 흔들림 유형 {base.get('duty_unstable_kinds') or '없음'}",
                     ]
                 )
         elif name.startswith("classification"):

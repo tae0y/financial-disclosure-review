@@ -493,3 +493,5 @@ def test_the_stability_suite_repeats_the_ablation_arm_as_a_baseline(tmp_path, mo
     assert baseline["duty_unstable"] == [
         {"code": "F11", "verdicts": ["부적합", "판정 불가", "판정 불가"]}
     ]
+    assert baseline["duty_unstable_kinds"] == {"부적합↔판정 불가": 1}
+    assert metrics["duty_unstable_kinds"] == {}

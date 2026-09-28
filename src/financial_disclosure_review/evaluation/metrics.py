@@ -90,7 +90,24 @@ def _duty_agreement(duty: list[dict]) -> dict:
         "duty_unstable": [
             {"code": row["code"], "verdicts": row["verdicts"]} for row in duty if not row["stable"]
         ],
+        # Descriptive only, split after the first comparison was seen: which verdicts an unstable
+        # item moved between. 판정 불가 hands the item to a person; 적합↔부적합 contradicts itself.
+        "duty_unstable_kinds": _kinds(row["verdicts"] for row in duty if not row["stable"]),
     }
+
+
+VERDICT_ORDER = ("적합", "부적합", "판정 불가")
+
+
+def _kinds(unstable) -> dict[str, int]:
+    kinds: dict[str, int] = {}
+    for verdicts in unstable:
+        seen = sorted(
+            set(verdicts), key=lambda v: VERDICT_ORDER.index(v) if v in VERDICT_ORDER else 9
+        )
+        kind = "↔".join(str(v) for v in seen)
+        kinds[kind] = kinds.get(kind, 0) + 1
+    return kinds
 
 
 def stability_metrics(result: dict) -> dict:
