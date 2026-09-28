@@ -15,6 +15,12 @@ class ProductPage(TypedDict, total=False):
     actions: Any
     snapshots: Any
     html: Any
+    # 완료 | 조사 불충분 | 수집 실패, and the machine-readable reason the agent loop stopped.
+    status: Any
+    stop_reason: Any
+    error: Any
+    coverage: Any
+    agent_trace: Any
 
 
 class Classification(TypedDict, total=False):

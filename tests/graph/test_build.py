@@ -159,3 +159,28 @@ def test_the_sample_urls_run_end_to_end():
         assert page.get("html")
         assert set(final["classification"]) == {"product_type", "page_type", "reason"}
         assert set(final["display_check"]) <= {"items", "judgments"}
+
+
+def test_a_collection_failure_reaches_a_report_without_any_model_call(monkeypatch):
+    failed = {
+        "url": "https://example.test/product",
+        "product": {},
+        "actions": [],
+        "snapshots": [],
+        "html": "",
+        "status": "수집 실패",
+        "stop_reason": "fetch_error",
+        "error": "navigation failed",
+        "coverage": {"before": {}, "after": {}, "gaps": []},
+        "agent_trace": [],
+    }
+    monkeypatch.setattr(nodes, "fetch_product_page", lambda url, ctx: failed)
+
+    def no_model(*args, **kwargs):
+        raise AssertionError("no model call after a collection failure")
+
+    monkeypatch.setattr(nodes, "classify_page", no_model)
+    final = build_review_graph().invoke(initial(), context=Context(model="fake"))
+    assert final["classification"] == {}
+    assert final["report"]["status"] == "수집 실패"
+    assert "navigation failed" in final["report"]["markdown"]

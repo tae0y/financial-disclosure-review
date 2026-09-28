@@ -46,6 +46,15 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
             "product": page.get("product"),
             "html_chars": len(page.get("html") or ""),
             "snapshot_count": len(page.get("snapshots") or []),
+            "status": page.get("status"),
+            "stop_reason": page.get("stop_reason"),
+            "error": page.get("error"),
+            "open_gaps": sum(
+                1
+                for gap in (page.get("coverage") or {}).get("gaps") or []
+                if gap.get("status") in ("open", "unresolved")
+            ),
+            "agent_steps": len(page.get("agent_trace") or []),
         },
         "classification": dict(classification),
         "display_check": {
@@ -79,6 +88,8 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
         },
     }
     if detail is Detail.full:
+        view["product_page"]["coverage"] = page.get("coverage") or {}
+        view["product_page"]["agent_trace"] = page.get("agent_trace") or []
         view["display_check"]["items"] = display.get("items") or []
         view["plain_language"]["html"] = plain.get("html")
         view["plain_language"]["items"] = plain.get("items") or []

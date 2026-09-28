@@ -325,3 +325,81 @@ def test_a_run_that_made_calls_reports_its_own_cost_not_the_previous_one():
     )
     assert result["cost"]["calls"] == 1
     assert "carried_forward" not in result["cost"]
+
+
+FAILED_PAGE = {
+    "url": "https://example.test/card",
+    "html": "",
+    "status": "수집 실패",
+    "stop_reason": "fetch_error",
+    "error": "HTTP 503 Service Unavailable",
+    "coverage": {"before": {}, "after": {}, "gaps": []},
+    "agent_trace": [],
+}
+
+
+def test_a_collection_failure_is_reported_as_such_not_as_a_classification_problem():
+    result = report(
+        page=FAILED_PAGE,
+        classification={},
+        display={},
+        plain={},
+        duty={},
+        verification={},
+    )
+    assert result["status"] == "수집 실패"
+    assert any("fetch_error" in action and "HTTP 503" in action for action in result["actions"])
+    assert "상품 유형을 확정하지 못해" not in result["markdown"]
+    assert "## 10. 페이지 수집 agent 기록" in result["markdown"]
+
+
+def test_no_accepted_rule_reads_as_an_insufficient_investigation():
+    page = {**FAILED_PAGE, "status": "조사 불충분", "stop_reason": "max_turns", "error": ""}
+    result = report(page=page, classification={}, display={}, plain={}, duty={}, verification={})
+    assert result["status"] == "조사 불충분"
+    assert any("max_turns" in action for action in result["actions"])
+
+
+def test_an_open_evidence_gap_keeps_a_clean_run_from_reading_as_done():
+    page = {
+        **PAGE,
+        "html": "<p>연회비 1만원</p>",
+        "status": "조사 불충분",
+        "stop_reason": "no_viable_control",
+        "coverage": {
+            "before": {"hidden_text_blocks": 2},
+            "after": {"hidden_text_blocks": 2},
+            "gaps": [
+                {
+                    "id": "gap-1",
+                    "kind": "hidden_text",
+                    "detail": "본문 영역에 숨은 텍스트 2개",
+                    "target": "div.notice",
+                    "status": "unresolved",
+                    "closed_by": None,
+                }
+            ],
+        },
+        "agent_trace": [
+            {
+                "turn": 1,
+                "tool": "inspect_page",
+                "args": {},
+                "rationale": {},
+                "blocked": False,
+                "new_evidence": False,
+            }
+        ],
+    }
+    result = report(page=page)
+    assert result["status"] == "사람 검토 필요"
+    assert result["actions"][0].startswith("페이지 수집 조사 불충분(no_viable_control)")
+    assert "gap-1" in result["markdown"]
+    assert "누락의 증거가 아닙니다" in result["markdown"]
+
+
+def test_a_completed_collection_adds_no_action():
+    page = {**PAGE, "html": "<p>연회비 1만원</p>", "status": "완료", "stop_reason": "full_coverage"}
+    result = report(page=page)
+    assert result["status"] == "검토 완료"
+    assert not any(action.startswith("페이지 수집") for action in result["actions"])

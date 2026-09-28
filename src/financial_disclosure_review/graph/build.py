@@ -15,7 +15,12 @@ from .nodes import (
     search_cases,
     verify_answer,
 )
-from .routes import route_after_classify, route_after_retry, route_after_verify
+from .routes import (
+    route_after_classify,
+    route_after_preprocess,
+    route_after_retry,
+    route_after_verify,
+)
 
 
 def build_review_graph(checkpointer=None):
@@ -31,7 +36,11 @@ def build_review_graph(checkpointer=None):
     builder.add_node("end_report", end_report)
 
     builder.add_edge(START, "preprocess_product_page")
-    builder.add_edge("preprocess_product_page", "classify_type")
+    builder.add_conditional_edges(
+        "preprocess_product_page",
+        route_after_preprocess,
+        {"classify_type": "classify_type", "end_report": "end_report"},
+    )
     builder.add_conditional_edges(
         "classify_type",
         route_after_classify,

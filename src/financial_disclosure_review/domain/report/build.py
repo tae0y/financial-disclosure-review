@@ -9,6 +9,10 @@ STATUS_PASSED = "검토 완료"
 STATUS_REVIEW = "사람 검토 필요"
 STATUS_OUT_OF_SCOPE = "검토 대상 아님"
 STATUS_UNJUDGED = "판정 불가"
+STATUS_COLLECTION_FAILED = "수집 실패"
+STATUS_INSUFFICIENT = "조사 불충분"
+# product_page.status values written by the page-evidence agent.
+PAGE_COMPLETE = "완료"
 
 PUBLISH_BLOCKED = "쉬운말 자동 게시 불가 — 원문 유지"
 PUBLISH_ALLOWED = "담당자 확인 후 쉬운말 게시 가능"
@@ -130,7 +134,59 @@ def _findings(
     return found
 
 
+def _collection_action(page: Mapping[str, Any]) -> str:
+    """One reviewer line naming why collection stopped; empty when the agent finished cleanly."""
+    status = page.get("status")
+    if not status or status == PAGE_COMPLETE:
+        return ""
+    gaps = [
+        g
+        for g in (page.get("coverage") or {}).get("gaps") or []
+        if g.get("status") in ("open", "unresolved")
+    ]
+    detail = f" — {_clip(str(page['error']), 160)}" if page.get("error") else ""
+    return (
+        f"페이지 수집 {status}({page.get('stop_reason') or '사유 미기재'}){detail}:"
+        f" 열린 조사 공백 {len(gaps)}건을 사람이 화면에서 확인"
+    )
+
+
 def _status(
+    classification: Mapping[str, Any],
+    display: Mapping[str, Any],
+    verification: Mapping[str, Any],
+    findings: list[dict],
+    stop: Mapping[str, Any],
+    page: Mapping[str, Any] | None = None,
+) -> tuple[str, str, list[str]]:
+    page = page or {}
+    # Collection comes first: with no collected html nothing downstream ran, and a missing
+    # classification must not read as a classification problem.
+    if page.get("status") and not page.get("html"):
+        failed = page.get("status") == STATUS_COLLECTION_FAILED
+        return (
+            STATUS_COLLECTION_FAILED if failed else STATUS_INSUFFICIENT,
+            "페이지를 수집하지 못해 검토를 진행하지 않았습니다."
+            if failed
+            else "수집 agent가 검토할 본문을 확정하지 못해 검토를 진행하지 않았습니다.",
+            [
+                _collection_action(page),
+                "사람이 페이지를 직접 확인하거나 원인을 해소한 뒤 재실행",
+            ],
+        )
+    status, decision, actions = _judged_status(
+        classification, display, verification, findings, stop
+    )
+    collection = _collection_action(page)
+    if collection:
+        actions = [collection, *actions]
+        # An open evidence gap means the page was not fully seen; a clean pass is not earned.
+        if status == STATUS_PASSED:
+            status = STATUS_REVIEW
+    return status, decision, actions
+
+
+def _judged_status(
     classification: Mapping[str, Any],
     display: Mapping[str, Any],
     verification: Mapping[str, Any],
@@ -223,7 +279,7 @@ def build_report(
     """The Report fields; `stop` is why the run ended, `previous_cost` carries cost on rebuild."""
     stop = stop or {}
     findings = _findings(display, duty, plain, bindings, classification.get("page_type"))
-    status, decision, actions = _status(classification, display, verification, findings, stop)
+    status, decision, actions = _status(classification, display, verification, findings, stop, page)
     cost = current().summary()
     if not cost.get("calls") and previous_cost and previous_cost.get("calls"):
         cost = {**previous_cost, "carried_forward": True}
@@ -285,6 +341,52 @@ def build_report(
             cost,
         ),
     }
+
+
+def _collection_section(page: Mapping[str, Any]) -> list[str]:
+    """What the page agent did, why it stopped, and which evidence gaps stayed open."""
+    coverage = page.get("coverage") or {}
+    trace = page.get("agent_trace") or []
+    lines = [
+        "## 10. 페이지 수집 agent 기록",
+        "",
+        f"- 상태: {page.get('status') or '(기록 없음)'},"
+        f" 중단 사유: {page.get('stop_reason') or '-'}",
+        *([f"- 오류: {_clip(str(page['error']), 300)}"] if page.get("error") else []),
+        f"- 조사 범위(전 → 후): {coverage.get('before') or '-'} → {coverage.get('after') or '-'}",
+        "- `조사 불충분`은 누락의 증거가 아닙니다. 보이지 않은 조건은 위반이 아니라 조사 공백으로"
+        " 남깁니다.",
+        "",
+    ]
+    lines += _table(
+        [
+            [
+                gap.get("id", ""),
+                gap.get("kind", ""),
+                gap.get("status", ""),
+                _clip(str(gap.get("detail", "")), 100),
+                _clip(str(gap.get("closed_by") or ""), 60),
+            ]
+            for gap in coverage.get("gaps") or []
+        ],
+        ["공백", "종류", "상태", "내용", "닫은 행동"],
+    )
+    lines += _table(
+        [
+            [
+                str(step.get("turn", "")),
+                step.get("tool", ""),
+                _clip(str(step.get("args") or ""), 70),
+                _clip(str((step.get("rationale") or {}).get("gap_id") or ""), 20),
+                ("거부: " + _clip(str(step.get("blocked_reason", "")), 50))
+                if step.get("blocked")
+                else ("새 증거" if step.get("new_evidence") else "-"),
+            ]
+            for step in trace
+        ],
+        ["턴", "도구", "인자", "대상 공백", "결과"],
+    )
+    return lines
 
 
 def _limits(
@@ -352,6 +454,7 @@ def _markdown(
         f"- 상품유형/화면유형: {classification.get('product_type') or '(확인 불가)'}"
         f" / {classification.get('page_type') or '(해당 없음)'}",
         f"- 분류 근거: {_clip(str(classification.get('reason', '')), 300)}",
+        f"- 페이지 수집: {page.get('status') or '(기록 없음)'} ({page.get('stop_reason') or '-'})",
         "",
         "## 1. 담당자 조치 목록",
         "",
@@ -515,8 +618,8 @@ def _markdown(
         "",
     ]
     lines += [f"- {limit}" for limit in limits]
+    lines += ["", *_collection_section(page)]
     lines += [
-        "",
         "---",
         "",
         "이 문서는 자동 검토 결과입니다(ai-generated). 게시 여부의 최종 판단은 컴플라이언스"

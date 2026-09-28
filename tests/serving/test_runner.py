@@ -87,6 +87,11 @@ def test_an_empty_state_summarizes_without_raising() -> None:
         "product": None,
         "html_chars": 0,
         "snapshot_count": 0,
+        "status": None,
+        "stop_reason": None,
+        "error": None,
+        "open_gaps": 0,
+        "agent_steps": 0,
     }
     assert view["display_check"]["item_count"] == 0
     assert view["verification"]["passed"] is None

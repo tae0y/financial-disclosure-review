@@ -43,6 +43,13 @@ def print_summary(state: dict) -> None:
     print("url:", page.get("url"))
     print("product:", json.dumps(page.get("product"), ensure_ascii=False))
     print("html chars:", len(page.get("html") or ""))
+    print(
+        "collection:",
+        page.get("status"),
+        f"stop={page.get('stop_reason')}",
+        f"steps={len(page.get('agent_trace') or [])}",
+        *([f"error={page['error']}"] if page.get("error") else []),
+    )
     print("classification:", json.dumps(state.get("classification"), ensure_ascii=False))
     check = state.get("display_check") or {}
     judgments = check.get("judgments") or {}

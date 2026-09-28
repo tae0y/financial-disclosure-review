@@ -26,3 +26,13 @@ def test_a_reviewable_product_goes_on_to_the_case_search(product_type):
 
 def test_verify_goes_to_the_report_until_retries_are_built():
     assert route_after_verify(empty_state()) == "end_report"
+
+
+def test_a_page_without_collected_html_goes_straight_to_the_report():
+    """수집 실패나 규칙 미확정은 예외로 멈추지 않고, 원인을 적은 보고서로 끝나야 합니다."""
+    from financial_disclosure_review.graph.routes import route_after_preprocess
+
+    failed = state_with(product_page={"url": "https://example.test", "status": "수집 실패"})
+    assert route_after_preprocess(failed) == "end_report"
+    collected = state_with(product_page={"url": "https://example.test", "html": "<p>본문</p>"})
+    assert route_after_preprocess(collected) == "classify_type"

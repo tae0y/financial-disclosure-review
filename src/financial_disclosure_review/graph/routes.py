@@ -6,6 +6,11 @@ from .retry import NODE_ORDER, should_retry
 NON_REVIEW = ("범위 밖", "판정 불가")
 
 
+def route_after_preprocess(state: State) -> str:
+    """No collected html (수집 실패, or no accepted rule) means nothing to review: report why."""
+    return "classify_type" if (state.get("product_page") or {}).get("html") else "end_report"
+
+
 def route_after_classify(state: State) -> str:
     if state["classification"].get("product_type") in NON_REVIEW:
         return "end_report"
