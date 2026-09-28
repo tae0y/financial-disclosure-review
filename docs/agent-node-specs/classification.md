@@ -8,7 +8,7 @@ created: 2026-09-27
 
 `classify_type` decides whether a page is in scope and which credit product it is about. It is
 the only node that assigns types; `product_page` carries none. The judgment basis is the
-`Rubrics` section of `design.md`.
+[Rubrics and scope](../README.md#rubrics-and-scope) section of the docs index.
 
 ## The three steps
 

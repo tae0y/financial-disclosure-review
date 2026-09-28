@@ -9,7 +9,7 @@ created: 2026-09-27
 `judge_explanation_duty` judges the explanation-duty criteria twice — once against the original
 page, once against the plain-language rewrite — and records where the two answers differ. The
 input is a public 상품광고/업무광고 page, not a 청약 단계 설명화면, so every criterion here is
-applied by analogy (준용), per `docs/design.md` Rubrics.
+applied by analogy (준용), per [Rubrics and scope](../README.md#rubrics-and-scope).
 
 ## Two rubrics, one code axis each
 

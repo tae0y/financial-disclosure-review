@@ -1,13 +1,4 @@
-"""Invoking the review graph once per request, and narrowing the final State for the wire.
-
-Blocking by design: Playwright's sync API and the model calls both block, so the HTTP layer hands
-this to a worker thread instead of pretending it is async.
-
-One thing the CLI never had to care about matters here. `core.usage` keeps the run meter in a
-module-level global, so a long-lived server process would carry one request's token spend into the
-next and trip the cap for good. Every run starts a fresh meter, and runs are serialized upstream
-(`FDR_AGENT_CONCURRENCY`, default 1) because that global cannot be shared by two runs at once.
-"""
+"""Invokes the review graph per request in a worker thread; each run gets a fresh, serial meter."""
 
 import time
 import uuid
@@ -26,12 +17,7 @@ from ..settings import AgentSettings
 
 
 def new_thread_id(prefix: str = "review") -> str:
-    """A sortable thread id with a random tail.
-
-    The CLI's second-resolution id is unique enough for one person at a terminal. Two API
-    submissions can land in the same millisecond, and a shared thread id means two runs writing
-    one checkpoint history, so the timestamp alone cannot be the identity.
-    """
+    """A sortable thread id with a random tail, since a timestamp alone can collide across calls."""
     return f"{prefix}-{datetime.now().strftime('%y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
 
@@ -45,12 +31,7 @@ def _context(settings: AgentSettings, model: str | None) -> Context:
 
 
 def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[str, Any]:
-    """A compact, size-bounded view of the final State.
-
-    `summary` reports counts and verdicts — what a caller polls for. `full` adds the per-item rows
-    and the plain-language HTML, which is the artifact a reviewer actually edits. Neither carries
-    the source page HTML or the snapshot list.
-    """
+    """A compact view of final State; `full` adds per-item rows and plain HTML, never raw HTML."""
     page = state.get("product_page") or {}
     display = state.get("display_check") or {}
     plain = state.get("plain_language") or {}

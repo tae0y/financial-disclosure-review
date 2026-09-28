@@ -34,8 +34,7 @@ def classify_type(state: State, runtime: Runtime[Context]) -> dict:
 
 
 def search_cases(state: State, runtime: Runtime[Context]) -> dict:
-    """Related sanction/dispute cases for the classified product. Reference data only: this node
-    fills `case_search` and no judging node reads it yet."""
+    """Related sanction/dispute cases for the classified product; reference data, unread so far."""
     print("[search_cases]")
     cases: dict[str, Any] = dict(state.get("case_search") or {})
     classification = state.get("classification") or {}

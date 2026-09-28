@@ -1,8 +1,4 @@
-"""The gateway's side of the internal call to the worker.
-
-The timeout is a run timeout, not a network one: a review legitimately takes minutes, so only the
-connect phase is short while read has the whole run to finish.
-"""
+"""The gateway's side of the worker call; only connect is short, read waits for the whole run."""
 
 from typing import Any
 

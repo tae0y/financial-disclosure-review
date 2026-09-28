@@ -1,16 +1,4 @@
-"""display-flip: does the display check notice a mandatory disclosure made too small or too faint?
-
-The input is the rendered measurements of a real review (`eval/fixtures/display_*.json`). One
-mandatory-disclosure block is changed at a time — font-size 9px (6.75pt, under the rubric's 8pt)
-or text colour rgb(204,204,204) on white (about 1.6:1, under WCAG AA 4.5:1) — and the watched
-item has to turn 부적합 and cite that block. A control changes a block that is not a mandatory
-disclosure the same way; the check must not blame it.
-
-Two arms run on the same variants. `pipeline` is judge_display: the model labels which blocks are
-mandatory disclosures and warnings, code measures, the model judges within what code measured.
-`rules` is code alone, with no idea which text is mandatory: any visible block under the
-threshold fails the item. The difference is what the labelling step buys.
-"""
+"""display-flip: mutates a disclosure below threshold; pipeline/rules must catch it, not control."""
 
 import copy
 import json
@@ -30,8 +18,7 @@ WATCHED = ("E02", "E04")
 
 
 def mutate(page: dict, text: str, change: dict[str, str]) -> tuple[dict, int]:
-    """A copy of the page whose style rows showing exactly `text` carry `change`. Returns the copy
-    and how many rows were changed (0 means the case did not land)."""
+    """A copy of the page whose `text` rows carry `change`; also returns the rows-changed count."""
     variant = copy.deepcopy(page)
     target, changed = norm(text), 0
     for snapshot in variant["snapshots"]:

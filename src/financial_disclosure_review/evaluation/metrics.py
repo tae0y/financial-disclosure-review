@@ -1,8 +1,4 @@
-"""Turning suite rows into the few numbers the evaluation reports.
-
-Counts come first and rates second, always with their denominator, because a rate over four cases
-and a rate over four hundred read the same otherwise.
-"""
+"""Turns suite rows into report numbers; counts always carry their denominator with any rate."""
 
 from typing import Any
 

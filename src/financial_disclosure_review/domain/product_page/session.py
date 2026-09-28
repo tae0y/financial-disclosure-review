@@ -124,8 +124,7 @@ class SnapshotIndex:
         return False
 
     def background(self, i: int) -> str | None:
-        """Blended background if captured; otherwise the nearest ancestor background-color that
-        is not fully transparent (not blended with overlapping layers)."""
+        """Blended background if captured; otherwise the nearest non-transparent ancestor color."""
         if self.blended_of(i):
             return self.blended_of(i)
         while i >= 0:

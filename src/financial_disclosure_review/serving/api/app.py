@@ -1,14 +1,4 @@
-"""The public gateway. This is what the Cloudflare tunnel points at.
-
-A review takes minutes, and Cloudflare closes a response that produces nothing for ~100 seconds,
-so nothing here waits for the graph. A submission returns 202 with a job id, a background task
-drives the worker, and the caller polls. The one blocking dependency is SQLite, and that goes to a
-thread.
-
-`create_app(settings)` takes its settings as an argument rather than reading the environment at
-import time, so a test drives a temporary job store and a stub worker without touching the process
-environment. `app` at the bottom is the uvicorn entry point.
-"""
+"""The public gateway the tunnel points at; a submission returns 202 and the caller polls."""
 
 import asyncio
 import hmac
@@ -148,12 +138,7 @@ async def require_token(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)] = None,
 ) -> None:
-    """The bearer token against `FDR_API_TOKEN`.
-
-    No "skip the check" branch exists: an empty token list cannot reach a request, because startup
-    refuses it. If one somehow did, `any()` over nothing is False and the request is rejected —
-    the failure mode is a locked door, not an open one.
-    """
+    """Checks the bearer token against `FDR_API_TOKEN`; startup refuses to boot without one."""
     offered = credentials.credentials if credentials else ""
     tokens = settings_of(request).api_tokens
     if not any(hmac.compare_digest(offered, token) for token in tokens):

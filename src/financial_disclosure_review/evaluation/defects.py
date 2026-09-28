@@ -1,12 +1,4 @@
-"""Building evaluation variants by removing a known sentence from a real page.
-
-Gold labels for "did the review notice a missing disclosure?" are hard to buy and easy to argue
-with. They are cheap to make correct by construction: take a real page, take a disclosure the
-review itself located and quoted, delete exactly that sentence, and the label follows — that
-disclosure is now absent. A check that still calls the item 적합 is measurably wrong.
-
-Nothing here judges anything. It edits html and reports whether the edit really landed.
-"""
+"""Builds variants by deleting a disclosure sentence the review quoted, so the label is correct."""
 
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString
@@ -17,13 +9,7 @@ MIN_NODE_CHARS = 4
 
 
 def remove_quote(html: str, quote: str) -> tuple[str, bool]:
-    """Delete the text carrying `quote` from `html`. Returns (html, whether it is really gone).
-
-    A quote can sit in one text node or span several, so every node whose normalized text is
-    inside the normalized quote (or holds it) is emptied. The second return value is checked
-    against the rendered text, never assumed: a variant whose defect did not land is not a
-    valid test case.
-    """
+    """Delete the text carrying `quote` from `html`; returns (html, whether it's really gone)."""
     soup = BeautifulSoup(html, "html.parser")
     target = norm(quote)
     if not target:
@@ -45,11 +31,7 @@ def remove_quote(html: str, quote: str) -> tuple[str, bool]:
 
 
 def longest_unused_sentence(html: str, used_quotes: list[str], min_chars: int = 30) -> str:
-    """A long sentence no judgment cited, used as the neutral control edit.
-
-    Deleting it must not turn any item from 적합 into 부적합; if it does, the check is reacting to
-    the page changing rather than to the disclosure that left.
-    """
+    """A long sentence no judgment cited, the control edit — deleting it must not flip any item."""
     text = visible_text(html)
     used = [norm(q) for q in used_quotes if q]
     candidates = []

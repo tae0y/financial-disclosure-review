@@ -15,12 +15,7 @@ def verify(
     explanation_duty_check: Mapping[str, Any],
     loop_count: int,
 ) -> dict:
-    """Cross-check display_check / plain_language / explanation_duty_check against each other
-    and against the real input text (product_page.html / plain_language.html). Every check here
-    is decidable from the data itself (presence, quote/id lookup, numeric consistency), so this
-    needs no model call. Returns exactly the Verification fields; it does not touch any other
-    module's key.
-    """
+    """Cross-checks the three modules against each other and the input text; needs no model call."""
     product_text = visible_text(page.get("html") or "")
     plain_text = visible_text(plain_language.get("html") or "")
     accepted_blocks = plain_language.get("accepted_blocks") or []

@@ -1,12 +1,4 @@
-"""Recording model answers so a paid evaluation can be replayed for free.
-
-An evaluation whose numbers cannot be re-derived is worth little, and re-deriving them by paying
-again is worth little too. Every call made during a live run is written to a cassette keyed by
-what was sent, so a later run replays the same answers and produces the same table.
-
-The key is a hash of (model, schema, task, data). Any change to a prompt or to the input html
-changes the key, so a replay cannot silently answer a different question than the one recorded.
-"""
+"""Records model answers keyed by a hash of (model, schema, task, data) for free replay."""
 
 import json
 from hashlib import sha256
@@ -29,9 +21,7 @@ class CassetteMissError(RuntimeError):
 
 
 def call_key(model: str, schema_name: str, task: str, data: dict, salt: str = "") -> str:
-    """`salt` tells apart deliberate repeats of the same call (the stability suite asks the same
-    question three times). It is never sent to the model, and an empty salt leaves the key
-    exactly as it was before salts existed, so earlier recordings still match."""
+    """`salt` tells apart repeated calls; an empty salt keeps keys backward-compatible."""
     body: dict[str, Any] = {"model": model, "schema": schema_name, "task": task, "data": data}
     if salt:
         body["salt"] = salt
@@ -45,11 +35,7 @@ def call_key(model: str, schema_name: str, task: str, data: dict, salt: str = ""
 
 
 class Cassette:
-    """A recorded set of model answers, used in place of `llm.client.ask`.
-
-    `mode="replay"` answers only from the file and raises on a miss. `mode="record"` calls the
-    real model and stores the answer. `mode="live"` calls the model and stores nothing.
-    """
+    """Model answers: `replay` reads the file, `record` stores, `live` does neither."""
 
     def __init__(self, path: str | Path, mode: str = "replay", ask=None) -> None:
         self.path = Path(path)

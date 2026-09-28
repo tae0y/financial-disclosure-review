@@ -1,9 +1,4 @@
-"""Assembling the final review report: the one artifact a compliance reviewer reads.
-
-The report adds no judgment. It states what each module decided, the evidence it cited, what
-could not be decided, and what the reviewer has to do next. Anything a module left as
-`판정 불가` becomes a task for a person here — never a pass.
-"""
+"""Assembles the review report; adds no judgment, and any `판정 불가` becomes a reviewer task."""
 
 from collections.abc import Mapping
 from typing import Any
@@ -26,15 +21,7 @@ DIRECT_BINDINGS = ("법령", "협회 자율규제")
 
 
 def severity(module: str, binding: str | None, page_type: str | None) -> tuple[str, str]:
-    """How a 부적합 is to be read: (위반 | 권고 미충족, the basis in words).
-
-    A public product page is an advertisement (금소법 제22조). Advertising rules and the
-    association's display rules bind it directly, so their 부적합 is a 위반. The explanation duty
-    (제19조) arises when a contract is solicited, so on an advertising page its items are applied
-    by analogy (준용) and a 부적합 is a 권고 미충족. Guidelines, reference standards and the
-    project's own design never make a 위반. An item whose binding is unknown keeps the stricter
-    reading.
-    """
+    """How 부적합 reads: direct bindings are 위반; explanation duty by 준용 is 권고 미충족."""
     if binding and binding not in DIRECT_BINDINGS:
         return SEVERITY_SHORTFALL, binding
     if module == "explanation_duty_check" and page_type in AD_PAGE_TYPES:
@@ -85,8 +72,7 @@ def _findings(
     bindings: Mapping[str, str] | None = None,
     page_type: str | None = None,
 ) -> list[dict]:
-    """Every row a reviewer has to look at: a violation, or something the run could not decide.
-    A 부적합 row also says whether it is a 위반 or a 권고 미충족 (`severity`, `basis`)."""
+    """Every row a reviewer must check; a 부적합 row also carries its `severity` and `basis`."""
     bindings = bindings or {}
     found: list[dict] = []
     for row in display.get("items") or []:
@@ -234,14 +220,7 @@ def build_report(
     bindings: Mapping[str, str] | None = None,
     previous_cost: Mapping[str, Any] | None = None,
 ) -> dict:
-    """The Report fields. `markdown` is the reviewer-facing document; the rest is the same
-    content as data, so a caller can render it another way. `stop` is the retry policy's account
-    of why the run ended where it did; the graph layer owns that policy and passes it in.
-
-    `bindings` maps a rubric code to its binding level, so a 부적합 reads as 위반 or 권고 미충족.
-    `previous_cost` is the cost already on this thread's report: when this call made no model
-    call (only the report was rebuilt from a checkpoint), the review's own cost is carried
-    forward instead of the rebuild's zero."""
+    """The Report fields; `stop` is why the run ended, `previous_cost` carries cost on rebuild."""
     stop = stop or {}
     findings = _findings(display, duty, plain, bindings, classification.get("page_type"))
     status, decision, actions = _status(classification, display, verification, findings, stop)

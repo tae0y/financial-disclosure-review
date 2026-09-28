@@ -7,7 +7,8 @@ created: 2026-09-28
 # ADR-004 — Look statutes up through a fixed mapping; search only sanction cases by similarity
 
 - **Status:** Accepted 2026-09-17
-- **Recorded here:** 2026-09-28, from `docs/cases.md`, `docs/design.md` §Rubrics and the study
+- **Recorded here:** 2026-09-28, from the case-search implementation notes and
+  [Rubrics and scope](../README.md#rubrics-and-scope) (since superseded by this ADR) and the study
   `관련자료/260917 법률 조회 로직 Graph(GraphRAG) 적용 가능성 조사.md` (종합 의견).
 
 ## Context

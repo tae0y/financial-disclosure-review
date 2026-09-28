@@ -50,10 +50,7 @@ def call_model(
     ask_fn=None,
     **data,
 ) -> dict:
-    """One model step: at most 2 attempts, every attempt logged, the call cap checked before each.
-    `ask_fn` replaces `llm.client.ask` (the evaluation passes a cassette).
-    A second answer that still fails validation goes to salvage(answer, problems) when given
-    (it may downgrade single items); otherwise, or when the call itself keeps failing, it raises."""
+    """One model step: at most 2 logged attempts, then salvage(answer, problems) or raise."""
     problems: list[str] = []
     answer: dict = {}
     for attempt in (1, 2):
@@ -137,8 +134,7 @@ def judge_visual_readability(
 def judge_display(
     page: Mapping[str, Any], classification: Mapping[str, Any], ctx: Context, ask_fn=None
 ) -> dict:
-    """Display-method judgment of one page. Returns the DisplayCheck fields items and judgments.
-    `ask_fn` stands in for the structured model calls (label, verdict); vision is not replaced."""
+    """Display-method judgment of one page; returns the DisplayCheck fields items and judgments."""
     items = load_rubric(ctx.db_path, "card_guardrail_rubric")
     group = [i for i in items if i["group"].startswith("E.")]
     applied, skipped = [], []

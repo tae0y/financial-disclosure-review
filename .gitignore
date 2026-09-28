@@ -316,7 +316,6 @@ ralph/
 notebooks/
 .mcp.json
 CLAUDE.md
-docs/team-usage-guide.md
 data/reports/*
 !data/reports/README.md
 data/sample_urls.txt

@@ -1,7 +1,4 @@
-"""The one check in this domain that a keyword scan cannot make: whether a condition, exception,
-limit, or penalty in the source quote survived *in meaning* in the rewrite. A synonym swap
-("하락" -> "떨어짐") looks identical to a real drop to a string match, so this is judged
-qualitatively by the model against the rules in `CONDITION_TASK`, not matched mechanically."""
+"""Whether a condition/exception/penalty survived in meaning — judged by the model, not matched."""
 
 from ...llm.client import call_ask
 from .prompts import CONDITION_TASK

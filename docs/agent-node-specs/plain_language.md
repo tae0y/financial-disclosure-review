@@ -84,5 +84,5 @@ checked:
   rewrites of jargon (`하락`→`떨어짐`, `해지`→`그만둠`, …) as omissions and reverted the block —
   directly undoing the plain-language rewrite the node exists to produce. This trades a free,
   deterministic check for a second model call per generation; `eval/cases/plain_contract.json`'s
-  `condition_dropped` cases now need a cassette (see `docs/evaluation.md`) instead of running for
+  `condition_dropped` cases now need a cassette (see `../evaluation.md`) instead of running for
   $0.

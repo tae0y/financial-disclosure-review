@@ -1,9 +1,4 @@
-"""Deciding whether a failed verification is worth re-running, and from which node.
-
-A retry only pays for itself when the node it goes back to is given something it did not have
-before. `verify_answer` produces that something as `verification.feedback`, so a module with no
-actionable feedback is not retried — it is escalated to a person by `end_report`.
-"""
+"""Decides whether a failed verification is worth retrying and from which node; else escalate."""
 
 from collections.abc import Mapping
 from typing import Any

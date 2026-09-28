@@ -16,11 +16,7 @@ VECTOR_LOAD_HINT = (
 
 
 def connect(db_path: str | Path, read_only: bool = False) -> sqlite3.Connection:
-    """The reference DB with sqlite-vec loaded, so vec0 tables and KNN queries work.
-
-    The extension is unloaded again right after, so nothing else can be loaded over this
-    connection. Raises RuntimeError when this Python cannot load extensions at all.
-    """
+    """The DB with sqlite-vec loaded (unloaded right after); RuntimeError if it can't load."""
     path = Path(db_path)
     if read_only:
         conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)

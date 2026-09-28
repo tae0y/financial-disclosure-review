@@ -24,10 +24,7 @@ from .session import PageSession
 
 
 def fetch_product_page(url: str, ctx: Context) -> dict:
-    """Reuse a validated site rule, or discover one with the agent. Runs in one worker thread.
-
-    A URL that is not a public http(s) address is refused before a browser starts, whichever way
-    the call arrived (CLI, the HTTP worker, a rerun)."""
+    """Reuse a validated site rule or discover one; refuses a non-public http(s) URL first."""
     problem = url_problem(url, ctx.allowed_hosts)
     if problem:
         raise ValueError(f"refusing to open {url}: {problem}")

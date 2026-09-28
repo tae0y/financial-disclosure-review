@@ -10,8 +10,7 @@ RUBRIC_BUILD_STEP = "python -m financial_disclosure_review build-db"
 
 
 def load_rubric(db_path: str | Path, rubric: str, groups: tuple[str, ...] = ()) -> list[dict]:
-    """Items of one rubric (its yaml file stem) in yaml order, shaped as that yaml gave them.
-    groups keeps only items whose group starts with one of these prefixes, e.g. ("E.",)."""
+    """Items of one rubric in yaml order; `groups` keeps items whose group starts with a prefix."""
     path = Path(db_path).resolve()
     if not path.exists():
         raise FileNotFoundError(f"rubric DB {path} does not exist. Run {RUBRIC_BUILD_STEP}.")
@@ -86,8 +85,7 @@ def item_scope(item: dict, classification: Mapping[str, Any]) -> str:
 
 
 def rubric_bindings(db_path: str | Path) -> dict[str, str]:
-    """Every rubric code with its binding level, so a report can tell a 위반 from a 권고 미충족.
-    An absent DB gives an empty map: the report then keeps the stricter reading for every item."""
+    """Every rubric code with its binding level; an absent DB gives an empty map (stricter kept)."""
     path = Path(db_path).resolve()
     if not path.exists():
         return {}

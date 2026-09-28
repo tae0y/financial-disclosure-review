@@ -47,7 +47,7 @@ The model comparison (other models on the same suites) is recorded in its own ca
 | `stability` | Does the same input get the same answer? | agreement with itself, no label | 6 pages + 39 items, 3 rounds | `ablation`: the one-call judgment asked three times (the keyword classifier is code and never varies) |
 
 Why the explanation duty is measured by deletion and the display method by mutation is recorded
-in `docs/adr/adr-002-defect-injection-evaluation.md` and `docs/adr/adr-005-display-flip-evaluation.md`.
+in `docs/architecture-decisions/adr-002-defect-injection-evaluation.md` and `docs/architecture-decisions/adr-005-display-flip-evaluation.md`.
 
 ## Results
 
@@ -65,7 +65,7 @@ The baseline matching the pipeline is a finding about the set, not a success: ev
 own type in its title ("LOCA MONEY-장기카드대출", "일부결제금액이월약정(리볼빙)"), so counting words is
 enough. The reason keywords were rejected on 2026-09-10 — pages that paraphrase or mention several
 products — is not represented in these six pages and remains untested
-(`docs/adr/adr-003-staged-classification.md`).
+(`docs/architecture-decisions/adr-003-staged-classification.md`).
 
 The out-of-scope path is demonstrable without a network:
 `uv run python eval/out_of_scope_report.py` replays the recorded calls and renders the report
@@ -126,7 +126,7 @@ mandatory disclosure from other text. Source: `eval/results/260928-190811-displa
 The same run shows the effect of a fix made the same day. The original LOCA CLASSIC review failed
 E02 on the product-name heading, measured at 0pt: its words sit in the DOM at font-size 0 while
 the reader sees them as an image. With undrawn text kept out of the size rule
-(`docs/display_check.md`), the base run now reads E02 판정 불가 on that page — unmeasurable, neither
+(`docs/agent-node-specs/display_check.md`), the base run now reads E02 판정 불가 on that page — unmeasurable, neither
 a pass nor a failure.
 
 ### 4. Plain-language contract — 9/9 caught, 0/4 false alarms
@@ -145,7 +145,7 @@ The first run found two defects in the contract layer itself, both fixed with re
   phrase glued to a preceding Hangul syllable is read as part of another word.
 
 On 2026-09-28 the condition-and-exception check moved from a keyword scan to a model judgment
-(`judge_condition_preservation`, `docs/plain_language.md`) because correct synonym swaps looked like
+(`judge_condition_preservation`, `docs/agent-node-specs/plain_language.md`) because correct synonym swaps looked like
 omissions. The suite was re-recorded the same day (one call, $0.0021) with the same result.
 Before/after files: `260927-173641-plain-contract-replay.before-fix.json`,
 `260927-173802-plain-contract-replay.json`, `260928-183438-plain-contract-record.json`.

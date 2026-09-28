@@ -58,7 +58,7 @@ unmeasurable-image limits, on every run.
 ## Why the retry policy is passed in
 
 `build_report` takes `stop` — the reason the run ended where it did — rather than importing
-`graph/retry.py`. The import direction in `docs/design.md` is `domain → graph`, so the graph layer
+`graph/retry.py`. The import direction in [../README.md](../README.md#architecture) is `domain → graph`, so the graph layer
 owns the loop policy and hands the report its account of it. That keeps the report usable from a
 context with no graph at all, which is how `tests/domain/report/test_report_build.py` drives it.
 

@@ -29,13 +29,7 @@ HIT_FIELDS = (
 
 
 def search(db_path: str | Path, query: str, kind: str = "", k: int = 5, embed=None) -> list[dict]:
-    """The k cases nearest to `query`, nearest first.
-
-    `kind` is a product type (신용카드, 단기카드대출, 장기카드대출, 리볼빙, 할부금융·리스); when
-    given, only cases that apply to it are considered. `embed` takes a list of texts and returns a
-    list of vectors, so a caller can hand in a stand-in and search without paying.
-    Each hit carries `distance`, `similarity`, `related_checklist` and the fields in HIT_FIELDS.
-    """
+    """The k cases nearest to `query`; `kind` filters by product type, `embed` stubs the model."""
     if not query.strip() or k <= 0:
         return []
     path = Path(db_path).resolve()
@@ -116,12 +110,7 @@ def search_cases_for(
     k: int = 3,
     embed=None,
 ) -> dict:
-    """The `case_search` value for one page: the queries run and the hits they found.
-
-    Hits are merged across queries and kept unique by `case_id`, nearest first, with `areas`
-    recording which queries found each case. A missing or unbuilt case DB is a normal result
-    (`status` 판정 불가) rather than an exception: the review can go on without cases.
-    """
+    """The `case_search` value for one page; a missing case DB is a normal 판정 불가."""
     queries = case_queries(classification, product)
     product_type = classification.get("product_type") or ""
     found: dict[str, dict[str, Any]] = {}

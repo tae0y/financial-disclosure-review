@@ -1,15 +1,4 @@
-"""Issuing the API token.
-
-The gateway authenticates a pre-issued, fixed bearer token rather than minting per-caller
-credentials: there is no user model here, and a run costs money, so the point is to name who may
-spend it. Issue one, put it in the gateway's environment, and hand it to the caller.
-
-    uv run python -m financial_disclosure_review.serving.token
-
-The `fdr_` prefix is deliberate. A bare random string in a leaked log or a committed file is
-unidentifiable; a prefixed one is matched by secret scanners and can be traced back to this
-service and revoked.
-"""
+"""Issues a `fdr_`-prefixed bearer token (traceable by scanners) for the gateway's credential."""
 
 import secrets
 

@@ -9,7 +9,7 @@ created: 2026-09-28
 - **Status:** Accepted 2026-09-10 (four legal types, multi-label), revised 2026-09-17 (card-company
   credit products, three stages)
 - **Recorded here:** 2026-09-28, from the decision note in the project folder (outside this repository)
-  `02 MVP 기능 구현/260910 아키텍처 결정 과정.md` §1 and `docs/classification.md`.
+  `02 MVP 기능 구현/260910 아키텍처 결정 과정.md` §1 and `docs/agent-node-specs/classification.md`.
 
 ## Context
 

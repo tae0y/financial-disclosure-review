@@ -36,11 +36,7 @@ def _open(db_path: str | Path) -> sqlite3.Connection:
 def load_cases(
     db_path: str | Path, product_types: tuple[str, ...] = (), codes: tuple[str, ...] = ()
 ) -> list[dict]:
-    """Cases in yaml order, shaped as the corpus yaml gave them.
-
-    `product_types` keeps only cases that apply to one of these product types; `codes` keeps only
-    cases whose `related_checklist` names one of these rubric codes. Both empty means every case.
-    """
+    """Cases in yaml order, filtered by `product_types`/`codes` (both empty means every case)."""
     with closing(_open(db_path)) as conn:
         try:
             rows = conn.execute(

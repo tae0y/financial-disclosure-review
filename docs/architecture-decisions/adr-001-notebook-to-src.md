@@ -8,8 +8,9 @@ created: 2026-09-28
 
 - **Status:** Accepted, 2026-09-27
 - **Recorded here:** 2026-09-28. The first copy lived in `localdocs/adr/` (gitignored, local only)
-  and did not travel with the repository; this is the repository copy, rewritten from
-  `docs/src-layout-migration.md` and `docs/design.md`, which were written with the decision.
+  and did not travel with the repository; this is the repository copy, rewritten from the
+  notebook-to-package migration notes and architecture notes written with the decision (since
+  superseded by this ADR and [docs/README.md](../README.md#architecture)).
 
 ## Context
 
@@ -48,4 +49,5 @@ only through State. Tests mirror the layout under `tests/`, and paid or networke
 - Two stubs that existed at the time of the move (`report`, `graph/retry.py`) were filled the same
   day; `grep -rn "Stub:" src/` returns nothing.
 - Lost: inspecting a checkpoint interactively. `rerun --thread … --from-node …` replaces it.
-- The file-by-file mapping is in `docs/src-layout-migration.md`.
+- The file-by-file mapping is recorded in the commit history around 2026-09-27 (`git log --follow`
+  from `notebooks/review.ipynb`).

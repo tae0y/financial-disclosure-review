@@ -20,21 +20,17 @@ from .session import (
 
 
 class InspectPage(BaseModel):
-    """Capped outline of the live page: headings, content regions, links, tabs and expandable
-    controls, each with a candidate CSS selector and its match count."""
+    """Capped outline of the page: headings, regions, links, tabs, controls, CSS selectors."""
 
 
 class ProbeSelector(BaseModel):
-    """For each CSS selector: match count, visibility, and text samples with rendered font size,
-    color and bounds of the text-bearing descendants, plus the viewport size."""
+    """For each selector: match count, visibility, text samples with style, and viewport size."""
 
     selectors: list[str]
 
 
 class Interact(BaseModel):
-    """Act on the live page. scroll: one incremental step (selector ignored). expand: click every
-    tab/accordion/expander matching the selector. open_link: open one informational GET link that
-    continues the same product's explanation. go_back: reload the product page."""
+    """Act on the live page: scroll, expand (click tabs/accordions), open_link, or go_back."""
 
     action: Literal["scroll", "expand", "open_link", "go_back"]
     selector: str = ""

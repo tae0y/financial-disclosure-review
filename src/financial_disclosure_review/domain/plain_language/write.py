@@ -67,8 +67,7 @@ def generate_plain(
         return problems
 
     def salvage(answer: dict, problems: list[str]) -> dict:
-        """검증에 걸린 블록만 원문 문장으로 되돌린다. 답의 구성 자체가 어긋났으면 되돌릴 대상을
-        특정할 수 없으므로 올린다."""
+        """검증에 걸린 블록만 원문 문장으로 되돌린다; 답 구성 자체가 어긋나면 raise한다."""
         bad = {p.split(":")[0] for p in problems if ":" in p and p.split(":")[0] in wanted}
         if not bad or len(bad) != len(problems):
             raise RuntimeError(f"generate_plain failed twice: {'; '.join(problems)[:400]}")

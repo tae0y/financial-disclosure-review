@@ -4,18 +4,41 @@ Korean financial-product pages are reviewed for disclosure, display, and plain-l
 The LangGraph workflow produces a reviewer report; it does not provide a legal opinion or publish
 content automatically.
 
-## Quick start
+## Prerequisites
 
-```bash
-cp .env.example .env                 # set OPENAI_API_KEY
-uv sync --extra dev
-uv run playwright install chromium
-uv run python -m financial_disclosure_review build-db
-uv run python -m financial_disclosure_review review "https://<product-page>"
-```
+- [uv](https://docs.astral.sh/uv/) — Python package and environment manager
+- An OpenAI API key
+- [.env.example](.env.example) copied to `.env`
 
-The command writes `data/reports/<thread>.md`. Start with [the architecture guide](docs/design.md)
-for the workflow and its limits.
+## Getting started
+
+1. Copy the environment file and set `OPENAI_API_KEY`.
+
+    ```bash
+    cp .env.example .env
+    ```
+
+1. Install dependencies and the Playwright browser.
+
+    ```bash
+    uv sync --extra dev
+    uv run playwright install chromium
+    ```
+
+1. Build the rubric database.
+
+    ```bash
+    uv run python -m financial_disclosure_review build-db
+    ```
+
+1. Review a page.
+
+    ```bash
+    uv run python -m financial_disclosure_review review "https://<product-page>"
+    ```
+
+   The command writes `data/reports/<thread>.md`. See [the architecture overview](docs/README.md#architecture)
+   for the workflow and its limits.
 
 ## Commands
 

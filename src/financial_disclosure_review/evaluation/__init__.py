@@ -1,12 +1,4 @@
-"""Running the evaluation suites and writing the result.
-
-Not a graph domain: nothing here is part of a review. It is the measurement harness, so it may
-read the domains but no domain may read it.
-
-Two modes matter. `--live --record` pays for the model once and writes every answer to a
-cassette; the default `replay` re-derives the same table from that cassette for free. A reader
-who wants to check a number runs the free path.
-"""
+"""Runs the evaluation suites; the harness may read domains but no domain may read it."""
 
 from datetime import datetime
 from pathlib import Path

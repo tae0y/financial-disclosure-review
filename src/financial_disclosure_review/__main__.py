@@ -158,8 +158,7 @@ def build_db(args: argparse.Namespace) -> int:
 
 
 def build_cases(args: argparse.Namespace) -> int:
-    """Embed the case corpus into the reference DB. This one costs money, so it is not part of
-    `build-db`: --dry-run prints what would be embedded and spends nothing."""
+    """Embed the case corpus; costs money, unlike build-db (--dry-run previews)."""
     from .knowledge.build_cases import CASE_CORPUS_FILE, embed_text_of
 
     path = Path(args.corpus_dir) / CASE_CORPUS_FILE

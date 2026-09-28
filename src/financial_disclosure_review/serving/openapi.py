@@ -1,11 +1,4 @@
-"""Exporting the OpenAPI document as a committed artifact.
-
-FastAPI serves the document at `/openapi.json`, but a consumer generating a client should not have
-to stand the service up first. `docs/openapi.yaml` is that document on disk; this module writes it,
-and `tests/serving/test_openapi.py` fails when the file and the code disagree.
-
-    uv run python -m financial_disclosure_review.serving.openapi
-"""
+"""Exports the OpenAPI document to `docs/openapi.yaml`; a test fails if it drifts from the code."""
 
 import sys
 from pathlib import Path

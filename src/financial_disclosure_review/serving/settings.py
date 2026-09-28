@@ -1,8 +1,4 @@
-"""Environment-driven settings for both serving processes.
-
-The graph's own settings still travel as `core.context.Context` at invoke time. What lives here is
-only deployment shape: ports, paths, the agent's address, credentials and caps.
-"""
+"""Environment-driven deployment settings (ports, paths, credentials, caps); not the graph's own."""
 
 import os
 from dataclasses import dataclass, field

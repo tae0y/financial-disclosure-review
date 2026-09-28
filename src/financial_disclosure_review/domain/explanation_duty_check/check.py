@@ -1,5 +1,4 @@
-"""Entry point of the explanation_duty_check domain: judge the original and the plain-language
-page against the same items, then record where the two answers differ."""
+"""Entry point of explanation_duty_check: judge original vs plain-language, record differences."""
 
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -22,8 +21,7 @@ def _quote_ok(verdict: str, quote: str, text: str) -> str:
 
 
 def _feedback_notes(feedback: Sequence[Mapping[str, Any]]) -> dict:
-    """The previous verification's requests, as extra call data. Empty feedback adds nothing, so
-    a first-round call is sent (and keyed in a cassette) exactly as before."""
+    """The previous verification's requests as extra call data; empty feedback adds nothing."""
     notes = [
         {
             "code": f.get("code", ""),
@@ -105,8 +103,7 @@ def fidelity_candidates(
     plain_rows: Sequence[Mapping[str, Any]],
     to_judge_codes: list[str],
 ) -> list[dict]:
-    """to_judge 코드 중 원문·쉬운말 판정이나 인용이 달라 모델 검토가 필요한 후보만 추린다.
-    (불명확으로 강제된 행은 양쪽이 동일한 행을 그대로 재사용하므로 비교 대상이 아니다.)"""
+    """to_judge 코드 중 원문·쉬운말 판정이나 인용이 달라 모델 검토가 필요한 후보만 추린다."""
     plain_by_code = {r["code"]: r for r in plain_rows}
     to_judge_set = set(to_judge_codes)
     candidates = []
@@ -247,8 +244,7 @@ def judge_original_side(
 def _original_rows(
     in_scope: Sequence[Mapping[str, Any]], judged: Mapping[str, Mapping[str, Any]]
 ) -> tuple[list[dict], list[dict]]:
-    """The items rows and original-side verdict rows for in-scope items, from the model's answer
-    per code. A code the answer left out becomes 판정 불가 rather than a silent pass."""
+    """Items and verdict rows for in-scope items; a model-omitted code becomes 판정 불가."""
     items_rows, original_rows = [], []
     for item in in_scope:
         j = judged.get(item["code"]) or {
@@ -290,11 +286,7 @@ def judge_explanation(
     *,
     feedback: Sequence[Mapping[str, Any]] = (),
 ) -> dict:
-    """설명의무 판단: 원문과 쉬운말을 같은 준용 기준으로 각각 판정하고 그 차이를 fidelity에
-    기록한다. previous_original/previous_items가 주어지면(재시도) 그대로 재사용하되, 직전 검증이
-    원문 쪽 인용을 지적한 코드만 그 피드백과 함께 다시 판정한다. 쉬운말 쪽 판정은 쉬운말 쪽
-    피드백을 받아 새로 계산한다. ExplanationDutyCheck의 items/original/plain/fidelity를
-    반환한다."""
+    """원문과 쉬운말을 같은 기준으로 판정하고 차이를 기록; 재시도 시 지적된 코드만 다시 판정한다."""
     all_items = load_explanation_items(ctx.db_path)
     plain_text = visible_text(plain["html"])
     own = [

@@ -1,11 +1,4 @@
-"""Mechanical checks of one generated block against its source quote.
-
-Every check here is decidable from the two strings, so a block that fails one is replaced by its
-original quote rather than sent back to the model a third time. Whether a condition/exception/
-penalty *survived in meaning* is not decidable from the two strings alone (a synonym swap looks
-identical to a real drop to a keyword scan) — that judgment is made qualitatively by
-`judge_condition_preservation` (`judge.py`), not here.
-"""
+"""Mechanical string checks of a block against its source quote (semantics judged in judge.py)."""
 
 import re
 
@@ -45,11 +38,7 @@ def counter_ones(text: str) -> set[str]:
 
 
 def has_phrase(text: str, phrase: str) -> bool:
-    """단정·최상급 표현이 정말 그 표현으로 쓰였는지 본다.
-
-    긴 표현은 공백만 지우고 부분문자열로 찾는다. 짧고 모호한 표현은 한글 음절 뒤에 붙어 있으면
-    다른 낱말의 일부로 보고 세지 않는다('결제일에'는 '제일'이 아니다). 이 규칙은 원문과 쉬운말
-    양쪽에 같이 적용되므로, 원문이 이미 쓴 표현을 쉬운말이 유지한 경우에는 걸리지 않는다."""
+    """단정·최상급 표현이 다른 낱말의 일부가 아니라 실제로 그 표현으로 쓰였는지 본다."""
     if phrase not in AMBIGUOUS_SHORT:
         return strip_ws(phrase) in strip_ws(text)
     spaced = " ".join(text.split())
@@ -66,8 +55,7 @@ def verify_source_quote(text: str, quote: str) -> str:
 
 
 def verify_block(quote: str, text: str) -> list[str]:
-    """원문 quote 대비 생성한 text의 수치·단정 표현·가능성 표현·조건 키워드를 기계적으로 대조한다.
-    문제가 없으면 빈 리스트를 돌려준다."""
+    """원문 quote 대비 text의 수치·단정·가능성 표현을 기계적으로 대조해 문제 목록을 돌려준다."""
     problems: list[str] = []
     q_nums, t_nums = number_set(quote), number_set(text)
     extra_nums = sorted(t_nums - q_nums - counter_ones(text))

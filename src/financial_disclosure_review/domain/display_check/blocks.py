@@ -17,8 +17,7 @@ SENTENCE_END = re.compile(r"[.!?。](?:\s|$)")
 
 
 def html_text_runs(html: str, longest: int = 3) -> set[str]:
-    """Normalized text nodes of the html, plus runs of up to `longest` adjacent nodes joined by a
-    space. A snapshot row's own text is one text node or a short run of them."""
+    """Normalized text nodes of the html, plus runs of up to `longest` joined adjacent nodes."""
     strings = [s for s in (norm(t) for t in BeautifulSoup(html, "html.parser").strings) if s]
     return {
         " ".join(strings[k : k + n]) for n in range(1, longest + 1) for k in range(len(strings))

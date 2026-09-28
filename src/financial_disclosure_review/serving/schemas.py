@@ -1,9 +1,4 @@
-"""Request and response bodies shared by the gateway and the worker.
-
-The graph's State is deliberately untyped (`Any` per key) because a node owns its own shape. What
-crosses the network is not State: it is a narrowed, size-bounded view of it. Raw page HTML and
-snapshots stay on disk under `data/` and never travel in a response.
-"""
+"""Request/response bodies shared by gateway and worker — a narrowed view of State, not raw HTML."""
 
 from datetime import datetime
 from enum import Enum

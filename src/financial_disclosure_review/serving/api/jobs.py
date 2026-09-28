@@ -1,13 +1,4 @@
-"""The job store: one SQLite file, one row per submitted review.
-
-A review takes minutes and Cloudflare cuts an idle HTTP response off long before that, so the
-gateway answers 202 and the caller polls. That makes the job row the contract, which means it has
-to survive a container restart — hence a file rather than a dict in memory.
-
-Every method is blocking SQLite. Callers are async, so they go through
-`starlette.concurrency.run_in_threadpool`; the helpers here stay plain functions so tests can
-drive them directly.
-"""
+"""The job store: one SQLite file (survives restarts), one row per review, the polling contract."""
 
 import json
 import sqlite3
@@ -144,13 +135,7 @@ class JobStore:
         return [self._job(row) for row in rows]
 
     def close_out_in_flight(self, reason: str) -> int:
-        """Give every queued or running row a terminal status, and say why.
-
-        A `running` row with no process behind it would make a caller poll for ever. Both ends of
-        the process lifetime call this: shutdown closes out what it cancelled, and boot closes out
-        whatever a crash left behind. It is never called from inside the cancelled task itself —
-        a cancelled coroutine cannot reach another await point to write the row.
-        """
+        """Gives every queued/running row a terminal status; run only from shutdown/boot cleanup."""
         with self._lock:
             cursor = self._db.execute(
                 "UPDATE jobs SET status = ?, finished_at = ?, error = ? WHERE status IN (?, ?)",

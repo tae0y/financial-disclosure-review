@@ -1,12 +1,4 @@
-"""Building the sanction/dispute case tables, and their vectors, from the case corpus yaml.
-
-The counterpart of `build.py` for cases. Same shape as the rubric build — the yaml is checked
-against the tables first, then every case table is dropped and rebuilt in one transaction, so a
-failed build leaves the previous DB untouched.
-
-It is kept apart from `build.py` on purpose: `build-db` stays free and offline, while this step
-calls a paid embedding model, so it is its own command (`build-cases`).
-"""
+"""Builds the case tables and vectors from the corpus yaml; own command since embedding costs."""
 
 import sqlite3
 from contextlib import closing
@@ -144,11 +136,7 @@ def case_schema_problems(items: list[dict]) -> list[str]:
 
 
 def embed_text_of(item: dict) -> str:
-    """What gets embedded: the fields a query would be about, not the bookkeeping ones.
-
-    The product type and the checklist codes are included so a query naming a product type or a
-    judgment item lands near the cases that carry it, on top of the metadata prefilter.
-    """
+    """What gets embedded: fields a query is about (type, codes, text), not bookkeeping."""
     return "\n".join(
         [
             f"상품유형: {', '.join(item['product_types'])}",
@@ -165,12 +153,7 @@ def embed_text_of(item: dict) -> str:
 def build_case_db(
     corpus_path: str | Path, db_path: str | Path, embed=None, dimensions: int | None = None
 ) -> dict[str, int]:
-    """Load the case corpus into db_path and embed each case. Safe to re-run.
-
-    `embed` takes a list of texts and returns a list of vectors, so a caller can hand in a
-    stand-in and build the DB without paying (the same arrangement as `call_ask`'s `ask_fn`).
-    Returns the counts a caller can assert on.
-    """
+    """Load the case corpus and embed each case (safe to re-run); `embed` lets a caller stub it."""
     path = Path(corpus_path)
     if path.is_dir():
         path = path / CASE_CORPUS_FILE

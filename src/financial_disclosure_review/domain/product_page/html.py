@@ -93,8 +93,7 @@ def path_key(el) -> str:
 
 
 def outside_blocks(html: str, include: list[str], exclude: list[str]) -> list[tuple[str, str]]:
-    """(structural path, text) of text blocks outside the selected regions, ignoring page chrome
-    and popup layers."""
+    """(path, text) of blocks outside the selected regions, ignoring chrome and popup layers."""
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "noscript", "template", "svg"]):
         tag.decompose()
@@ -123,8 +122,7 @@ def outside_blocks(html: str, include: list[str], exclude: list[str]) -> list[tu
 
 
 def outside_signature(html: str, include: list[str], exclude: list[str]) -> list[str]:
-    """Structural paths of the text blocks outside the selected regions. New paths later mean
-    content this rule does not cover."""
+    """Structural paths outside the selected regions; new paths later mean uncovered content."""
     return sorted({path for path, _ in outside_blocks(html, include, exclude)})[:400]
 
 

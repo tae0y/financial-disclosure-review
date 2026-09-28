@@ -66,10 +66,7 @@ def ask_images(
 def call_ask(
     ask_fn, model: str, schema: type[BaseModel], task: str, check, effort: str, salvage=None, **data
 ) -> dict:
-    """One model step with the retry contract: at most 2 attempts, the second one told what went
-    wrong. A second answer that still fails check goes to salvage(answer, problems) when given
-    (it may downgrade single rows); otherwise it raises. ask_fn is the call to make, so a caller
-    can hand in a stand-in instead of `ask`."""
+    """One model step: 2 attempts max, then salvage(answer, problems) or raise; ask_fn stubs ask."""
     problems: list[str] = []
     answer = None
     for _ in range(2):
@@ -138,11 +135,7 @@ EMBED_BATCH = 64
 
 
 def embed_texts(texts: list[str], model: str = EMBED_MODEL, timeout: int = 60) -> list[list[float]]:
-    """Embeddings for texts, in the order given. Batched, and metered like any other call.
-
-    Callers that must not spend (tests, offline builds) pass their own function instead of this
-    one, the way `call_ask` takes `ask_fn`.
-    """
+    """Embeddings for texts, in order, batched, metered; free callers pass their own function."""
     meter = current()
     vectors: list[list[float]] = []
     for start in range(0, len(texts), EMBED_BATCH):

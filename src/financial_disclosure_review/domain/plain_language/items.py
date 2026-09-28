@@ -34,9 +34,7 @@ PLAIN_TERM_CODES = {"쉬운말08", "쉬운말10"}
 
 
 def plain_scope(item: dict, classification: Mapping[str, Any]) -> str:
-    """Empty when the item applies to this product type and its targets include 쉬운말.
-    Otherwise why not. plain_service_rubric은 item_scope가 기대하는 page_types가 아니라
-    targets 필드를 쓰므로 따로 둔다."""
+    """Empty when the item applies and its targets include 쉬운말; otherwise why not."""
     product_type = classification.get("product_type")
     if product_type not in item["applies_to"]:
         return f"applies_to {item['applies_to']} does not include {product_type!r}"

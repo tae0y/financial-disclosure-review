@@ -1,12 +1,4 @@
-"""Token metering and the run budget cap.
-
-Instrumentation, not judgment data: a run's meter is created by the caller and read back at the
-end, the way a log is. Judgment data still moves only through State.
-
-Tokens are counted facts, read from the API response. Money is derived from `PRICES` below,
-which is a recorded assumption (see `docs/operations.md`), so the meter reports both and never
-hides the token counts behind a currency figure.
-"""
+"""Token metering and run budget cap — instrumentation, not judgment data, so never in State."""
 
 import threading
 import time
@@ -37,11 +29,7 @@ def price_of(model: str) -> tuple[float, float]:
 
 @dataclass
 class Meter:
-    """One run's model calls. `max_calls` and `max_usd` stop a runaway loop before the next call.
-
-    Both caps are checked, never inferred: `check()` raises before a call is made, so a capped
-    run fails with a named error instead of quietly spending. 0 disables that cap.
-    """
+    """One run's model calls; check() raises once max_calls or max_usd (0 disables) is reached."""
 
     max_calls: int = 60
     max_usd: float = 1.0

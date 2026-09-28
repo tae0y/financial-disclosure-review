@@ -1,20 +1,4 @@
-"""The three evaluation suites, each answering one question with counted cases.
-
-| Suite | Question | Gold label comes from |
-|---|---|---|
-| `classification` | is a real page put in the right product type? | 영태's labels on six pages |
-| `duty-flip` | is a disclosure that left the page noticed? | the deletion (true by construction) |
-| `plain-contract` | is a rewrite that drifts caught? | the defect written into each pair |
-| `stability` | does the same input get the same answer? | the first answer (agreement, no label) |
-
-`duty-flip` also runs an ablation arm — the same rubric items, one call, no quote validation, no
-condition step, no retry — so the measured difference is this project's engineering rather than
-the model's general ability. Both arms are tested on the same deletions: the targets are chosen
-from what every arm passed on the unedited page, never from one arm's answers alone.
-`classification` has a keyword-frequency arm for the same reason: what the three-step judgment
-adds over counting product words on the page. `stability` repeats the ablation arm as well, so
-the pipeline's run-to-run agreement has a baseline.
-"""
+"""The evaluation suites, each with an ablation/baseline arm to isolate this project's work."""
 
 import json
 from pathlib import Path
@@ -84,8 +68,7 @@ def keyword_classify(page: dict) -> dict:
 def run_classification(
     ctx: Context, cassette: Cassette, fixtures_dir: str | Path, arm: str = "pipeline"
 ) -> dict:
-    """Six captured pages against 영태's labels. One to three calls per page on the pipeline arm,
-    none on the keyword arm."""
+    """Six captured pages judged against 영태's labels; the keyword arm makes no model call."""
     rows = []
     for path in sorted(Path(fixtures_dir).glob("*.json")):
         fixture = json.loads(path.read_text(encoding="utf-8"))
@@ -139,12 +122,7 @@ ARMS = {"pipeline": _pipeline_verdicts, "ablation": _ablation_verdicts}
 
 
 def _judge_variant(judge, items: list[dict], text: str, ctx: Context, ask) -> tuple[dict, str]:
-    """An arm's verdicts on one variant, or no verdicts and the reason the arm gave up.
-
-    A model that returns the wrong set of items twice makes the pipeline raise, as it does in a
-    real review. Here that is a measured outcome of the arm, not a reason to lose the run. A
-    replay miss or a spent budget is still raised: those are faults of the harness, not answers.
-    """
+    """An arm's verdicts, or ({}, reason) if raised; harness errors still propagate."""
     try:
         return judge(items, text, ctx, ask), ""
     except (CassetteMissError, BudgetError):
@@ -168,13 +146,7 @@ def _base_rows(verdicts: dict, text: str) -> list[dict]:
 def shared_targets(
     bases: dict[str, list[dict]], base_html: str, prefer: tuple[str, ...], max_flips: int
 ) -> list[dict]:
-    """The deletions every arm is tested on, so the arms are compared on the same variants.
-
-    A target is an item every arm judged 적합 on the unedited page. Its deletion removes every
-    quote any arm gave for it that is really on the page. A candidate is skipped when its
-    deletion and an earlier one remove each other's evidence, so no two cases take out the same
-    sentence and one deletion is never counted twice under two item codes.
-    """
+    """Deletions every arm is tested on: items every arm passed, clashing ones skipped."""
     by_arm = [{row["code"]: row for row in rows} for rows in bases.values()]
     passed = [{code for code, row in rows.items() if row["verdict"] == "적합"} for rows in by_arm]
     candidates = sorted(set.intersection(*passed), key=lambda code: (code not in prefer, code))
@@ -210,13 +182,7 @@ def shared_targets(
 def run_duty_flip(
     ctx: Context, cassette: Cassette, config: dict, arm: str = "pipeline", max_flips: int = 3
 ) -> dict:
-    """Delete one quoted disclosure at a time from a real page and see whether the item flips.
-
-    Every arm's judgment of the unedited page is taken first (replayed when recorded) and the
-    deletions come from `shared_targets`, so a run with one arm tests the same variants as a run
-    with both. `rows` holds one row per variant. A variant whose deletion did not really land is
-    marked `landed: False` and left out of the rate, rather than counted as a pass or a failure.
-    """
+    """Deletes one disclosure at a time and checks if the item flips; unlanded cases go unscored."""
     judge = ARMS[arm]
     base_html = Path(config["base_html"]).read_text(encoding="utf-8")
     base_text = visible_text(base_html)
@@ -351,15 +317,7 @@ def run_plain_contract(
     cases: list[dict],
     arm: Literal["pipeline", "mechanical"] = "pipeline",
 ) -> dict:
-    """The rewrite contract against pairs whose defect is known.
-
-    Numbers/absolute-phrase/hedge are decidable from the two strings, so those run for free.
-    Whether a condition/exception/limit/penalty survived in meaning is not, so a pair that clears
-    the mechanical checks goes through `judge_condition_preservation` on `cassette.ask` — one
-    model call per case (paid on `--live --record`, free on replay). The `mechanical` arm runs
-    exactly the same pairs and deterministic checks but deliberately omits that semantic model
-    judgment, making the added value measurable rather than inferred from a no-op configuration.
-    """
+    """The rewrite contract on known-defect pairs; `mechanical` omits the check `pipeline` adds."""
     if arm not in ("pipeline", "mechanical"):
         raise ValueError(f"unknown plain-contract arm {arm!r}")
     rows = []
@@ -408,14 +366,7 @@ def run_stability(
     repeats: int = 3,
     arms: tuple[str, ...] = ("pipeline",),
 ) -> dict:
-    """Ask the same questions `repeats` times and count how often the answer stays the same.
-
-    The first round is the recording the other suites already use (unsalted); rounds 2.. are
-    kept apart by a salt. No label is involved: the measure is agreement with itself. With the
-    ablation arm the one-call judgment is repeated the same way, so the pipeline's agreement has
-    a baseline measured on the same page and items. The keyword classifier needs no repeat: it
-    is code and returns the same answer every time.
-    """
+    """Asks the same questions `repeats` times (salted after round 1); measures self-agreement."""
     salts = ["", *[f"repeat-{n}" for n in range(2, repeats + 1)]]
     classification = []
     for path in sorted(Path(fixtures_dir).glob("*.json")):

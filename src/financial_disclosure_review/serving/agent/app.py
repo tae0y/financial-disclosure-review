@@ -1,9 +1,4 @@
-"""The internal worker API. Reachable only from the compose network, never from the tunnel.
-
-One endpoint does real work, and it blocks for as long as the review takes — minutes, not
-seconds. The gateway is what turns that into a pollable job; this process stays a plain
-request/response worker so it can be curled directly while debugging.
-"""
+"""The internal worker API — reachable only from compose; blocks for the review, gateway polls."""
 
 import logging
 import os
