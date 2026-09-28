@@ -1,0 +1,55 @@
+{
+  "note": "Synthetic revolving (일부결제금액이월약정) page. Every card is a risk concept, so no analogy may survive.",
+  "sources": [
+    {"source_id": "dom-1", "text": "리볼빙(일부결제금액이월약정) 서비스 안내", "visibility": "default_visible"},
+    {"source_id": "dom-2", "text": "결제하실 금액의 10%만 결제하면 나머지 금액은 다음 달로 이월됩니다.", "visibility": "default_visible"},
+    {"source_id": "dom-3", "text": "이월된 금액에는 연 5.9%~19.9%의 리볼빙 수수료율이 적용됩니다.", "visibility": "revealed"},
+    {"source_id": "dom-4", "text": "리볼빙 이용 시 신용점수가 하락할 수 있습니다.", "visibility": "revealed"}
+  ],
+  "cards": [
+    {
+      "id": "r1", "kind": "fee_claim", "subject": "리볼빙 이월",
+      "claim": "나머지 금액은 다음 달로 이월됩니다",
+      "qualifiers": ["결제하실 금액의 10%만 결제하면"], "exceptions": [], "numbers": ["10%"],
+      "quote": "결제하실 금액의 10%만 결제하면 나머지 금액은 다음 달로 이월됩니다.",
+      "source_id": "dom-2", "visibility": "default_visible"
+    },
+    {
+      "id": "r2", "kind": "rate_claim", "subject": "리볼빙 수수료율",
+      "claim": "연 5.9%~19.9%의 리볼빙 수수료율",
+      "qualifiers": ["이월된 금액에는"], "exceptions": [], "numbers": ["5.9%", "19.9%"],
+      "quote": "이월된 금액에는 연 5.9%~19.9%의 리볼빙 수수료율이 적용됩니다.",
+      "source_id": "dom-3", "visibility": "revealed"
+    },
+    {
+      "id": "r3", "kind": "warning", "subject": "신용점수 하락",
+      "claim": "신용점수가 하락할 수 있습니다",
+      "qualifiers": [], "exceptions": [], "numbers": [],
+      "quote": "리볼빙 이용 시 신용점수가 하락할 수 있습니다.",
+      "source_id": "dom-4", "visibility": "revealed"
+    }
+  ],
+  "drafts": [
+    {
+      "card_ids": ["r1"], "source_ids": ["dom-2"],
+      "exact_fact": "결제하실 금액의 10%만 결제하면 나머지 금액은 다음 달로 이월됩니다.",
+      "explanation": "이번 달에 낼 돈 가운데 10%만 내면, 남은 돈은 갚은 것이 아니라 다음 달로 넘어갑니다. 원문 표현으로는 결제하실 금액의 10%만 결제하면 나머지가 이월되는 구조입니다.",
+      "analogy": "",
+      "persona_question_answered": "이 카드를 쓰면 돈이 언제, 얼마나 나가나요?"
+    },
+    {
+      "card_ids": ["r2"], "source_ids": ["dom-3"],
+      "exact_fact": "이월된 금액에는 연 5.9%~19.9%의 리볼빙 수수료율이 적용됩니다.",
+      "explanation": "다음 달로 넘어간 돈에는 1년 기준 5.9%에서 19.9% 사이의 수수료율이 붙습니다. 이월된 금액에는 이 수수료가 계속 붙는다는 뜻입니다.",
+      "analogy": "눈덩이가 굴러가며 커지는 것과 비슷합니다.",
+      "persona_question_answered": "모르고 지나치면 손해 보는 조건이 있나요?"
+    },
+    {
+      "card_ids": ["r3"], "source_ids": ["dom-4"],
+      "exact_fact": "리볼빙 이용 시 신용점수가 하락할 수 있습니다.",
+      "explanation": "리볼빙을 쓰면 신용점수가 내려갈 수 있습니다. 나중에 대출이나 카드 발급을 받을 때 영향을 줄 수 있으니 원문 문장을 그대로 확인하세요.",
+      "analogy": "",
+      "persona_question_answered": "모르고 지나치면 손해 보는 조건이 있나요?"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "note": "Synthetic benefit with a spending threshold and an exclusion. Two reader phrasings of the same facts, plus failing variants.",
+  "sources": [
+    {"source_id": "dom-1", "text": "스타벅스 할인", "visibility": "default_visible"},
+    {"source_id": "dom-2", "text": "전월 이용금액 30만원 이상 시 월 최대 2만원 할인(일부 가맹점 제외)", "visibility": "revealed"},
+    {"source_id": "dom-3", "text": "할인 한도는 모든 가맹점 할인을 합산하여 적용됩니다.", "visibility": "revealed"}
+  ],
+  "cards": [
+    {
+      "id": "b1", "kind": "benefit_claim", "subject": "스타벅스 할인",
+      "claim": "월 최대 2만원 할인",
+      "qualifiers": ["전월 이용금액 30만원 이상"], "exceptions": ["일부 가맹점 제외"],
+      "numbers": ["30만원", "2만원"],
+      "quote": "전월 이용금액 30만원 이상 시 월 최대 2만원 할인(일부 가맹점 제외)",
+      "source_id": "dom-2", "visibility": "revealed"
+    }
+  ],
+  "drafts": {
+    "lowfin": [
+      {
+        "card_ids": ["b1"], "source_ids": ["dom-2"],
+        "exact_fact": "전월 이용금액 30만원 이상 시 월 최대 2만원 할인",
+        "explanation": "지난달에 이 카드로 쓴 돈이 30만원 이상이어야 할인을 받습니다. 할인은 한 달에 최대 2만원까지입니다. 일부 가맹점 제외 조건이 있어 모든 매장에서 되는 것은 아닙니다.",
+        "analogy": "단골 가게 쿠폰처럼, 먼저 조건을 채워야 할인이 열립니다.",
+        "persona_question_answered": "혜택을 받으려면 무엇을 해야 하나요?"
+      }
+    ],
+    "firstcard": [
+      {
+        "card_ids": ["b1"], "source_ids": ["dom-2"],
+        "exact_fact": "전월 이용금액 30만원 이상 시 월 최대 2만원 할인(일부 가맹점 제외)",
+        "explanation": "할인 조건은 전월 이용금액 30만원 이상입니다. 조건을 채운 달에는 할인 금액이 월 2만원을 넘지 않습니다.",
+        "analogy": "",
+        "persona_question_answered": "할인을 받으려면 한 달에 얼마를 써야 하나요?"
+      }
+    ],
+    "dropped_exception": [
+      {
+        "card_ids": ["b1"], "source_ids": ["dom-2"],
+        "exact_fact": "전월 이용금액 30만원 이상 시 월 최대 2만원 할인",
+        "explanation": "지난달에 30만원 이상 쓰면 한 달에 최대 2만원을 할인받습니다.",
+        "analogy": "",
+        "persona_question_answered": "혜택을 받으려면 무엇을 해야 하나요?"
+      }
+    ],
+    "invented_number": [
+      {
+        "card_ids": ["b1"], "source_ids": ["dom-2"],
+        "exact_fact": "전월 이용금액 30만원 이상 시 월 최대 2만원 할인(일부 가맹점 제외)",
+        "explanation": "지난달 30만원 이상 쓰면 한 달에 최대 2만원, 1년이면 최대 24만원을 아낄 수 있습니다.",
+        "analogy": "",
+        "persona_question_answered": "혜택을 받으려면 무엇을 해야 하나요?"
+      }
+    ]
+  }
+}

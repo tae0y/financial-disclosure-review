@@ -1,0 +1,39 @@
+{
+  "note": "Synthetic card loan rate and late-payment penalty. The drafts carry analogies that code must drop.",
+  "sources": [
+    {"source_id": "dom-1", "text": "카드론 금리: 연 5.9%~19.9%(신용등급에 따라 차등 적용)", "visibility": "default_visible"},
+    {"source_id": "dom-2", "text": "연체 시 약정금리에 최대 연 3%p를 더한 연체이자율이 적용됩니다(최고 연 20%).", "visibility": "revealed"}
+  ],
+  "cards": [
+    {
+      "id": "c1", "kind": "rate_claim", "subject": "카드론 금리",
+      "claim": "연 5.9%~19.9%",
+      "qualifiers": ["신용등급에 따라 차등 적용"], "exceptions": [], "numbers": ["5.9%", "19.9%"],
+      "quote": "카드론 금리: 연 5.9%~19.9%(신용등급에 따라 차등 적용)",
+      "source_id": "dom-1", "visibility": "default_visible"
+    },
+    {
+      "id": "c2", "kind": "warning", "subject": "연체이자율",
+      "claim": "약정금리에 최대 연 3%p를 더한 연체이자율",
+      "qualifiers": [], "exceptions": [], "numbers": ["3%p", "20%"],
+      "quote": "연체 시 약정금리에 최대 연 3%p를 더한 연체이자율이 적용됩니다(최고 연 20%).",
+      "source_id": "dom-2", "visibility": "revealed"
+    }
+  ],
+  "drafts": [
+    {
+      "card_ids": ["c1"], "source_ids": ["dom-1"],
+      "exact_fact": "카드론 금리: 연 5.9%~19.9%(신용등급에 따라 차등 적용)",
+      "explanation": "카드론을 빌리면 1년 기준 5.9%에서 19.9% 사이의 금리가 붙고, 어느 금리가 적용될지는 신용등급에 따라 차등 적용됩니다.",
+      "analogy": "빌린 돈에 붙는 사용료 같은 것입니다.",
+      "persona_question_answered": "금리나 수수료율은 어느 범위이고 무엇에 따라 달라지나요?"
+    },
+    {
+      "card_ids": ["c2"], "source_ids": ["dom-2"],
+      "exact_fact": "연체 시 약정금리에 최대 연 3%p를 더한 연체이자율이 적용됩니다(최고 연 20%).",
+      "explanation": "갚는 날을 놓치면 원래 금리에 최대 연 3%p가 더해지고, 연체이자율은 최고 연 20%입니다.",
+      "analogy": "늦게 반납한 책에 연체료가 붙는 것과 같습니다.",
+      "persona_question_answered": "연체하면 금리와 신용점수는 어떻게 되나요?"
+    }
+  ]
+}

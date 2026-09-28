@@ -1,0 +1,75 @@
+# Reader profiles for generate_persona_explanation (domain/persona_explanation).
+#
+# Each profile is AI-drafted from ONE row of the local 200-row sample of
+# nvidia/Nemotron-Personas-Korea (CC-BY-4.0, see THIRD_PARTY_NOTICES.md). Only derived reading
+# attributes are kept here; the synthetic persona prose itself is not copied. `basis` records
+# which row attributes the draft was derived from, so a reviewer can check the derivation.
+#
+# The code pins every profile with an allowlist {id: version} (profiles.PROFILE_ALLOWLIST).
+# Changing a profile's content means bumping `version` here AND in that allowlist; an unknown id,
+# a version mismatch or a schema error makes the profile `무효` and the page keeps its original
+# text. `review_status: ai-drafted` stays until a person has reviewed the profile.
+default: nemotron-ko-70s-lowfin
+profiles:
+  - id: nemotron-ko-70s-lowfin
+    version: 1
+    source:
+      dataset: nvidia/Nemotron-Personas-Korea
+      license: CC-BY-4.0
+      uuid: 766224c2c1dd49dda886d82e67b917f9
+    review_status: ai-drafted
+    basis: 76세, 초등학교 졸업, 무직(은퇴), 자녀와 거주 — 금융 용어에 익숙하지 않은 고령 독자로 추정
+    reading_preference: 짧은 문장으로 한 번에 한 가지 사실만 말하고, 어려운 금융 용어는 일상어로 풀어 씀
+    financial_familiarity: 낮음
+    likely_questions:
+      - 이 카드를 쓰면 돈이 언제, 얼마나 나가나요?
+      - 혜택을 받으려면 무엇을 해야 하나요?
+      - 모르고 지나치면 손해 보는 조건이 있나요?
+      - 그만두고 싶으면 어떻게 되나요?
+    prohibited_assumptions:
+      - 독자가 이 상품의 발급·가입 대상이라고 가정하지 않음
+      - 독자의 소득·재산·신용점수를 추정하지 않음
+      - 발급 승인이나 한도 부여를 전제하지 않음
+      - 독자가 실제로 받을 혜택 금액이나 갚을 금액을 계산하지 않음
+    analogy_policy: benefit_only
+  - id: nemotron-ko-20s-firstcard
+    version: 1
+    source:
+      dataset: nvidia/Nemotron-Personas-Korea
+      license: CC-BY-4.0
+      uuid: a83e31fb286640f9b86e922c29c34d1f
+    review_status: ai-drafted
+    basis: 20세, 전문대 졸업, 신입 간호사, 어머니와 거주 — 첫 급여로 첫 신용카드를 알아보는 사회초년생으로 추정
+    reading_preference: 핵심 조건을 먼저 말하고, 처음 보는 용어는 한 줄로 뜻을 덧붙임
+    financial_familiarity: 보통
+    likely_questions:
+      - 연회비는 얼마이고 언제 청구되나요?
+      - 할인을 받으려면 한 달에 얼마를 써야 하나요?
+      - 할인에서 빠지는 곳이 있나요?
+      - 결제를 못 하면 어떤 불이익이 있나요?
+    prohibited_assumptions:
+      - 독자가 이 상품의 발급·가입 대상이라고 가정하지 않음
+      - 독자의 소득이나 월 사용액을 추정하지 않음
+      - 발급 승인이나 한도 부여를 전제하지 않음
+      - 독자가 실제로 받을 혜택 금액이나 갚을 금액을 계산하지 않음
+    analogy_policy: benefit_only
+  - id: nemotron-ko-40s-loanfamiliar
+    version: 1
+    source:
+      dataset: nvidia/Nemotron-Personas-Korea
+      license: CC-BY-4.0
+      uuid: 2c30571d3af64e19baac9135d37c31f6
+    review_status: ai-drafted
+    basis: 44세, 고등학교 졸업, 보험 전화 상담원, 자가 아파트 — 대출·금리 개념에 익숙한 중년 독자로 추정
+    reading_preference: 비유 없이 수치·기간·조건을 원문 그대로 짚고, 적용 순서만 정리함
+    financial_familiarity: 높음
+    likely_questions:
+      - 금리나 수수료율은 어느 범위이고 무엇에 따라 달라지나요?
+      - 연체하면 금리와 신용점수는 어떻게 되나요?
+      - 중간에 해지하면 돌려받거나 더 내는 돈이 있나요?
+    prohibited_assumptions:
+      - 독자가 이 상품의 발급·가입 대상이라고 가정하지 않음
+      - 독자의 소득·기존 대출·신용점수를 추정하지 않음
+      - 발급 승인이나 한도 부여를 전제하지 않음
+      - 독자가 실제로 받을 혜택 금액이나 갚을 금액을 계산하지 않음
+    analogy_policy: none
