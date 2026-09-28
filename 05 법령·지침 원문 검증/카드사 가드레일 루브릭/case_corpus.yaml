@@ -1,0 +1,633 @@
+# 카드사 표시광고·설명의무 제재·지적 사례 코퍼스 (19건)
+#
+# 루브릭(card_guardrail_rubric.yaml, plain_service_rubric.yaml)과 같은 신뢰 경계에 둡니다.
+# 루브릭이 "무엇을 지켜야 하는가"를 담는다면 이 파일은 "실제로 무엇이 문제가 되었는가"를 담고,
+# `related_checklist`로 두 파일을 잇습니다. 항목마다 공식 1차 출처 URL이 반드시 있어야 하고
+# (루브릭 `sources[].official_url` 원칙과 같습니다), `text`는 그 출처 원문에서 가져온 문장입니다.
+#
+# 상품유형 공백에 대하여: 금소법 시행(2021-03-25) 이후 카드사의 표시광고(제22조)·설명의무(제19조)
+# 위반으로 분류된 금감원 공식 제재는 선행 조사에서 카드·캐피탈 44건 전수 확인 결과 0건이었습니다
+# (`관련자료/260917 카드론·손해보험 표시광고·설명의무 위반 제재사례 조사.md`). 그래서 이 코퍼스는
+# 제재(위반사례)에 한정하지 않고 감독당국·협회가 공표한 지적사례·민원사례까지 포함합니다.
+# `product_basis`가 `유추`인 항목은 제재 대상이 카드 상품이 아니라 같은 광고 유형을 가진 다른
+# 업권(대부업 등)이라는 뜻입니다 — 판정 근거로 인용할 때 이 점을 밝혀야 합니다.
+#
+# `text`는 출처 원문만 담습니다 — 이 코퍼스의 주석은 넣지 않습니다(임베딩 대상이라 벡터가 흐려집니다).
+# 그래서 두 가지 유보사항을 여기에 적어 둡니다.
+#   - 여신금융협회 `case.crefia_ad_type_*` 5건은 게시일이 없는 상시 안내 페이지에서 가져왔습니다.
+#     `official_date`는 이 코퍼스가 페이지를 확인한 날짜이며 사건 발생일이 아닙니다.
+#   - `case.fss_20260609_revolving_complaint`의 본문 인용문은 게시물이 동적 로딩이라 선행 조사에서도
+#     축자 대조되지 않았습니다. 제목·URL 존재만 확인된 상태이므로 판정 근거로 인용할 때는 원문을
+#     다시 확인해야 합니다.
+#
+# 리스(시설대여) 단독 표시광고 사례는 공정위 의결서 전수검색(부당한 표시광고 유형), 금감원
+# 보도자료, 한국소비자원 보고서에서 모두 확인되지 않았습니다. `할부금융·리스`는 할부금융 쪽
+# 사례로만 채워져 있습니다.
+#
+# 필드
+#   case_id                 안정적인 식별자
+#   record_type             위반사례(제재) | 지적사례(감독당국 점검·개선요구) | 민원사례
+#   institution / firm      처분·공표 기관 / 대상 회사(비공개면 not_disclosed)
+#   official_date           처분일 또는 공표일
+#   official_primary_url    공식 1차 출처 URL
+#   source_tier             1=공식 1차, 2=공식 문서의 2차 게재, 3=언론·민간 재게시
+#   product_types           이 사례가 알려주는 프로젝트 상품유형(루브릭 applies_to와 같은 값)
+#   product_basis           직접(제재 대상이 그 상품유형) | 유추(같은 광고 유형의 다른 업권·상품)
+#   product_subtype         사례에 나온 실제 상품
+#   legal_basis             당시 적용된 법령·규정
+#   issue                   무엇이 문제였는지 한 문장
+#   outcome                 조치 결과
+#   mvp_signal              상품 페이지에서 찾아야 할 신호
+#   page_only_detectability full | partial | review_required | out_of_scope
+#   related_checklist       관련 루브릭 코드
+#   text                    임베딩·인용에 쓰는 출처 원문 문장
+#   retrieved_at            원문을 확인한 날짜
+items:
+
+# ── 리볼빙 ─ 금융감독원·여신금융협회 공동 리볼빙 광고 점검 (2024-02-26) ──────────────
+- case_id: case.fss_20240226_revolving_min_rate_only
+  record_type: 지적사례
+  institution: 금융감독원
+  firm: not_disclosed
+  official_date: '2024-02-26'
+  official_primary_url: https://www.fss.or.kr/fss/bbs/B0000188/view.do?nttId=134078&menuNo=200218
+  source_tier: 1
+  product_types:
+  - 리볼빙
+  product_basis: 직접
+  product_subtype: 결제성 리볼빙
+  legal_basis: 금융소비자보호법 제22조, 금융소비자보호 감독규정 제17조(금감원·여신금융협회 공동 개선방안)
+  issue: 리볼빙 광고가 평균이자율 없이 최소~최대 범위만 안내하고, 일부 카드사는 첫 화면에 일반 소비자가 적용받기 어려운 최소이자율만 표기했습니다.
+  outcome: 개선방안 시행(평균 이자율 병행 고지)
+  mvp_signal: 첫 화면의 이자율 표기, 최소이자율 단독 노출, 평균 이자율 병행 여부, 최고이자율의 위치와 크기
+  page_only_detectability: full
+  related_checklist:
+  - C03
+  - D01
+  - E08
+  - 표시09
+  text: |
+    (현행) 각 카드사 홈페이지·앱 등의 리볼빙 광고에는 평균 이자율('24.1월말 16.9%) 언급 없이
+    최소 및 최대 이자율 범위만 안내. 특히 일부 카드사는 광고 첫 화면에 일반 금융소비자가
+    적용받기 어려운 최소이자율만 표기하여 소비자의 올바른 의사결정을 저해(예: 극히 예외적으로
+    적용받는 최소이자율인 5.4%만 광고 첫 화면에 게시 등). 카드사 홈페이지 리볼빙 이자율
+    고시는 A사 연 6.9~19.95%, B사 연 4.5~19.9%, C사 연 5.4~19.9%, D사 연 5.6~19.95%였으나
+    실제 평균 이자율은 16.9%였다.
+    (개선) 홈페이지 및 앱 광고 등에 리볼빙 적용이자율을 고시할 때는 최소·최대 범위뿐만 아니라
+    평균 이자율도 병행하여 기재.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.fss_20240226_revolving_tab_naming
+  record_type: 지적사례
+  institution: 금융감독원
+  firm: not_disclosed
+  official_date: '2024-02-26'
+  official_primary_url: https://www.fss.or.kr/fss/bbs/B0000188/view.do?nttId=134078&menuNo=200218
+  source_tier: 1
+  product_types:
+  - 리볼빙
+  product_basis: 직접
+  product_subtype: 결제성 리볼빙
+  legal_basis: 금융소비자보호법 제22조, 신용카드 개인회원 표준약관(용어), 금감원·여신금융협회 공동 개선방안
+  issue: 결제화면에서 리볼빙임을 밝히지 않고 '일부만 결제'·'최소결제' 같은 탭 이름을 써서 일시불 분할납부 등 다른 서비스로 오인할 수 있게 했습니다.
+  outcome: 개선방안 시행('리볼빙' 또는 '일부결제금액이월약정(리볼빙)'으로 명확히 표기)
+  mvp_signal: 가입·결제 화면의 탭·버튼 이름, '일부 결제'·'최소결제'·'미납 걱정없이 결제' 같은 표현, 정식 상품명 표기 여부
+  page_only_detectability: full
+  related_checklist:
+  - A03
+  - D05
+  - F02
+  text: |
+    (현행) 일부 카드사는 홈페이지 또는 앱 결제화면에 리볼빙임을 밝히지 않고 「일부만 결제」
+    또는 「최소결제」라는 탭을 운용((A사) 「일부 결제 후 이월」 / (B사) 「일부 결제」 /
+    (C사) 「미납 걱정없이 결제」 탭 운용). 이로 인해 소비자는 당월에 일부금액만 결제할 수 있는
+    '일시불 분할납부' 등 다른 서비스와 오인 가능.
+    (개선) 앱이나 홈페이지의 리볼빙 가입화면에 '최소결제', '일부만 결제' 등 소비자 오인
+    가능성이 있는 표현 대신, 소비자에게 익숙한 '리볼빙' 또는 표준약관상 용어인
+    '일부결제금액이월약정(리볼빙)'으로 분명하게 표기토록 개선.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.fss_20240226_revolving_longterm_risk
+  record_type: 지적사례
+  institution: 금융감독원
+  firm: not_disclosed
+  official_date: '2024-02-26'
+  official_primary_url: https://www.fss.or.kr/fss/bbs/B0000188/view.do?nttId=134078&menuNo=200218
+  source_tier: 1
+  product_types:
+  - 리볼빙
+  product_basis: 직접
+  product_subtype: 결제성 리볼빙
+  legal_basis: 금융소비자보호법 제19조, 금융소비자보호 감독규정 제13조, 금감원·여신금융협회 공동 개선방안
+  issue: 리볼빙 신청과정 설명 자료가 신청 당월 1개월치만 제시하거나 이후 카드사용액을 0 또는 감소로 가정해, 청구금액이 점차 낮아지는 예시로 장기이용 위험을 감춰 설명했습니다.
+  outcome: 개선방안 시행(3개월 이상·매달 카드사용액 일정 가정으로 설명)
+  mvp_signal: 리볼빙 수수료 시뮬레이션의 가정과 기간, 2개월차 이후 카드사용액 가정값, 청구금액·이월금액 추이 방향
+  page_only_detectability: full
+  related_checklist:
+  - F10
+  - D02
+  - 쉬운말12
+  text: |
+    (현행) 리볼빙은 장기간 이용할수록 결제부담이 확대되고 상환 불능 가능성도 증가하지만 이에
+    대한 설명이 미흡. 특히 일부 카드사는 홈페이지의 리볼빙 '신청과정 설명 자료'에 실제 신용카드
+    이용행태에 부합하지 않는 사례 위주로 설명(신청 당월(1개월치) 시뮬레이션 자료만 제시하거나,
+    다음달 신용카드 사용액이 '0' 또는 감소하는 것으로 가정하여 설명하고, 리볼빙 이용 후
+    청구금액(사용자 부담액)이 점차 낮아지는 예시를 활용). G사는 2개월차 이후 카드사용액을 '0'으로
+    가정하여 설명, H사는 2개월차 이후 카드사용액 감소를 가정(100만원 → 20만원)하여 청구금액 및
+    이월금액도 점차 감소하는 것으로 표기.
+    (개선) 장기 사용(3개월 이상) 및 현실적인 카드이용 행태(예: 매달 카드사용액 일정)를 반영한
+    자료로 설명.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.fss_20240226_revolving_assertive_wording
+  record_type: 지적사례
+  institution: 금융감독원
+  firm: not_disclosed
+  official_date: '2024-02-26'
+  official_primary_url: https://www.fss.or.kr/fss/bbs/B0000188/view.do?nttId=134078&menuNo=200218
+  source_tier: 1
+  product_types:
+  - 리볼빙
+  product_basis: 직접
+  product_subtype: 결제성 리볼빙
+  legal_basis: 금융소비자보호법 제22조제3항, 금융소비자보호 감독규정 제20조, 금감원·여신금융협회 공동 개선방안
+  issue: 리볼빙을 개인신용평점 하락을 방지하는 결제 편의상품이라고 광고해, 특정 조건에서만 성립하는 사항을 항상 충족되는 일반적 사항처럼 단정했습니다.
+  outcome: 개선방안 시행(단정적 표현 지양, 전제조건 병행 표기)
+  mvp_signal: "'신용평점 하락 방지'·'결제 편의' 같은 단정적 표현, 그 표현의 전제조건 병기 여부, 개인신용평점 하락 가능성 경고문구"
+  page_only_detectability: full
+  related_checklist:
+  - D04
+  - F06
+  - F18
+  - A11
+  text: |
+    (현행) 일부 카드사는 리볼빙이 '개인신용평점 하락을 방지하는 결제 편의상품'이라 광고하는 등,
+    특정조건(연체없이 지속결제, 매달 카드사용액 일정 등) 만족시 성립되는 사항을 리볼빙 이용 시
+    항상 충족되는 일반적인 사항처럼 광고.
+    (개선) 리볼빙 광고시 금융소비자의 합리적인 의사결정을 저해할 수 있는 단정적인 표현을
+    사용하지 않도록 하고, 불가피하게 일부 사용할 경우 해당 문구가 성립하기 위한 전제 조건을
+    반드시 병행하여 표기.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.fss_20240226_revolving_total_fee_legibility
+  record_type: 지적사례
+  institution: 금융감독원
+  firm: not_disclosed
+  official_date: '2024-02-26'
+  official_primary_url: https://www.fss.or.kr/fss/bbs/B0000188/view.do?nttId=134078&menuNo=200218
+  source_tier: 1
+  product_types:
+  - 리볼빙
+  product_basis: 직접
+  product_subtype: 결제성 리볼빙
+  legal_basis: 금융소비자보호법 제19조, 여신전문금융회사 등의 광고에 관한 규정 세부지침(표시방법), 금감원·여신금융협회 공동 개선방안
+  issue: 리볼빙 예상 상환기간과 총수수료를 이용대금명세서 하단에 작은 글씨로 기재해 소비자가 명확히 인식하지 못할 우려가 있었습니다.
+  outcome: 개선방안 시행(별도 항목으로 명확히 고지)
+  mvp_signal: 예상 상환기간·총수수료의 글자 크기와 위치, 별도 항목 구분 여부, 혜택 문구와의 크기 대비
+  page_only_detectability: partial
+  related_checklist:
+  - E01
+  - E02
+  - F04
+  - 표시02
+  - 표시03
+  text: |
+    (현행) 리볼빙 이용대금명세서(리볼빙 이용자 한정)에 리볼빙 예상 상환기간 및 총수수료를
+    안내하고 있으나, 일부 카드사의 경우 리볼빙 예상 상환기간·(총수수료)를 이용대금명세서 하단에
+    작은 글씨로 기재하여 소비자가 명확히 인식하지 못할 우려.
+    (개선) 리볼빙 이용대금명세서에 리볼빙 예상 상환기간·(총수수료) 정보를 별도 항목으로 명확히
+    고지하여 금융소비자가 리볼빙 이용시 총수수료 수준 등을 인지하고 자금 상환계획을 철저히
+    수립하는 데 도움이 될 수 있도록 개선.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.fss_20240226_revolving_signup_emphasis
+  record_type: 지적사례
+  institution: 금융감독원
+  firm: not_disclosed
+  official_date: '2024-02-26'
+  official_primary_url: https://www.fss.or.kr/fss/bbs/B0000188/view.do?nttId=134078&menuNo=200218
+  source_tier: 1
+  product_types:
+  - 리볼빙
+  product_basis: 직접
+  product_subtype: 결제성 리볼빙
+  legal_basis: 여신전문금융회사 등의 광고에 관한 규정 세부지침(표시방법), 금융소비자보호 감독규정 제17조, 금감원·여신금융협회 공동 개선방안
+  issue: 리볼빙 가입화면 안내문의 글자 크기가 작거나 모두 검은색으로 기재되어 중요사항을 구별할 수 없었습니다.
+  outcome: 개선방안 시행(굵은 글씨·음영으로 강조 표시)
+  mvp_signal: 가입화면 안내문의 글자 크기·색상, 개인신용평점 하락 가능성과 장기이용 부담 문구의 굵기·음영, 본문 색과의 대비
+  page_only_detectability: full
+  related_checklist:
+  - E03
+  - E05
+  - F20
+  - 표시04
+  - 표시06
+  - 표시10
+  text: |
+    (현행) 일부 카드사의 경우 홈페이지(또는 앱) 리볼빙 가입화면 안내문의 글자 크기가 작거나,
+    모두 검은색으로 기재되어 리볼빙 관련 중요사항에 대해 금융소비자가 명확히 인지하지 못할 우려.
+    (개선) 리볼빙 관련 중요사항(리볼빙 이용 시 개인신용평점 하락 가능성 및 장기 이용에 따른 부담
+    등)을 굵은 글씨나 음영표시 등을 통해 금융소비자가 쉽게 알아볼 수 있도록 강조 표시할 예정.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.fss_20260609_revolving_complaint
+  record_type: 민원사례
+  institution: 금융감독원
+  firm: not_disclosed
+  official_date: '2026-06-09'
+  official_primary_url: https://www.fss.or.kr/fss/bbs/B0000188/view.do?nttId=218259&menuNo=200218&pageIndex=1
+  source_tier: 1
+  product_types:
+  - 리볼빙
+  - 신용카드
+  product_basis: 직접
+  product_subtype: 결제성 리볼빙
+  legal_basis: 금융소비자보호법 제19조·제22조
+  issue: 리볼빙이 필수사항으로 오인되어 가입한 뒤 높은 수수료 부담이 발생했다는 민원이 접수되었습니다.
+  outcome: 소비자 유의사항 안내
+  mvp_signal: 리볼빙 명칭, 수수료율, 상환구조 설명, 개인신용평점 경고문구, 선택사항임을 알리는 표기
+  page_only_detectability: partial
+  related_checklist:
+  - A03
+  - C03
+  - F10
+  - D05
+  text: |
+    주요 민원사례로 알아보는 신용카드 이용시 소비자 유의사항. 리볼빙이 필수사항으로 오인되어
+    가입되고 높은 수수료 부담이 발생했다는 민원이 접수되었다.
+  retrieved_at: '2026-09-27'
+
+# ── 신용카드 ─ 금융감독원 제6차 공정금융 추진위원회 (2024-10-07) ─────────────────────
+- case_id: case.fss_20241007_interest_free_promo_notice
+  record_type: 지적사례
+  institution: 금융감독원
+  firm: not_disclosed
+  official_date: '2024-10-07'
+  official_primary_url: https://www.fss.or.kr/fss/bbs/B0000188/view.do?nttId=187481&menuNo=200218
+  source_tier: 1
+  product_types:
+  - 신용카드
+  product_basis: 직접
+  product_subtype: 무이자할부 서비스
+  legal_basis: 금융소비자보호법 제19조·제22조, 신용카드 개인회원 표준약관
+  issue: 무이자할부 프로모션 내용과 변경·중단에 대한 안내가 부족해 소비자가 서비스를 이용하지 못하거나 예상치 못한 할부수수료를 부담할 우려가 있었습니다.
+  outcome: 이용조건 안내 보완 추진
+  mvp_signal: 무이자할부 대상 업종·가맹점, 적용 개월 수, 프로모션 기간, 변경·중단 시 안내 방법
+  page_only_detectability: full
+  related_checklist:
+  - D14
+  - D15
+  - F14
+  - A10
+  text: |
+    (배경 및 문제점) 신용카드 이용자가 무이자할부 서비스를 이용하는 과정에서 일부 신용카드사의
+    안내가 부족하다는 민원 등이 제기되고 있습니다. 무이자할부 프로모션 내용 및 변경·중단 관련
+    안내가 부족하여, 신용카드 이용자가 무이자할부 서비스를 이용하지 못하거나 예상치 못한
+    할부수수료를 부담할 우려가 있습니다. 신용카드사는 일반적으로 가전, 병원, 의류, 차량관리,
+    백화점, 대형마트, 여행·항공, 온라인 쇼핑, 손해보험 등 할부 구입 수요가 많은 업종의
+    가맹점에서 2~6개월 무이자할부 제공중.
+    (관련 민원) 민원인 A씨는 신용카드사가 무이자할부 서비스를 일부 축소한 후 동 사실을 적절히
+    안내하지 않아, 이를 알지 못한 채 1년 이상 높은 유이자할부 수수료를 부담하였다고 주장.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.fss_20241007_interest_free_benefit_exclusion
+  record_type: 지적사례
+  institution: 금융감독원
+  firm: not_disclosed
+  official_date: '2024-10-07'
+  official_primary_url: https://www.fss.or.kr/fss/bbs/B0000188/view.do?nttId=187481&menuNo=200218
+  source_tier: 1
+  product_types:
+  - 신용카드
+  product_basis: 직접
+  product_subtype: 무이자할부 서비스·부가서비스(포인트·마일리지·할인)
+  legal_basis: 금융소비자보호법 제19조·제22조, 금융소비자보호 감독규정 제17조
+  issue: 무이자할부를 이용하면 실적 산정과 포인트·마일리지 적립, 할인이 제외되는 조건인데도 홈페이지나 홍보물에 안내하지 않았습니다.
+  outcome: 이용조건 안내 보완 추진
+  mvp_signal: 무이자할부 이용 시 실적 제외·포인트 미적립·할인 제외 문구, 그 문구와 혜택 문구의 거리, 상품설명서 기재 여부
+  page_only_detectability: full
+  related_checklist:
+  - A10
+  - D06
+  - D09
+  - F15
+  - 쉬운말07
+  text: |
+    또한, 무이자할부를 이용할 경우에는 실적 산정, 포인트·마일리지 적립 및 할인 등이 제외되는
+    조건의 신용카드상품이 대부분임에도 이를 홈페이지 또는 가맹점 비치 홍보물 등을 통해 안내하지
+    않고 있어, 신용카드 이용자가 자신에게 유리한 혜택을 비교·선택하기 어려운 측면이 있습니다.
+    (관련 민원) 민원인 B씨는 신용카드사가 상품설명서에 무이자할부 이용시 포인트 적립이 제외된다는
+    사실을 명확히 기재하지 않았음에도, 홈페이지에 관련 안내를 포함했다는 이유로 포인트 적립을
+    제외하는 것은 불합리하다고 주장.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.fss_20241007_addon_limit_restore
+  record_type: 지적사례
+  institution: 금융감독원
+  firm: not_disclosed
+  official_date: '2024-10-07'
+  official_primary_url: https://www.fss.or.kr/fss/bbs/B0000188/view.do?nttId=187481&menuNo=200218
+  source_tier: 1
+  product_types:
+  - 신용카드
+  product_basis: 직접
+  product_subtype: 부가서비스(포인트·캐시백·청구할인)
+  legal_basis: 금융소비자보호법 제19조, 신용카드 개인회원 표준약관 제15조
+  issue: 월별 제공한도를 초과해 미제공된 부가서비스가 결제취소로 한도가 부활해도 제공되지 않았고, 개별약관에는 제공하지 않는다는 조항만 있었습니다.
+  outcome: 약관 개정·시스템 개선, 미제공분 환급(전업카드사 11.9억원 등)
+  mvp_signal: 부가서비스 월별 제공한도, 결제취소 시 한도·적립 처리 설명, 개별약관의 미제공 조항, 사후정산 안내
+  page_only_detectability: partial
+  related_checklist:
+  - A10
+  - D22
+  - F12
+  - F13
+  - F15
+  text: |
+    신용카드 이용시 일정 한도까지 포인트를 적립하는 일부 상품에서 신용카드 결제로 포인트
+    적립한도를 모두 소진한 후 동 결제가 취소된 경우, 동 신용카드 결제일과 취소일 사이의 다른
+    이용건에 대한 포인트 사후 적립을 누락한 사실이 확인되었다. 이러한 포인트 미적립 문제는
+    겸영신용카드사를 포함하여 캐시백 및 청구할인 등 다른 부가서비스에서도 동일하게 발생하고
+    있으며, 18개 신용카드사가 결제 취소 전 이용건에 대한 부가서비스 미제공 신용카드상품을
+    운영하고 있다. 현행 표준약관에는 결제취소시 취소 전 한도 초과로 누락된 부가서비스의 제공
+    여부에 대한 내용이 없고, 개별약관에는 '해당 부가서비스를 제공하지 않는다'는 조항이 포함되어
+    있다. (예) 결제금액의 5% 포인트 적립(月 결제금액 20만원까지) → 월별 제공한도 10,000원.
+  retrieved_at: '2026-09-27'
+
+# ── 신용카드·카드대출 ─ 여신금융협회 허위·과장 광고 대표 사례 ──────────────────────
+- case_id: case.crefia_ad_type_superlative
+  record_type: 지적사례
+  institution: 여신금융협회
+  firm: not_disclosed
+  official_date: '2026-09-27'
+  official_primary_url: https://customer.crefia.or.kr/common/forward.xx?url=%2Fcustomer%2Freceipt%2FfalseHype%2FfalseHypeCase
+  source_tier: 1
+  product_types:
+  - 신용카드
+  - 단기카드대출
+  - 장기카드대출
+  - 리볼빙
+  - 할부금융·리스
+  product_basis: 직접
+  product_subtype: 여신금융상품 광고 일반
+  legal_basis: 여신전문금융회사 등의 광고에 관한 규정(협회 자율규제), 표시·광고의 공정화에 관한 법률 제3조
+  issue: 객관적 근거가 없는 최상급 표현을 쓰는 행위를 협회가 허위·과장 광고의 대표 유형으로 제시했습니다.
+  outcome: 신고 대상 유형 안내
+  mvp_signal: "'역대급'·'유일'·'최강'·'1위'·'최초' 같은 표현과 그 옆의 객관적 근거·출처 표시"
+  page_only_detectability: full
+  related_checklist:
+  - D13
+  - D18
+  - 쉬운말16
+  text: |
+    허위·과장 주요 사례 ① "역대급", "유일", "최강" 등 객관적 근거가 없는 표현을 사용하는 행위.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.crefia_ad_type_promo_period
+  record_type: 지적사례
+  institution: 여신금융협회
+  firm: not_disclosed
+  official_date: '2026-09-27'
+  official_primary_url: https://customer.crefia.or.kr/common/forward.xx?url=%2Fcustomer%2Freceipt%2FfalseHype%2FfalseHypeCase
+  source_tier: 1
+  product_types:
+  - 신용카드
+  product_basis: 직접
+  product_subtype: 무이자할부 프로모션
+  legal_basis: 여신전문금융회사 등의 광고에 관한 규정(협회 자율규제), 표시·광고의 공정화에 관한 법률 제3조
+  issue: 상품설명서에 없는 혜택을 광고하면서 프로모션 기간을 명시하지 않는 행위를 협회가 허위·과장 광고 유형으로 제시했습니다.
+  outcome: 신고 대상 유형 안내
+  mvp_signal: 상품설명서에 없는 이벤트성 혜택 문구, 그 혜택의 적용 기간 표기 여부
+  page_only_detectability: full
+  related_checklist:
+  - D14
+  - D15
+  - A10
+  text: |
+    허위·과장 주요 사례 ② 'A카드로 10만원 이상 결제 시 5개월 무이자 할부' 등 카드 상품설명서에
+    없는 혜택을 광고하면서 프로모션 기간을 명시하지 않는 행위.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.crefia_ad_type_unconditional_discount
+  record_type: 지적사례
+  institution: 여신금융협회
+  firm: not_disclosed
+  official_date: '2026-09-27'
+  official_primary_url: https://customer.crefia.or.kr/common/forward.xx?url=%2Fcustomer%2Freceipt%2FfalseHype%2FfalseHypeCase
+  source_tier: 1
+  product_types:
+  - 신용카드
+  product_basis: 직접
+  product_subtype: 할인형 신용카드
+  legal_basis: 여신전문금융회사 등의 광고에 관한 규정(협회 자율규제), 표시·광고의 공정화에 관한 법률 제3조
+  issue: 할인 제외 대상 가맹점이 있는데도 '무조건 할인'이라고 표현하는 행위를 협회가 허위·과장 광고 유형으로 제시했습니다.
+  outcome: 신고 대상 유형 안내
+  mvp_signal: "'무조건'·'조건 없이'·'전 가맹점' 같은 표현, 할인 제외 대상 가맹점·할인한도·전월실적 조건의 표시 위치"
+  page_only_detectability: full
+  related_checklist:
+  - A10
+  - D06
+  - D12
+  - 쉬운말04
+  text: |
+    허위·과장 주요 사례 ③ 할인 제외 대상 가맹점이 존재하고 있으나 '무조건 0.7% 할인 되는 카드'
+    등의 표현을 사용하는 행위. 단, 할인한도나 실적 조건이 없는 경우 '한도 조건 없이 할인되는
+    카드', '실적 조건없이 할인 되는 카드' 등의 표현은 사용가능.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.crefia_ad_type_group_rank
+  record_type: 지적사례
+  institution: 여신금융협회
+  firm: not_disclosed
+  official_date: '2026-09-27'
+  official_primary_url: https://customer.crefia.or.kr/common/forward.xx?url=%2Fcustomer%2Freceipt%2FfalseHype%2FfalseHypeCase
+  source_tier: 1
+  product_types:
+  - 신용카드
+  - 단기카드대출
+  - 장기카드대출
+  product_basis: 직접
+  product_subtype: 여신금융상품 광고 일반
+  legal_basis: 여신전문금융회사 등의 광고에 관한 규정(협회 자율규제), 표시·광고의 공정화에 관한 법률 제3조
+  issue: 같은 금융지주사 은행이 업계 1위인 것을 여신금융회사가 1위인 것처럼 표시하는 행위를 협회가 허위·과장 광고 유형으로 제시했습니다.
+  outcome: 신고 대상 유형 안내
+  mvp_signal: 금융지주·계열 은행의 순위·규모 인용, 그 순위의 주체가 카드사인지 은행인지 구분되는 표기
+  page_only_detectability: full
+  related_checklist:
+  - D19
+  - D18
+  - D13
+  text: |
+    허위·과장 주요 사례 ④ 동일한 금융지주사에 속해 있는 은행이 업계 1위인 것을 마치
+    여신금융회사가 업계 1위인 것처럼 표시하는 경우.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.crefia_ad_type_loan_eligibility
+  record_type: 지적사례
+  institution: 여신금융협회
+  firm: not_disclosed
+  official_date: '2026-09-27'
+  official_primary_url: https://customer.crefia.or.kr/common/forward.xx?url=%2Fcustomer%2Freceipt%2FfalseHype%2FfalseHypeCase
+  source_tier: 1
+  product_types:
+  - 장기카드대출
+  - 단기카드대출
+  - 할부금융·리스
+  product_basis: 직접
+  product_subtype: 카드대출·할부금융 광고
+  legal_basis: 여신전문금융회사 등의 광고에 관한 규정(협회 자율규제), 표시·광고의 공정화에 관한 법률 제3조
+  issue: 연소득 요건이 있어 대출이 불가한 상품인데 '소득만 있다면'이라는 표현으로 소비자를 오인하게 하는 행위를 협회가 허위·과장 광고 유형으로 제시했습니다.
+  outcome: 신고 대상 유형 안내
+  mvp_signal: "'소득만 있다면'·'누구나'·'무심사' 같은 표현, 연소득·개인신용평점 등 대출 자격 제한의 표시 여부"
+  page_only_detectability: full
+  related_checklist:
+  - B01
+  - D10
+  - D12
+  - 쉬운말04
+  text: |
+    허위·과장 주요 사례 ⑤ 연소득 2천만원 미만인 자에게는 대출이 불가한 상품인데 '소득만 있다면'의
+    표현을 사용하여 소비자를 오인하게 하는 경우.
+  retrieved_at: '2026-09-27'
+
+# ── 공정거래위원회 의결 (표시·광고의 공정화에 관한 법률) ─────────────────────────────
+- case_id: case.ftc_19990830_citibank_card_limit
+  record_type: 위반사례
+  institution: 공정거래위원회
+  firm: 씨티은행 서울지점
+  official_date: '1999-08-30'
+  official_primary_url: https://case.ftc.go.kr/ocp/co/ltfr.do?caseNo=9906%EA%B4%91%EA%B3%A00910
+  source_tier: 1
+  product_types:
+  - 신용카드
+  - 단기카드대출
+  product_basis: 직접
+  product_subtype: 골드카드 이용한도·현금서비스 한도
+  legal_basis: 구 독점규제 및 공정거래에 관한 법률 제23조제1항제6호, 같은 법 시행령 제36조제1항 별표1 제9호 나목(기만적인 표시·광고)
+  issue: 카드 이용 안내전단에 골드카드 현금서비스·구매 한도를 표시하고 더 비싼 회비를 받았으나, 실제로는 일반카드 한도를 적용했습니다.
+  outcome: 시정명령, 법위반사실 공표(의결(약) 제99-199호)
+  mvp_signal: 이용한도·현금서비스 한도 표기, 등급별 한도표, 한도가 심사에 따라 달라질 수 있다는 단서
+  page_only_detectability: partial
+  related_checklist:
+  - D04
+  - D05
+  - D22
+  - B01
+  text: |
+    주문: 피심인은 골드카드 회원들에게 실제로는 일반카드 회원들의 구매한도액을 적용하면서도
+    골드카드 구매한도액을 그대로 적용해 주는 것처럼 소비자를 오인시킬 우려가 있는 부당한
+    표시·광고행위를 하여서는 아니된다.
+    행위사실: 피심인은 비자카드 사용한도액과 관련하여 1998.12~1999.4월 사이에 고객들에게
+    배포(6회)한 씨티은행 비자카드 이용 안내전단(7.2×1.6㎝)을 통하여 사용한도를 일반/골드로 나누어
+    현금서비스 50만원/70만원, 구매사용 200~300만원/400~500만원으로 광고한 사실이 있다. 피심인은
+    당초 카드가입 안내전단을 보고 가입하는 골드카드 가입회원들에게 일반카드 가입회비보다 1만원
+    비싼 2만원의 가입회비를 징구하면서, 사전에 구매한도액 조정사실을 통보하지 않고 일방적으로
+    일반카드 구매한도인 200~300만원을 적용한 사실이 있다.
+    판단: 카드회비가 비싼 골드카드를 발급해 주었으면서도 실제 카드가입 이후에는 당초 카드가입
+    안내전단에 표시된 내용과 다르게 일반카드회원과 동일한 대우를 해주는 행위는 소비자를 기만하는
+    부당한 표시·광고행위에 해당된다.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.ftc_19980825_installment_finance_rate
+  record_type: 위반사례
+  institution: 공정거래위원회
+  firm: 외환할부금융·대우할부금융·쌍용여신금융·한국주택할부금융·영남주택할부금융·동양카드
+  official_date: '1998-08-25'
+  official_primary_url: https://case.ftc.go.kr/ocp/co/ltfr.do?caseNo=9805%EA%B4%91%EA%B3%A00729
+  source_tier: 1
+  product_types:
+  - 할부금융·리스
+  product_basis: 직접
+  product_subtype: 주택할부금융
+  legal_basis: 구 독점규제 및 공정거래에 관한 법률(부당한 광고행위), 여신전문금융업법상 할부금융업
+  issue: 실제로는 대출금리가 변동될 수 있는데 '연 13.3%(매 3년 후 이자율 재조정)' 등으로 광고해 일정한 금리가 계속 적용되는 것처럼 오인하게 했습니다.
+  outcome: 시정명령, 거래상대방 서면통지 및 법위반사실 공표(의결 제98-182호, 6개사 일괄)
+  mvp_signal: 이자율 표기 옆의 변동·고정 구분, 이자율 산출기준과 재조정 주기, 최저~최고 범위 표기
+  page_only_detectability: full
+  related_checklist:
+  - C07
+  - D01
+  - E08
+  - F01
+  - 표시09
+  text: |
+    주문: 피심인들은 주택할부금융 안내광고를 함에 있어, 실제로는 대출금리가 변동될 수 있음에도
+    불구하고 대출금리에 대하여 '연 13.3%(매 3년 후 이자율 재조정)' 또는 '연 13.99%' 등으로
+    광고하여 대출금리가 대출 후 일정기간 또는 대출실행기간 중에는 변동되지 아니하고 일정한 금리가
+    계속 적용되는 것처럼 소비자를 오인시킬 우려가 있는 부당한 광고행위를 하여서는 아니 된다.
+    기초사실: 피심인들은 여신전문금융업을 영위하는 자로서, 이 사건과 관련 있는 '할부금융업'이라
+    함은 물건매매계약에 대하여 매도인 및 매수인과 각각 약정을 체결하여 매수인에게 융자한 물건구매
+    자금을 매도인에게 지급하고 매수인으로부터 그 원리금을 분할하여 상환받는 방식의 금융을 말한다.
+  retrieved_at: '2026-09-27'
+
+- case_id: case.ftc_20080225_lowest_rate_and_eligibility
+  record_type: 위반사례
+  institution: 공정거래위원회
+  firm: (주)유아이크레디트
+  official_date: '2008-02-25'
+  official_primary_url: https://case.ftc.go.kr/ocp/co/ltfr.do?caseNo=2007%EA%B4%91%EA%B3%A02352
+  source_tier: 1
+  product_types:
+  - 장기카드대출
+  - 단기카드대출
+  product_basis: 유추
+  product_subtype: 대부업 소비자금융 대출
+  legal_basis: 표시·광고의 공정화에 관한 법률 제3조제1항제1호, 같은 법 시행령 제3조제1항(거짓·과장의 표시·광고)
+  issue: 소득이 없거나 채무를 불이행한 자에게는 대출을 불허하는데 특정 연령대 누구에게나 대출해 주는 것처럼, 또 자신의 금리가 업계 최저인 것처럼 광고했습니다.
+  outcome: 시정명령, 과징금 5백만원, 인터넷사이트 팝업 공표(의결 제2008-065호)
+  mvp_signal: "'누구나'·'대한민국 남성, 여성 누구나' 같은 자격 표현, '최저 금리' 표현과 그 근거, 실제 금리 범위 병기"
+  page_only_detectability: full
+  related_checklist:
+  - B01
+  - D10
+  - D12
+  - D13
+  - E08
+  - 표시09
+  text: |
+    주문: 피심인은 대출상품에 대하여 광고하면서 다음과 같이 소비자를 속이거나 소비자로 하여금
+    잘못 알게 할 우려가 있는 허위·과장의 광고행위를 다시 하여서는 아니 된다. 가. 일정한 대출거절
+    요건에 해당하는 고객에게는 대출을 불허함에도 불구하고, 마치 특정 연령대의 모든 소비자에게
+    대출을 허용해주는 것처럼 광고하는 행위. 나. 피심인의 대출금리보다 낮은 소비자금융업체가
+    있음에도 불구하고, 마치 피심인의 대출금리가 소비자금융업계에서 가장 낮은 것처럼 광고하는 행위.
+    광고내용: '대출자격 : 대한민국 남성, 여성 누구나 만 20세~60세', '소비자금융업계 최저 금리 /
+    대출금리 : 국내 소비자금융 업체 중 가장 낮은 금리 년 36~64.8%, 월 3%~5.4%'.
+    판단: 광고가 소비자를 속이거나 소비자로 하여금 잘못 알게 할 우려가 있는지는 보통의 주의력을
+    가진 일반 소비자가 당해 광고를 받아들이는 전체적·궁극적 인상을 기준으로 하여 객관적으로
+    판단한다(대법원 2003. 6. 27. 선고 2002두6965 판결 참조).
+  retrieved_at: '2026-09-27'
+
+- case_id: case.ftc_20080225_interest_free_period
+  record_type: 위반사례
+  institution: 공정거래위원회
+  firm: (주)러시앤캐시
+  official_date: '2008-02-25'
+  official_primary_url: https://case.ftc.go.kr/ocp/co/ltfr.do?caseNo=2007%EA%B4%91%EA%B3%A02345
+  source_tier: 1
+  product_types:
+  - 장기카드대출
+  - 신용카드
+  product_basis: 유추
+  product_subtype: 대부업 소비자금융 대출(무이자 기간 프로모션)
+  legal_basis: 표시·광고의 공정화에 관한 법률 제3조제1항제1호, 같은 법 시행령 제3조제1항(거짓·과장의 표시·광고)
+  issue: 신규고객 모두에게 무이자 30일을 주는 것처럼 광고했으나 실제로는 신용도에 따라 차등 부여해 91.4%가 15일만 받았습니다.
+  outcome: 시정명령, 과징금 60백만원, 2개 중앙일간지 공표(의결 제2008-068호)
+  mvp_signal: 무이자 기간·우대조건 문구, '신규고객 한함' 같은 자막·각주의 크기와 위치, 실제 적용 조건의 차등 여부
+  page_only_detectability: partial
+  related_checklist:
+  - D11
+  - D14
+  - D15
+  - D22
+  - E01
+  - 표시02
+  text: |
+    주문: 피심인은 대출상품에 대하여 광고하면서 자신이 고객들에게 실제로 부여하는 무이자 기간보다
+    장기간 무이자 기간을 부여하는 것처럼 소비자를 속이거나 소비자로 하여금 잘못 알게 할 우려가
+    있는 허위·과장의 광고행위를 다시 하여서는 아니 된다.
+    광고내용: '무이자 30일 맞습니다 / 한 달 동안 / 무이자 30일 / 한달간 이자가 공짜'. 무이자 30일
+    이벤트 대상은 '신규고객에 한함'으로 자막으로만 제공.
+    행위사실: 그러나 실제 피심인은 이 사건 광고기간 동안 대부계약을 신규로 체결하면서 고객의
+    신용도에 따라 무이자 기간을 차등하여 부여하였다. 무이자 기간 15일이 28,402건(91.4%),
+    30일이 2,664건(8.6%)이었다.
+  retrieved_at: '2026-09-27'

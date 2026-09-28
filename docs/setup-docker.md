@@ -16,7 +16,8 @@ the internet is not the one driving a browser.
 
 - Docker Desktop, or Docker Engine with the Compose plugin
 - A `.env` at the repository root
-- The rubric yaml folder on the host (`05 법령·지침 원문 검증/카드사 가드레일 루브릭`)
+- The rubric yaml folder on the host (`05 법령·지침 원문 검증/카드사 가드레일 루브릭`) — checked
+  into the repository, no separate checkout needed
 
 ## Environment
 
@@ -37,13 +38,14 @@ Two worth setting deliberately:
   way to start an unauthenticated instance. Issue one with
   `uv run python -m financial_disclosure_review.serving.token`.
 - **`FDR_RUBRIC_HOST_DIR`** — the host path mounted read-only at `/app/rubrics`. The default is
-  the sibling folder inside `261001 ABC Final Project`; set it if your checkout sits elsewhere.
+  the copy checked into this repository (`05 법령·지침 원문 검증/카드사 가드레일 루브릭`); set it
+  only if you keep the yaml elsewhere.
 
 ## The reference DB
 
-`data/*.sqlite` is gitignored and the rubric yaml lives outside the repository, so neither is
-baked into the image. The agent entrypoint builds the DB into the mounted `data/` volume on first
-boot and skips the work afterwards. Nothing to run by hand.
+`data/*.sqlite` is gitignored, so it is not baked into the image, but the rubric yaml itself is
+checked into the repository. The agent entrypoint builds the DB into the mounted `data/` volume on
+first boot and skips the work afterwards. Nothing to run by hand.
 
 To force a rebuild after the rubric yaml changes:
 

@@ -25,8 +25,8 @@ services:
     volumes:
       # Snapshots, site rules, the reference DB and the checkpoint history.
       - ../data:/app/data
-      # The rubric yaml lives outside the repo; the entrypoint builds the DB from it once.
-      - "${FDR_RUBRIC_HOST_DIR:-../../05 법령·지침 원문 검증/카드사 가드레일 루브릭}:/app/rubrics:ro"
+      # The rubric yaml is checked into the repo; the entrypoint builds the DB from it once.
+      - "${FDR_RUBRIC_HOST_DIR:-../05 법령·지침 원문 검증/카드사 가드레일 루브릭}:/app/rubrics:ro"
     # Chromium maps shared memory for every tab; the 64MB default makes it crash mid-render.
     shm_size: "1gb"
     # Reaps the Chromium processes Playwright leaves behind when a run is cut short.
