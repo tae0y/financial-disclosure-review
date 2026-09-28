@@ -68,7 +68,9 @@ def test_only_the_items_that_apply_to_the_classification_are_judged(monkeypatch,
     assert result["items"][0]["verdict"] == "적합"
     assert result["judgments"]["status"] == "완료"
     assert [entry["code"] for entry in result["judgments"]["skipped"]] == ["E04"]
-    assert ask.calls == ["DisplayLabels", "DisplayVerdicts"]
+    # E02 follows from the measurements; the model only labels the blocks.
+    assert result["judgments"]["code_decided"] == ["E02"]
+    assert ask.calls == ["DisplayLabels"]
 
 
 def test_the_measured_evidence_is_carried_into_the_row(monkeypatch, ctx):
@@ -85,38 +87,40 @@ def test_the_measured_evidence_is_carried_into_the_row(monkeypatch, ctx):
     assert row["measured"][0]["default_visible"] is True
 
 
-def test_a_verdict_that_contradicts_the_measurement_is_downgraded(monkeypatch, ctx):
+def test_a_measured_violation_is_a_code_decided_failure_citing_the_block(monkeypatch, ctx):
     page = make_render_page(notice_px=10.0)
     by_text = ids_of(page)
+    # A model answer is ignored for a code-decided item, even one that contradicts the numbers.
     ask = fake_model(
         labels_for(by_text),
-        [
-            {
-                "code": "E02",
-                "verdict": "적합",
-                "block_ids": [by_text[NOTICE]],
-                "reason": "괜찮습니다",
-            }
-        ],
-    )
-    monkeypatch.setattr(judge, "ask", ask)
-    row = judge.judge_display(page, REVOLVING, ctx)["items"][0]
-    assert row["verdict"] == "판정 불가"
-    assert "failed validation twice" in row["reason"]
-    assert ask.calls == ["DisplayLabels", "DisplayVerdicts", "DisplayVerdicts"]
-
-
-def test_a_failure_citing_the_offending_block_is_kept(monkeypatch, ctx):
-    page = make_render_page(notice_px=10.0)
-    by_text = ids_of(page)
-    ask = fake_model(
-        labels_for(by_text),
-        [{"code": "E02", "verdict": "부적합", "block_ids": [by_text[NOTICE]], "reason": "7.5pt"}],
+        [{"code": "E02", "verdict": "적합", "block_ids": [by_text[NOTICE]], "reason": "괜찮음"}],
     )
     monkeypatch.setattr(judge, "ask", ask)
     row = judge.judge_display(page, REVOLVING, ctx)["items"][0]
     assert row["verdict"] == "부적합"
-    assert row["reason"] == "7.5pt"
+    assert row["block_ids"] == [by_text[NOTICE]]
+    assert "below the minimum" in row["reason"]
+    assert ask.calls == ["DisplayLabels"]
+
+
+def test_a_labelled_block_that_was_never_visible_leaves_a_pass_unproven(monkeypatch, ctx):
+    page = make_render_page()
+    by_text = ids_of(page)
+    blocks, _ = judge.display_blocks(page)
+    hidden = next(b for b in blocks if b["text"] == BENEFIT)
+    labels = {**labels_for(by_text), "mandatory": [by_text[NOTICE], hidden["id"]]}
+    monkeypatch.setattr(judge, "ask", fake_model(labels, []))
+    monkeypatch.setattr(
+        judge,
+        "display_blocks",
+        lambda p: (
+            [{**b, "ever_visible": False} if b["id"] == hidden["id"] else b for b in blocks],
+            _,
+        ),
+    )
+    row = judge.judge_display(page, REVOLVING, ctx)["items"][0]
+    assert row["verdict"] == "판정 불가"
+    assert "never visible" in row["reason"]
 
 
 def test_an_item_with_no_labeled_block_is_never_sent_to_the_model(monkeypatch, ctx):
@@ -156,7 +160,7 @@ def test_disclosure_text_inside_an_image_blocks_a_pass(monkeypatch, ctx):
     result = judge.judge_display(page, REVOLVING, ctx)
     row = result["items"][0]
     assert row["verdict"] == "판정 불가"
-    assert "cannot be measured" in row["reason"]
+    assert "inside image" in row["reason"]
     assert result["judgments"]["labels"]["image_disclosure"] == ["img1"]
 
 

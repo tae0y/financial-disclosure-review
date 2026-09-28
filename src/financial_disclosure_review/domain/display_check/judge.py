@@ -36,6 +36,49 @@ ITEM_NEEDS = {
     "E05": ("mandatory",),
     "E06": ("mandatory",),
 }
+# Items whose verdict follows from the measurements alone; the model never judges them.
+CODE_DECIDED = tuple(VIOLATION_KEYS)
+
+
+def code_verdict(code: str, m: Mapping[str, Any], flagged_images: list[str], legacy: bool) -> dict:
+    """적합 only when every labelled block of the item was visible and measured with nothing
+    left unresolved; a measured violation is 부적합 citing the violating blocks; anything the
+    code could not measure makes a pass unproven, so 판정 불가."""
+    violating = m[VIOLATION_KEYS[code]]
+    if violating:
+        what = "font size below the minimum" if code == "E02" else "contrast below the minimum"
+        return {
+            "verdict": "부적합",
+            "block_ids": list(violating),
+            "reason": f"measured {what}: {violating} ({VIOLATION_KEYS[code]})",
+        }
+    unknown = []
+    if m["measured"] < m["blocks"]:
+        unknown.append(f"{m['blocks'] - m['measured']} labelled block(s) never visible")
+    if code == "E02" and m["size_unmeasured"]:
+        unknown.append(f"size not drawn as text: {m['size_unmeasured']}")
+    if code in ("E04", "E05"):
+        if legacy:
+            unknown.append("legacy snapshot without rendered-crop capture; rerun preprocess")
+        if m["visual_unresolved"]:
+            unknown.append(f"image-backed text without a readable crop: {m['visual_unresolved']}")
+        if m["contrast_unmeasured"]:
+            unknown.append(f"contrast unmeasured: {m['contrast_unmeasured']}")
+    if flagged_images:
+        unknown.append(f"disclosure text inside image(s) {flagged_images}")
+    if unknown or not m["measured"]:
+        return {
+            "verdict": "판정 불가",
+            "block_ids": [],
+            "reason": "a pass would be unproven: " + "; ".join(unknown or ["nothing measured"]),
+        }
+    cited = m["min_pt_block"] if code == "E02" else m["min_contrast_block"]
+    value = f"min {m['min_pt']}pt" if code == "E02" else f"min contrast {m['min_contrast']}"
+    return {
+        "verdict": "적합",
+        "block_ids": [cited] if cited else [],
+        "reason": f"all {m['measured']} labelled block(s) measured within the threshold ({value})",
+    }
 
 
 def call_model(
@@ -257,7 +300,8 @@ def judge_display(
     )
     judgments["measures"] = measures
 
-    ready, by_code = [], {}
+    flagged_images = labels["image_disclosure"]
+    ready, by_code, decided = [], {}, {}
     for item in applied:
         code = item["code"]
         missing = [g for g in ITEM_NEEDS.get(code, ()) if not labels[g]]
@@ -266,8 +310,13 @@ def judge_display(
                 f"the model found no block in {', '.join(missing)},"
                 " so there is nothing to measure for this item"
             )
+        elif code in CODE_DECIDED:
+            decided[code] = code_verdict(
+                code, measures[code], flagged_images, legacy_visual_capture
+            )
         else:
             ready.append(item)
+    judgments["code_decided"] = sorted(decided)
 
     verdicts = {}
     if ready:
@@ -354,15 +403,18 @@ def judge_display(
         )
         verdicts = {v["code"]: v for v in answer["items"]}
 
-    flagged_images = labels["image_disclosure"]
     rows = []
     for item in applied:
         code = item["code"]
-        v = verdicts.get(code) or {
-            "verdict": "판정 불가",
-            "block_ids": [],
-            "reason": by_code.get(code, "not judged"),
-        }
+        v = (
+            decided.get(code)
+            or verdicts.get(code)
+            or {
+                "verdict": "판정 불가",
+                "block_ids": [],
+                "reason": by_code.get(code, "not judged"),
+            }
+        )
         verdict, reason = v["verdict"], v["reason"]
         if code in ("E04", "E05") and legacy_visual_capture:
             verdict = "판정 불가"
