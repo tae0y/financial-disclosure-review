@@ -1,7 +1,10 @@
 """Mechanical checks of one generated block against its source quote.
 
 Every check here is decidable from the two strings, so a block that fails one is replaced by its
-original quote rather than sent back to the model a third time.
+original quote rather than sent back to the model a third time. Whether a condition/exception/
+penalty *survived in meaning* is not decidable from the two strings alone (a synonym swap looks
+identical to a real drop to a keyword scan) — that judgment is made qualitatively by
+`judge_condition_preservation` (`judge.py`), not here.
 """
 
 import re
@@ -16,11 +19,6 @@ FORBIDDEN_ABSOLUTE_PHRASES = [
 HEDGE_MARKERS = [
     "수 있습니다", "수있습니다", "수 있어요", "수 있음", "따라 다름", "따라 달라집니다",
     "따라 다를 수", "경우에 따라", "심사 결과", "가능성이 있습니다", "할 수도 있습니다",
-]  # fmt: skip
-CONDITION_KEYWORDS = [
-    "제외", "이상", "이하", "미만", "초과", "한도", "조건", "예외", "위약금", "수수료",
-    "연체", "불이익", "책임", "제휴사", "제휴회사", "협력사", "약관", "설명서", "권유",
-    "신용점수", "하락", "해지", "변동",
 ]  # fmt: skip
 NUMBER_RE = re.compile(r"\d[\d,.]*")
 # "1년에", "1개월"처럼 원문의 '연회비'·'무이자 할부'를 자연스럽게 풀어 쓸 때 생기는 1 + 단위는
@@ -90,10 +88,6 @@ def verify_block(quote: str, text: str) -> list[str]:
     kept_hedge = any(strip_ws(m) in t_compact for m in HEDGE_MARKERS)
     if had_hedge and not kept_hedge:
         problems.append("원문의 가능성·조건 표현이 쉬운말에서 확정 표현으로 바뀜")
-
-    dropped_keywords = [k for k in CONDITION_KEYWORDS if k in quote and k not in text]
-    if dropped_keywords:
-        problems.append(f"조건·불이익 관련 문구 누락 가능: {', '.join(dropped_keywords)}")
     return problems
 
 

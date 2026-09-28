@@ -15,7 +15,10 @@ from financial_disclosure_review.domain.explanation_duty_check.schema import (
     PlainJudgments,
 )
 from financial_disclosure_review.domain.plain_language.contract import strip_ws
-from financial_disclosure_review.domain.plain_language.schema import PlainDraftAnswer
+from financial_disclosure_review.domain.plain_language.schema import (
+    ConditionJudgments,
+    PlainDraftAnswer,
+)
 from financial_disclosure_review.graph import nodes
 from financial_disclosure_review.graph.nodes import (
     generate_plain_lang,
@@ -74,6 +77,13 @@ def plain_ask(invent_for: str | None = None):
     경로를 재현한다."""
 
     def fake(model, schema, task, effort="low", **data):
+        if schema is ConditionJudgments:
+            return {
+                "items": [
+                    {"id": e["id"], "verdict": "유지", "reason": "통합 확인용"}
+                    for e in data["items"]
+                ]
+            }
         assert schema is PlainDraftAnswer, schema
         items = []
         for block in data["blocks"]:

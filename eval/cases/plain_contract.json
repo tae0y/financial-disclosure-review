@@ -2,7 +2,7 @@
   "dataset": "쉬운말 계약 위반 케이스 v1",
   "purpose": "쉬운말 변환이 원문의 수치·조건·가능성 표현을 흔들었을 때 계약 검사가 이를 잡아내는지, 그리고 정상 변환을 잘못 잡지는 않는지 본다.",
   "label_source": "각 쌍의 결함은 손으로 넣었다. defect가 null인 쌍은 원문의 수치와 조건 문구를 모두 보존한 정상 변환이다. 문장은 카드사 상품안내 화면에서 흔한 표현을 참고해 새로 썼다.",
-  "baseline": "계약 검사가 없는 구성(모델 출력을 그대로 게시)은 정의상 이 결함을 하나도 걸러내지 못하므로 탐지율 0%가 비교 기준이다.",
+  "baseline": "계약 검사가 없는 구성(모델 출력을 그대로 게시)은 정의상 이 결함을 하나도 걸러내지 못하므로 탐지율 0%가 비교 기준이다. 수치·단정·가능성 결함은 문자열 대조만으로 무료로 검사되지만, condition_dropped 결함은 조건·예외의 뜻이 실제로 사라졌는지를 봐야 해 2026-09-28부터 judge_condition_preservation 모델 호출 1회가 필요하다(카세트로 녹음 후 재생하면 무료).",
   "cases": [
     {
       "id": "clean-annual-fee",
@@ -73,14 +73,14 @@
     {
       "id": "condition-dropped-threshold",
       "defect": "condition_dropped",
-      "expect_marker": "조건·불이익 관련 문구 누락",
+      "expect_marker": "조건·불이익 관련 뜻 누락 가능",
       "source_quote": "전월 실적 30만원 이상이면 5천원이 적립됩니다.",
       "rewrite": "전월 실적 30만원일 때 5천원이 적립됩니다."
     },
     {
       "id": "condition-dropped-penalty",
       "defect": "condition_dropped",
-      "expect_marker": "조건·불이익 관련 문구 누락",
+      "expect_marker": "조건·불이익 관련 뜻 누락 가능",
       "source_quote": "연체 시 연체이자율이 적용되고 불이익이 발생할 수 있습니다.",
       "rewrite": "결제가 늦으면 이자가 더 붙을 수 있습니다."
     },

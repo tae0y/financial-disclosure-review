@@ -11,6 +11,7 @@ from ...llm.client import ask, call_ask
 from .blocks import plain_blocks
 from .contract import verify_block, verify_source_quote, verify_terms
 from .items import plain_items_report, plain_scope
+from .judge import judge_condition_preservation
 from .prompts import PLAIN_TASK
 from .schema import PlainDraftAnswer
 
@@ -95,8 +96,9 @@ def generate_plain(
     )
     draft = candidate["items"]
 
-    accepted_blocks, contract_errors, term_refs = [], [], []
+    contract_errors: list[dict] = []
     html_by_id: dict[str, str] = {}
+    mechanically_ok = []
     for d in draft:
         block = by_id[d["id"]]
         quote, generated = block["quote"], d["text"]
@@ -106,10 +108,42 @@ def generate_plain(
             contract_errors.append({"source_id": d["id"], "reason": "; ".join(problems)})
             html_by_id[d["id"]] = quote
         else:
-            accepted_blocks.append({"source_id": d["id"], "source_quote": quote, "text": generated})
-            html_by_id[d["id"]] = generated
-            for term in verify_terms(quote, d.get("terms") or []):
-                term_refs.append({"source_id": d["id"], "term": term})
+            mechanically_ok.append(
+                {"id": d["id"], "quote": quote, "text": generated, "terms": d.get("terms") or []}
+            )
+
+    condition_judgments = (
+        judge_condition_preservation(
+            [{"id": e["id"], "quote": e["quote"], "text": e["text"]} for e in mechanically_ok],
+            ctx.model,
+            ask,
+        )
+        if mechanically_ok
+        else {}
+    )
+
+    accepted_blocks, term_refs = [], []
+    for entry in mechanically_ok:
+        block_id, quote, generated = entry["id"], entry["quote"], entry["text"]
+        judgment = condition_judgments.get(block_id) or {
+            "verdict": "판정 불가",
+            "reason": "모델 응답에 이 블록이 없음",
+        }
+        if judgment["verdict"] == "누락 가능":
+            contract_errors.append(
+                {
+                    "source_id": block_id,
+                    "reason": f"조건·불이익 관련 뜻 누락 가능: {judgment['reason']}",
+                }
+            )
+            html_by_id[block_id] = quote
+        else:
+            accepted_blocks.append(
+                {"source_id": block_id, "source_quote": quote, "text": generated}
+            )
+            html_by_id[block_id] = generated
+            for term in verify_terms(quote, entry["terms"]):
+                term_refs.append({"source_id": block_id, "term": term})
 
     html = "".join(
         f'<p data-source-id="{b["id"]}">{escape(html_by_id[b["id"]])}</p>' for b in blocks

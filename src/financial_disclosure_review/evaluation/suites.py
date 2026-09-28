@@ -26,6 +26,7 @@ from ..domain.explanation_duty_check.check import (
     load_explanation_items,
 )
 from ..domain.plain_language.contract import verify_block, verify_source_quote
+from ..domain.plain_language.judge import judge_condition_preservation
 from .cassette import Cassette
 from .defects import longest_unused_sentence, remove_quote
 
@@ -226,30 +227,46 @@ def _groundedness(verdicts: dict, text: str) -> dict:
 # ---------------------------------------------------------------- plain contract
 
 
-def run_plain_contract(cases: list[dict]) -> dict:
-    """The rewrite contract against pairs whose defect is known. No model call, so free."""
+def run_plain_contract(ctx: Context, cassette: Cassette, cases: list[dict]) -> dict:
+    """The rewrite contract against pairs whose defect is known.
+
+    Numbers/absolute-phrase/hedge are decidable from the two strings, so those run for free.
+    Whether a condition/exception/limit/penalty survived in meaning is not, so a pair that clears
+    the mechanical checks goes through `judge_condition_preservation` on `cassette.ask` — one
+    model call per case (paid on `--live --record`, free on replay).
+    """
     rows = []
+    to_judge: list[dict] = []
     for case in cases:
         quote, rewrite = case["source_quote"], case["rewrite"]
         problems = verify_block(quote, rewrite)
         quote_problem = verify_source_quote(case.get("page_text") or quote, quote)
         if quote_problem:
             problems = [quote_problem, *problems]
-        rows.append(
-            {
-                "case": case["id"],
-                "defect": case["defect"],
-                "gold_defective": bool(case["defect"]),
-                "flagged": bool(problems),
-                "correct": bool(problems) == bool(case["defect"]),
-                "problems": problems,
-                "expect_marker": case.get("expect_marker", ""),
-                "marker_hit": (
-                    any(case.get("expect_marker", "") in p for p in problems)
-                    if case.get("expect_marker")
-                    else None
-                ),
-            }
+        row = {
+            "case": case["id"],
+            "defect": case["defect"],
+            "gold_defective": bool(case["defect"]),
+            "problems": problems,
+            "expect_marker": case.get("expect_marker", ""),
+        }
+        rows.append(row)
+        if not problems:
+            to_judge.append({"id": case["id"], "quote": quote, "text": rewrite})
+
+    judgments = (
+        judge_condition_preservation(to_judge, ctx.model, cassette.ask) if to_judge else {}
+    )
+    for row in rows:
+        judgment = judgments.get(row["case"])
+        if judgment and judgment["verdict"] == "누락 가능":
+            row["problems"] = [f"조건·불이익 관련 뜻 누락 가능: {judgment['reason']}"]
+        row["flagged"] = bool(row["problems"])
+        row["correct"] = row["flagged"] == row["gold_defective"]
+        row["marker_hit"] = (
+            any(row["expect_marker"] in p for p in row["problems"])
+            if row["expect_marker"]
+            else None
         )
     return {"suite": "plain-contract", "rows": rows}
 

@@ -67,19 +67,33 @@ def quote_of(blocks: list[dict], block_id: str) -> str:
     return next(b["quote"] for b in blocks if b["id"] == block_id)
 
 
-def fake_ask(overrides: dict | None = None, terms: dict | None = None):
-    """블록별 quote를 그대로 되돌려 주는 기본 가짜 ask. overrides[id]로 특정 블록 답을 바꾼다."""
-    overrides, terms = overrides or {}, terms or {}
+def fake_ask(
+    overrides: dict | None = None, terms: dict | None = None, conditions: dict | None = None
+):
+    """블록별 quote를 그대로 되돌려 주는 기본 가짜 ask. overrides[id]로 특정 블록 답을 바꾸고,
+    conditions[id]로 조건 보존 판정(기본 유지)을 바꾼다."""
+    overrides, terms, conditions = overrides or {}, terms or {}, conditions or {}
 
     def fake(model, schema, task, effort="low", **data):
+        if "blocks" in data:
+            return {
+                "items": [
+                    {
+                        "id": b["id"],
+                        "text": overrides.get(b["id"], b["quote"]),
+                        "terms": terms.get(b["id"], []),
+                    }
+                    for b in data["blocks"]
+                ]
+            }
         return {
             "items": [
                 {
-                    "id": b["id"],
-                    "text": overrides.get(b["id"], b["quote"]),
-                    "terms": terms.get(b["id"], []),
+                    "id": e["id"],
+                    "verdict": conditions.get(e["id"], "유지"),
+                    "reason": "테스트 판정",
                 }
-                for b in data["blocks"]
+                for e in data["items"]
             ]
         }
 
@@ -126,6 +140,36 @@ def test_dropping_the_original_conditions_is_rejected(ctx, block_ids):
     assert "누락" in errors[discount] or "수치" in errors[discount], errors
 
 
+def test_a_synonym_for_a_condition_word_is_not_rejected(ctx, blocks):
+    """'하락'을 '떨어짐'으로 바꾸는 것처럼 뜻은 같고 글자만 다른 쉬운말은 통과해야 한다.
+    조건 보존 여부는 이제 글자 대조가 아니라 judge_condition_preservation의 정성 판단이므로,
+    기본 판정(유지)인 가짜 ask에서는 이 블록이 거부되지 않는다."""
+    late = next(b["id"] for b in blocks if "연체" in b["quote"])
+    fake = fake_ask(
+        {late: "연체하면 최대 연 20% 연체이자가 붙고, 신용점수가 떨어질 수 있습니다."}
+    )
+    result = generate_plain(PAGE, CLASSIFICATION, [], ctx, ask=fake)
+
+    assert late in {b["source_id"] for b in result["accepted_blocks"]}, errors_of(result)
+
+
+def test_a_condition_the_judge_flags_as_dropped_is_rejected_even_with_matching_numbers(
+    ctx, block_ids
+):
+    """숫자는 그대로 두고 '~ 이상이면'과 '일부 가맹점 제외'라는 조건·예외의 뜻만 빠진 경우.
+    기계적 검사(수치)는 통과하므로, 이건 judge_condition_preservation이 잡아야 한다."""
+    discount = block_ids["discount"]
+    fake = fake_ask(
+        {discount: "전월 실적 30만원이면 모든 가맹점에서 5% 할인이 적용됩니다."},
+        conditions={discount: "누락 가능"},
+    )
+    result = generate_plain(PAGE, CLASSIFICATION, [], ctx, ask=fake)
+
+    errors = errors_of(result)
+    assert discount in errors and "조건·불이익" in errors[discount], errors
+    assert discount not in {b["source_id"] for b in result["accepted_blocks"]}
+
+
 def test_turning_a_hedge_into_a_certainty_is_rejected(ctx, block_ids):
     rate = block_ids["rate"]
     fake = fake_ask({rate: "연 이자율은 무조건 연 15%부터 연 20%까지입니다."})
@@ -154,6 +198,12 @@ def test_the_source_quote_guard_judges_a_quote_that_is_not_in_the_page(blocks):
 
 
 def feedback_aware_ask(model, schema, task, effort="low", **data):
+    if "blocks" not in data:
+        return {
+            "items": [
+                {"id": e["id"], "verdict": "유지", "reason": "테스트"} for e in data["items"]
+            ]
+        }
     wanted = {f["source_id"]: f["requested_change"] for f in data.get("previous_feedback") or []}
     return {
         "items": [

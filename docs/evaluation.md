@@ -17,13 +17,19 @@ The paid run that produced the recordings cost **$0.252 (about 353원)** in tota
 906 seconds. The free replay reproduces the identical table in 0.3 seconds. Why it is built that
 way is in `localdocs/adr/adr-002-defect-injection-evaluation.md`.
 
+> **Stale since 2026-09-28.** `plain-contract`'s condition-preservation check moved from a
+> keyword scan to a model judgment (`judge_condition_preservation`, see `docs/plain_language.md`).
+> The cost/call counts above and the cassette under `eval/cassettes/` predate that change and do
+> not yet include the new call `plain-contract` now makes per case that clears the mechanical
+> checks. Re-record with `evaluate --live --record` before trusting this suite's numbers again.
+
 ## Three suites, three kinds of label
 
 | Suite | Question | Label source | Cases | Cost |
 |---|---|---|---|---|
 | `classification` | is a real page put in the right product type? | 영태's labels on six captured pages | 6 | $0.035 |
 | `duty-flip` | is a disclosure that left the page noticed? | the deletion itself — the sentence is provably gone | 3 + 1 control, × 2 arms | $0.217 |
-| `plain-contract` | is a rewrite that drifts from the original caught? | the defect written into each pair | 13 | $0 (no model call) |
+| `plain-contract` | is a rewrite that drifts from the original caught? | the defect written into each pair | 13 | not free anymore — 1 model call per case that clears the mechanical checks (see note above) |
 
 `duty-flip` runs two arms on the same inputs. `pipeline` is this project's check — condition
 first, one quote per verdict, the quote validated against the page, one retry, unusable answers

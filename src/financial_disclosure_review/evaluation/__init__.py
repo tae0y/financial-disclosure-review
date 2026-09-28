@@ -65,7 +65,7 @@ def run_evaluation(
             results.append(run_duty_flip(ctx, cassette, config, arm=arm, max_flips=max_flips))
     if "plain-contract" in suites:
         cases = load_cases(root / "cases" / "plain_contract.json")
-        results.append(run_plain_contract(cases["cases"]))
+        results.append(run_plain_contract(ctx, cassette, cases["cases"]))
 
     saved = cassette.save()
     return {

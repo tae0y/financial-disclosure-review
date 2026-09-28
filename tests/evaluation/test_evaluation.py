@@ -156,17 +156,60 @@ def test_a_deleted_disclosure_is_detected_and_a_neutral_delete_flips_nothing(
 # ---------------------------------------------------------------- plain contract
 
 
+class FakeConditionCassette:
+    """조건 보존 판정을 항상 '유지'로 답하는 가짜 카세트. 기계적 검사를 통과한 케이스만
+    judge_condition_preservation을 거치므로, 이 스텁이 실제로 불려야 recall이 맞게 나온다."""
+
+    def ask(self, model, schema, task, effort="low", **data):
+        return {
+            "items": [{"id": e["id"], "verdict": "유지", "reason": "테스트"} for e in data["items"]]
+        }
+
+
 def test_the_plain_contract_suite_counts_a_clean_pair_and_a_defective_one():
     result = run_plain_contract(
+        Context(),
+        FakeConditionCassette(),
         [
             {"id": "clean", "defect": None, "source_quote": "연회비는 20,000원입니다.",
              "rewrite": "1년에 20,000원을 냅니다."},
             {"id": "invented", "defect": "invented_number",
              "expect_marker": "원문에 없는 수치 포함",
              "source_quote": "연회비는 20,000원입니다.", "rewrite": "연회비는 12,000원입니다."},
-        ]
+        ],
     )
     metrics = metrics_for(result)
     assert metrics["recall"] == 1.0
     assert metrics["false_alarm_rate"] == 0.0
     assert metrics["by_defect"]["invented_number"]["marker_hit"] == 1
+
+
+def test_the_plain_contract_suite_catches_a_condition_the_judge_flags():
+    """수치는 그대로인데 조건의 뜻만 빠진 경우 — judge_condition_preservation이 잡아야 한다."""
+
+    class DropCassette:
+        def ask(self, model, schema, task, effort="low", **data):
+            return {
+                "items": [
+                    {"id": e["id"], "verdict": "누락 가능", "reason": "이상 조건이 사라짐"}
+                    for e in data["items"]
+                ]
+            }
+
+    result = run_plain_contract(
+        Context(),
+        DropCassette(),
+        [
+            {
+                "id": "condition-drop",
+                "defect": "condition_dropped",
+                "expect_marker": "조건·불이익 관련 뜻 누락 가능",
+                "source_quote": "전월 실적 30만원 이상이면 5천원이 적립됩니다.",
+                "rewrite": "전월 실적 30만원일 때 5천원이 적립됩니다.",
+            }
+        ],
+    )
+    row = result["rows"][0]
+    assert row["flagged"] is True
+    assert row["correct"] is True
+    assert row["marker_hit"] is True
