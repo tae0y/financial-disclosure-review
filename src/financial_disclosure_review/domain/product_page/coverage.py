@@ -61,6 +61,45 @@ def _is_hidden(el) -> bool:
     return False
 
 
+# Rendered visibility of every text element, keyed by its own text. The static html cannot tell
+# a stylesheet-collapsed accordion (visibility:hidden, display:none, a zero-height clip) from open
+# text; the 2026-09-29 live run on a Tailwind/DaisyUI page reported 0 hidden blocks this way.
+RENDERED_VISIBILITY_JS = r"""() => {
+  const seen = {};
+  const clipped = (el) => {
+    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+      const s = getComputedStyle(a);
+      if ((s.overflow + s.overflowY).includes('hidden') && a.getBoundingClientRect().height < 2)
+        return true;
+    }
+    return false;
+  };
+  for (const el of document.body.querySelectorAll('*')) {
+    if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(el.tagName)) continue;
+    let own = '';
+    for (const n of el.childNodes) if (n.nodeType === 3) own += n.textContent;
+    own = own.split(/\s+/).join(' ').trim();
+    if (own.length < 2) continue;
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    const shown = r.width > 0 && r.height > 0 && s.visibility !== 'hidden'
+      && s.display !== 'none' && parseFloat(s.opacity || '1') > 0
+      && (!el.checkVisibility || el.checkVisibility({visibilityProperty: true}))
+      && !clipped(el);
+    seen[own] = Boolean(seen[own]) || shown;
+  }
+  return seen;
+}"""
+
+
+def rendered_visibility(sess) -> dict[str, bool]:
+    """Own text -> whether any element carrying it is actually rendered visible."""
+    try:
+        return dict(sess.page.evaluate(RENDERED_VISIBILITY_JS))
+    except PlaywrightError:
+        return {}
+
+
 def _own_text(el) -> str:
     return " ".join("".join(s for s in el.find_all(string=True, recursive=False)).split())
 
@@ -73,12 +112,14 @@ def observe(sess) -> dict:
         tag.decompose()
     body = soup.body or soup
 
+    rendered = rendered_visibility(sess)
     blocks = []
     for el in body.find_all(True):
         own = _own_text(el)
         if len(own) < MIN_BLOCK_CHARS or in_chrome(el) or in_layer(el):
             continue
-        blocks.append({"selector": selector_for(el, soup), "text": own, "hidden": _is_hidden(el)})
+        hidden = _is_hidden(el) or rendered.get(own) is False
+        blocks.append({"selector": selector_for(el, soup), "text": own, "hidden": hidden})
     visible_blocks = [b for b in blocks if not b["hidden"]]
     hidden_blocks = [b for b in blocks if b["hidden"]]
 

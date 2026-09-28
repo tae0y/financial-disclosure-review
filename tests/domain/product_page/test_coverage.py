@@ -266,3 +266,32 @@ def test_f_max_turns_without_an_accepted_submit_is_incomplete(tmp_path):
                 discover(sess, ctx, chat=script)
         finally:
             sess.close()
+
+
+CSS_COLLAPSE_HTML = (FIXTURE_DIR / "html" / "coverage_css_collapse.html").read_text()
+
+
+def test_text_hidden_by_a_stylesheet_counts_as_hidden_and_opening_it_is_new_evidence(tmp_path):
+    """2026-09-29 실측: 스타일시트로 접힌 아코디언(visibility:hidden)을 정적 html만 보고 '보임'으로
+    세어, 펼칠 것이 없다고 판단하고 full_coverage로 끝났습니다. 렌더링 가시성으로 세야 합니다."""
+    with sync_playwright() as playwright:
+        sess = _session(CSS_COLLAPSE_HTML, tmp_path, playwright)
+        try:
+            inspected = call_tool(sess, "inspect_page", {})
+            assert inspected["hidden_text_blocks"] >= 1
+            gap = next(g for g in inspected["open_gaps"] if g["kind"] == "unexpanded_control")
+            opened = call_tool(
+                sess,
+                "interact",
+                {
+                    "action": "expand",
+                    "selector": "button.acc-toggle",
+                    "gap_id": gap["id"],
+                    "expected_evidence": "전월 이용금액 조건",
+                },
+            )
+            assert opened["blocked"] is False
+            assert opened["new_evidence"] is True
+            assert coverage.observe(sess)["hidden_text_blocks"] == 0
+        finally:
+            sess.close()

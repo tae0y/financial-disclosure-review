@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>테스트카드 상품안내</title>
+<style>
+  .collapse-content { visibility: hidden; max-height: 0; overflow: hidden; }
+  .collapse.open .collapse-content { visibility: visible; max-height: none; }
+</style></head>
+<body>
+  <main>
+    <article id="product">
+      <h1 class="product-title">테스트 신용카드</h1>
+      <p>월 최대 2만원 할인 혜택을 드리는 상품으로 다양한 가맹점에서 편리하게 이용하실 수 있습니다.</p>
+      <div class="collapse">
+        <button class="acc-toggle" aria-expanded="false"
+          onclick="this.parentElement.classList.add('open'); this.setAttribute('aria-expanded', 'true')">유의사항</button>
+        <div class="collapse-content">
+          <p>전월 이용금액 30만원 이상 이용하신 경우에 한하여 혜택이 적용되며 일부 업종은 제외됩니다.</p>
+        </div>
+      </div>
+    </article>
+  </main>
+</body>
+</html>
