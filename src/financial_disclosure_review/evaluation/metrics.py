@@ -72,17 +72,12 @@ def plain_contract_metrics(result: dict) -> dict:
     }
 
 
-def stability_metrics(result: dict) -> dict:
-    classification, duty = result["classification"], result["duty"]
-    stable_duty = [row for row in duty if row["stable"]]
+def _duty_agreement(duty: list[dict]) -> dict:
+    stable = [row for row in duty if row["stable"]]
     return {
-        "repeats": result["repeats"],
-        "classification_cases": len(classification),
-        "classification_stable": sum(1 for row in classification if row["stable"]),
-        "classification_unstable": [row["case"] for row in classification if not row["stable"]],
         "duty_items": len(duty),
-        "duty_stable": len(stable_duty),
-        "duty_stability": rate(len(stable_duty), len(duty)),
+        "duty_stable": len(stable),
+        "duty_stability": rate(len(stable), len(duty)),
         # An item that is 적합 in one round and not in another is the costly kind of instability:
         # the reviewer's to-do list would differ from run to run.
         "duty_pass_flips": [
@@ -93,6 +88,20 @@ def stability_metrics(result: dict) -> dict:
         "duty_unstable": [
             {"code": row["code"], "verdicts": row["verdicts"]} for row in duty if not row["stable"]
         ],
+    }
+
+
+def stability_metrics(result: dict) -> dict:
+    classification = result["classification"]
+    return {
+        "repeats": result["repeats"],
+        "classification_cases": len(classification),
+        "classification_stable": sum(1 for row in classification if row["stable"]),
+        "classification_unstable": [row["case"] for row in classification if not row["stable"]],
+        **_duty_agreement(result["duty"]),
+        "baseline": {
+            arm: _duty_agreement(rows) for arm, rows in (result.get("baseline") or {}).items()
+        },
     }
 
 

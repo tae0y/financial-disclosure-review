@@ -9,8 +9,11 @@
 
 `duty-flip` also runs an ablation arm — the same rubric items, one call, no quote validation, no
 condition step, no retry — so the measured difference is this project's engineering rather than
-the model's general ability. `classification` has a keyword-frequency arm for the same reason:
-what the three-step judgment adds over counting product words on the page.
+the model's general ability. Both arms are tested on the same deletions: the targets are chosen
+from what every arm passed on the unedited page, never from one arm's answers alone.
+`classification` has a keyword-frequency arm for the same reason: what the three-step judgment
+adds over counting product words on the page. `stability` repeats the ablation arm as well, so
+the pipeline's run-to-run agreement has a baseline.
 """
 
 import json
@@ -120,20 +123,72 @@ def _in_scope_items(db_path: str, product_type: str) -> list[dict]:
     ]
 
 
-def _pipeline_verdicts(items: list[dict], text: str, ctx: Context, cassette: Cassette) -> dict:
-    return judge_original_side(items, text, ctx.model, cassette.ask)
+def _pipeline_verdicts(items: list[dict], text: str, ctx: Context, ask) -> dict:
+    return judge_original_side(items, text, ctx.model, ask)
 
 
-def _ablation_verdicts(items: list[dict], text: str, ctx: Context, cassette: Cassette) -> dict:
+def _ablation_verdicts(items: list[dict], text: str, ctx: Context, ask) -> dict:
     """One call, answer taken as given: no quote check, no condition step, no retry."""
     evidence = [{"code": i["code"], "criterion": i["criterion"]} for i in items]
-    answer = cassette.ask(
-        ctx.model, AblationJudgments, ABLATION_TASK, "medium", text=text, items=evidence
-    )
+    answer = ask(ctx.model, AblationJudgments, ABLATION_TASK, "medium", text=text, items=evidence)
     return {row["code"]: {**row, "condition_status": "해당없음"} for row in answer["items"]}
 
 
 ARMS = {"pipeline": _pipeline_verdicts, "ablation": _ablation_verdicts}
+
+
+def _base_rows(verdicts: dict, text: str) -> list[dict]:
+    return [
+        {
+            "code": code,
+            "verdict": row["verdict"],
+            "quote": row["quote"],
+            "quote_found": bool(row["quote"]) and locate_quote(text, row["quote"]) is not None,
+        }
+        for code, row in sorted(verdicts.items())
+    ]
+
+
+def shared_targets(
+    bases: dict[str, list[dict]], base_html: str, prefer: tuple[str, ...], max_flips: int
+) -> list[dict]:
+    """The deletions every arm is tested on, so the arms are compared on the same variants.
+
+    A target is an item every arm judged 적합 on the unedited page. Its deletion removes every
+    quote any arm gave for it that is really on the page. A candidate is skipped when its
+    deletion and an earlier one remove each other's evidence, so no two cases take out the same
+    sentence and one deletion is never counted twice under two item codes.
+    """
+    by_arm = [{row["code"]: row for row in rows} for rows in bases.values()]
+    passed = [{code for code, row in rows.items() if row["verdict"] == "적합"} for rows in by_arm]
+    candidates = sorted(set.intersection(*passed), key=lambda code: (code not in prefer, code))
+    targets: list[dict] = []
+    for code in candidates:
+        if len(targets) >= max_flips:
+            break
+        quotes = sorted(
+            {rows[code]["quote"] for rows in by_arm if rows[code]["quote_found"]},
+            key=len,
+            reverse=True,
+        )
+        if not quotes:
+            continue
+        html = base_html
+        for quote in quotes:
+            html, _ = remove_quote(html, quote)
+        text = visible_text(html)
+        clash = any(
+            locate_quote(text, quote) is None for earlier in targets for quote in earlier["quotes"]
+        ) or any(
+            locate_quote(earlier["text"], quote) is None for earlier in targets for quote in quotes
+        )
+        if clash:
+            continue
+        landed = all(locate_quote(text, quote) is None for quote in quotes)
+        targets.append(
+            {"code": code, "quotes": quotes, "html": html, "text": text, "landed": landed}
+        )
+    return targets
 
 
 def run_duty_flip(
@@ -141,8 +196,10 @@ def run_duty_flip(
 ) -> dict:
     """Delete one quoted disclosure at a time from a real page and see whether the item flips.
 
-    `rows` holds one row per variant. A variant whose deletion did not really land is marked
-    `landed: False` and left out of the rate, rather than counted as a pass or a failure.
+    Every arm's judgment of the unedited page is taken first (replayed when recorded) and the
+    deletions come from `shared_targets`, so a run with one arm tests the same variants as a run
+    with both. `rows` holds one row per variant. A variant whose deletion did not really land is
+    marked `landed: False` and left out of the rate, rather than counted as a pass or a failure.
     """
     judge = ARMS[arm]
     base_html = Path(config["base_html"]).read_text(encoding="utf-8")
@@ -151,37 +208,28 @@ def run_duty_flip(
     items = _in_scope_items(ctx.db_path, product_type)
     prefer = tuple(config.get("prefer_codes") or ())
 
-    base = judge(items, base_text, ctx, cassette)
-    base_rows = [
-        {
-            "code": code,
-            "verdict": row["verdict"],
-            "quote": row["quote"],
-            "quote_found": bool(row["quote"]) and locate_quote(base_text, row["quote"]) is not None,
-        }
-        for code, row in sorted(base.items())
-    ]
-    passed = [row for row in base_rows if row["verdict"] == "적합" and row["quote_found"]]
-    ranked = sorted(passed, key=lambda row: (row["code"] not in prefer, row["code"]))
-    targets = ranked[:max_flips]
+    raw = {name: fn(items, base_text, ctx, cassette.ask) for name, fn in ARMS.items()}
+    bases = {name: _base_rows(verdicts, base_text) for name, verdicts in raw.items()}
+    base, base_rows = raw[arm], bases[arm]
+    passed = [row for row in base_rows if row["verdict"] == "적합"]
+    targets = shared_targets(bases, base_html, prefer, max_flips)
 
     rows = []
     for target in targets:
-        variant_html, landed = remove_quote(base_html, target["quote"])
-        variant_text = visible_text(variant_html)
         row = {
             "case": f"drop-{target['code']}",
             "kind": "결함 주입",
             "code": target["code"],
-            "removed_quote": target["quote"][:120],
-            "landed": landed,
-            "base_verdict": target["verdict"],
+            "removed_quote": " / ".join(quote[:120] for quote in target["quotes"]),
+            "landed": target["landed"],
+            "base_verdict": "적합",
         }
-        if not landed:
+        if not target["landed"]:
             row.update(after_verdict=None, detected=None, note="삭제가 적용되지 않아 제외")
             rows.append(row)
             continue
-        after = judge(items, variant_text, ctx, cassette)
+        variant_text = target["text"]
+        after = judge(items, variant_text, ctx, cassette.ask)
         verdict = (after.get(target["code"]) or {}).get("verdict")
         row.update(
             after_verdict=verdict,
@@ -192,7 +240,8 @@ def run_duty_flip(
         )
         rows.append(row)
 
-    neutral_quote = longest_unused_sentence(base_html, [row["quote"] for row in base_rows])
+    all_quotes = [row["quote"] for rows_ in bases.values() for row in rows_]
+    neutral_quote = longest_unused_sentence(base_html, all_quotes)
     if neutral_quote:
         variant_html, landed = remove_quote(base_html, neutral_quote)
         row = {
@@ -205,7 +254,7 @@ def run_duty_flip(
         }
         if landed:
             variant_text = visible_text(variant_html)
-            after = judge(items, variant_text, ctx, cassette)
+            after = judge(items, variant_text, ctx, cassette.ask)
             flipped = sorted(
                 row_["code"]
                 for row_ in passed
@@ -230,7 +279,16 @@ def run_duty_flip(
             "visible_chars": len(base_text),
             "items_in_scope": len(items),
             "verdicts": _counts(base_rows),
-            "passed_with_quote": len(passed),
+            "passed": len(passed),
+            "passed_with_quote": sum(1 for row in passed if row["quote_found"]),
+            "passed_by_every_arm": len(
+                set.intersection(
+                    *(
+                        {row["code"] for row in rows_ if row["verdict"] == "적합"}
+                        for rows_ in bases.values()
+                    )
+                )
+            ),
             "groundedness": _groundedness(base, base_text),
             "rows": [{**row, "quote": row["quote"][:140]} for row in base_rows],
         },
@@ -305,12 +363,20 @@ def run_plain_contract(ctx: Context, cassette: Cassette, cases: list[dict]) -> d
 
 
 def run_stability(
-    ctx: Context, cassette: Cassette, fixtures_dir: str | Path, config: dict, repeats: int = 3
+    ctx: Context,
+    cassette: Cassette,
+    fixtures_dir: str | Path,
+    config: dict,
+    repeats: int = 3,
+    arms: tuple[str, ...] = ("pipeline",),
 ) -> dict:
     """Ask the same questions `repeats` times and count how often the answer stays the same.
 
     The first round is the recording the other suites already use (unsalted); rounds 2.. are
-    kept apart by a salt. No label is involved: the measure is agreement with itself.
+    kept apart by a salt. No label is involved: the measure is agreement with itself. With the
+    ablation arm the one-call judgment is repeated the same way, so the pipeline's agreement has
+    a baseline measured on the same page and items. The keyword classifier needs no repeat: it
+    is code and returns the same answer every time.
     """
     salts = ["", *[f"repeat-{n}" for n in range(2, repeats + 1)]]
     classification = []
@@ -328,20 +394,29 @@ def run_stability(
     base_html = Path(config["base_html"]).read_text(encoding="utf-8")
     base_text = visible_text(base_html)
     items = _in_scope_items(ctx.db_path, config["classification"]["product_type"])
-    runs = [
-        judge_original_side(items, base_text, ctx.model, cassette.salted(salt)) for salt in salts
-    ]
-    duty = []
-    for item in items:
-        verdicts = [(run.get(item["code"]) or {}).get("verdict") for run in runs]
-        duty.append({"code": item["code"], "verdicts": verdicts, "stable": len(set(verdicts)) == 1})
+    duty = {
+        arm: _agreement(
+            items,
+            [ARMS[arm](items, base_text, ctx, cassette.salted(salt)) for salt in salts],
+        )
+        for arm in ("pipeline", *[a for a in arms if a != "pipeline"])
+    }
     return {
         "suite": "stability",
         "repeats": repeats,
         "base_html": config["base_html"],
         "classification": classification,
-        "duty": duty,
+        "duty": duty["pipeline"],
+        "baseline": {arm: rows for arm, rows in duty.items() if arm != "pipeline"},
     }
+
+
+def _agreement(items: list[dict], runs: list[dict]) -> list[dict]:
+    rows = []
+    for item in items:
+        verdicts = [(run.get(item["code"]) or {}).get("verdict") for run in runs]
+        rows.append({"code": item["code"], "verdicts": verdicts, "stable": len(set(verdicts)) == 1})
+    return rows
 
 
 def load_cases(path: str | Path) -> dict[str, Any]:

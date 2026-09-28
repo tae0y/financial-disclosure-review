@@ -161,6 +161,54 @@ def test_a_deleted_disclosure_is_detected_and_a_neutral_delete_flips_nothing(tmp
     assert [row["case"] for row in result["rows"]][-1] == "neutral-delete"
 
 
+class SplitAsk(FakeDutyAsk):
+    """FakeDutyAsk, except the one-call ablation arm never finds the F11 sentence."""
+
+    def __call__(self, model, schema, task, effort="low", **data):
+        answer = super().__call__(model, schema, task, effort, **data)
+        if schema.__name__ == "AblationJudgments":
+            for row in answer["items"]:
+                if row["code"] == "F11":
+                    row.update(verdict="부적합", quote="", reason="찾지 못함")
+        return answer
+
+
+def test_both_arms_judge_the_same_deletions_chosen_from_what_both_passed(tmp_path, monkeypatch):
+    from financial_disclosure_review.evaluation import suites
+
+    items = [
+        {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
+        for code in FakeDutyAsk.QUOTES
+    ]
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, product_type: items)
+    html_path = tmp_path / "page.html"
+    html_path.write_text(HTML, encoding="utf-8")
+    config = {
+        "base_html": str(html_path),
+        "classification": {"product_type": "신용카드", "page_type": "상품광고"},
+        "prefer_codes": ["F11", "F15"],
+    }
+    cassette = Cassette(tmp_path / "split.json", mode="live", ask=SplitAsk())
+
+    deletions = {
+        arm: [
+            (row["case"], row["removed_quote"])
+            for row in run_duty_flip(Context(model="fake"), cassette, config, arm=arm)["rows"]
+        ]
+        for arm in ("pipeline", "ablation")
+    }
+
+    assert deletions["pipeline"] == deletions["ablation"]
+    # F11 is out because the ablation arm did not pass it; 설명15 is out because it would delete
+    # the F15 sentence a second time.
+    assert [case for case, _ in deletions["pipeline"]] == [
+        "drop-F15",
+        "drop-F07",
+        "drop-설명11",
+        "neutral-delete",
+    ]
+
+
 # ---------------------------------------------------------------- plain contract
 
 
@@ -335,4 +383,59 @@ def test_the_stability_suite_names_an_item_whose_answer_moves_between_rounds(tmp
     assert metrics["duty_pass_flips"] == ["F11"]
     assert metrics["duty_unstable"] == [
         {"code": "F11", "verdicts": ["적합", "판정 불가", "판정 불가"]}
+    ]
+
+
+class SteadyPipelineDriftingAblation:
+    """The pipeline answers the same every round; the one-call arm moves F11 after round one."""
+
+    def __init__(self) -> None:
+        self.ablation_rounds = 0
+
+    def __call__(self, model, schema, task, effort="low", **data):
+        drifting = schema.__name__ == "AblationJudgments"
+        self.ablation_rounds += int(drifting)
+        moved = drifting and self.ablation_rounds > 1
+        return {
+            "items": [
+                {
+                    "code": item["code"],
+                    "condition_status": "해당없음",
+                    "verdict": "판정 불가" if moved and item["code"] == "F11" else "부적합",
+                    "quote": "",
+                    "reason": "테스트",
+                }
+                for item in data["items"]
+            ]
+        }
+
+
+def test_the_stability_suite_repeats_the_ablation_arm_as_a_baseline(tmp_path, monkeypatch):
+    from financial_disclosure_review.evaluation import suites
+
+    items = [
+        {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
+        for code in ("F11", "F07")
+    ]
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, product_type: items)
+    monkeypatch.setattr(
+        suites, "classify_page", lambda page, model, ask: {"product_type": "신용카드"}
+    )
+    html_path = tmp_path / "page.html"
+    html_path.write_text(HTML, encoding="utf-8")
+    fixtures = tmp_path / "classify"
+    fixtures.mkdir()
+    config = {"base_html": str(html_path), "classification": {"product_type": "신용카드"}}
+    cassette = Cassette(tmp_path / "c.json", mode="live", ask=SteadyPipelineDriftingAblation())
+
+    result = suites.run_stability(
+        Context(model="fake"), cassette, fixtures, config, repeats=3, arms=("pipeline", "ablation")
+    )
+    metrics = metrics_for(result)
+
+    assert metrics["duty_stable"] == 2
+    baseline = metrics["baseline"]["ablation"]
+    assert baseline["duty_items"] == 2 and baseline["duty_stable"] == 1
+    assert baseline["duty_unstable"] == [
+        {"code": "F11", "verdicts": ["부적합", "판정 불가", "판정 불가"]}
     ]

@@ -62,6 +62,15 @@ def render(run: dict) -> str:
                     f"적합이 오간 항목 {metrics['duty_pass_flips'] or '없음'}",
                 ]
             )
+            for arm, base in metrics.get("baseline", {}).items():
+                summary_rows.append(
+                    [
+                        f"stability/{arm}",
+                        f"{base['duty_stable']}/{base['duty_items']}",
+                        f"{metrics['repeats']}회 반복 동일 판정 {_pct(base['duty_stability'])}",
+                        f"적합이 오간 항목 {base['duty_pass_flips'] or '없음'}",
+                    ]
+                )
         elif name.startswith("classification"):
             summary_rows.append(
                 [
@@ -157,7 +166,8 @@ def render(run: dict) -> str:
             "## 파이프라인 대비 축소 비교(ablation)",
             "",
             "같은 루브릭 항목·같은 입력에 대해 인용 검증·조건 판단·재시도를 제거한 단일 호출"
-            "(`ablation`)과 본 파이프라인(`pipeline`)을 비교합니다.",
+            "(`ablation`)과 본 파이프라인(`pipeline`)을 비교합니다. 두 구성은 같은 삭제 변형을"
+            " 판정합니다. 삭제 대상은 두 구성이 모두 적합으로 본 항목에서 고릅니다.",
             "",
         ]
         lines += _table(
@@ -242,19 +252,24 @@ def render(run: dict) -> str:
                     for row in result["classification"]
                 ],
             )
-            lines += _table(
-                ["설명의무 항목", "회차별 판정", "동일"],
-                [
+            for arm, duty in [
+                ("pipeline", result["duty"]),
+                *(result.get("baseline") or {}).items(),
+            ]:
+                lines += [f"설명의무 반복 판정 — `{arm}`", ""]
+                lines += _table(
+                    ["설명의무 항목", "회차별 판정", "동일"],
                     [
-                        row["code"],
-                        " / ".join(map(str, row["verdicts"])),
-                        "O" if row["stable"] else "X",
+                        [
+                            row["code"],
+                            " / ".join(map(str, row["verdicts"])),
+                            "O" if row["stable"] else "X",
+                        ]
+                        for row in duty
+                        if not row["stable"]
                     ]
-                    for row in result["duty"]
-                    if not row["stable"]
-                ]
-                or [["(모두 동일)", "-", "O"]],
-            )
+                    or [["(모두 동일)", "-", "O"]],
+                )
         elif result["suite"].startswith("classification"):
             lines += _table(
                 ["케이스", "정답 유형", "판정 유형", "정답 화면", "판정 화면", "일치"],
@@ -276,8 +291,10 @@ def render(run: dict) -> str:
                 f"- 기준 페이지: `{base['html']}` (본문 {base['visible_chars']:,}자,"
                 f" 적용 항목 {base['items_in_scope']}개)",
                 f"- 기준 판정 분포: {base['verdicts']}",
-                f"- 인용이 확인된 적합 판정 {base['passed_with_quote']}건 중"
-                f" {metrics['injected']}건을 삭제 대상으로 사용",
+                f"- 이 구성의 적합 판정 {base.get('passed', '-')}건(인용 확인"
+                f" {base['passed_with_quote']}건), 모든 구성이 적합으로 본 항목"
+                f" {base.get('passed_by_every_arm', '-')}건 중 {metrics['injected']}건을 삭제"
+                " 대상으로 사용(앞 대상과 같은 문장을 지우게 되는 항목은 건너뜀)",
                 "",
             ]
             lines += _table(

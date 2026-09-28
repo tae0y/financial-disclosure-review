@@ -93,7 +93,7 @@ def run_evaluation(
         config["base_html"] = str(
             (Path(__file__).resolve().parents[3] / config["base_html"]).resolve()
         )
-        results.append(run_stability(ctx, cassette, _fixtures(), config, repeats))
+        results.append(run_stability(ctx, cassette, _fixtures(), config, repeats, arms))
 
     saved = cassette.save()
     return {
