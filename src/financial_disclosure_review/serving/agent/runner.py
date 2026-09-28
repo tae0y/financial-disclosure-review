@@ -32,10 +32,10 @@ def _context(settings: AgentSettings, model: str | None) -> Context:
 
 
 def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[str, Any]:
-    """A compact view of final State; `full` adds per-item rows and plain HTML, never raw HTML."""
+    """A compact view of final State; `full` adds rows and explanation HTML, never page HTML."""
     page = state.get("product_page") or {}
     display = state.get("display_check") or {}
-    plain = state.get("plain_language") or {}
+    persona = state.get("persona_explanation") or {}
     duty = state.get("explanation_duty_check") or {}
     verification = state.get("verification") or {}
     classification = state.get("classification") or {}
@@ -87,10 +87,16 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
                 for row in display.get("items") or []
             ],
         },
-        "plain_language": {
-            "accepted_blocks": len(plain.get("accepted_blocks") or []),
-            "contract_errors": len(plain.get("contract_errors") or []),
-            "html_chars": len(plain.get("html") or ""),
+        "persona_explanation": {
+            "status": persona.get("status"),
+            "profile": (persona.get("profile") or {}).get("id"),
+            "accepted_units": sum(
+                1 for u in persona.get("units") or [] if u.get("status") == "accepted"
+            ),
+            "reverted_units": sum(
+                1 for u in persona.get("units") or [] if u.get("status") == "reverted"
+            ),
+            "html_chars": len(persona.get("html") or ""),
         },
         "explanation_duty_check": {
             "applied": len(applied),
@@ -110,13 +116,14 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
         view["display_check"]["items"] = display.get("items") or []
         view["evidence_cards"]["rows"] = cards.get("cards") or []
         view["reference_cases"]["rows"] = references.get("links") or []
-        view["plain_language"]["html"] = plain.get("html")
-        view["plain_language"]["items"] = plain.get("items") or []
-        view["plain_language"]["contract_error_rows"] = plain.get("contract_errors") or []
+        view["persona_explanation"]["html"] = persona.get("html")
+        view["persona_explanation"]["units"] = persona.get("units") or []
+        view["persona_explanation"]["fact_ledger"] = persona.get("fact_ledger") or []
         view["explanation_duty_check"]["items"] = duty.get("items") or []
         view["explanation_duty_check"]["original"] = duty.get("original") or []
         view["explanation_duty_check"]["plain"] = duty.get("plain") or []
         view["explanation_duty_check"]["fidelity"] = duty.get("fidelity") or []
+        view["explanation_duty_check"]["ledger"] = duty.get("ledger") or []
     return view
 
 

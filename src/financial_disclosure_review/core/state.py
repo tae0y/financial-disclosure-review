@@ -54,19 +54,23 @@ class DisplayCheck(TypedDict, total=False):
     judgments: Any
 
 
-class PlainLanguage(TypedDict, total=False):
-    items: Any
-    draft: Any
+class PersonaExplanation(TypedDict, total=False):
+    """A supplementary reader-tailored explanation; never a legal rewrite or verdict."""
+
+    status: Any
+    reason: Any
+    profile: Any
+    fact_ledger: Any
+    units: Any
     html: Any
-    term_refs: Any
-    accepted_blocks: Any
-    contract_errors: Any
+    controls: Any
 
 
 class ExplanationDutyCheck(TypedDict, total=False):
     items: Any
     original: Any
-    plain: Any
+    plain: Any  # verdicts on the persona explanation side; name kept for API compatibility
+    ledger: Any
     fidelity: Any
 
 
@@ -98,7 +102,7 @@ class State(TypedDict):
     evidence_cards: EvidenceCards
     reference_cases: ReferenceCases
     display_check: DisplayCheck
-    plain_language: PlainLanguage
+    persona_explanation: PersonaExplanation
     explanation_duty_check: ExplanationDutyCheck
     verification: Verification
     report: Report

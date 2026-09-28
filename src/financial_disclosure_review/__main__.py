@@ -57,11 +57,14 @@ def print_summary(state: dict) -> None:
     for row in check.get("items") or []:
         print(f"  {row['code']}: {row['verdict']} | {row['reason']}")
 
-    plain = state.get("plain_language") or {}
+    persona = state.get("persona_explanation") or {}
+    units = persona.get("units") or []
     print(
-        "plain_language:",
-        f"{len(plain.get('accepted_blocks') or [])} blocks kept,",
-        f"{len(plain.get('contract_errors') or [])} sent back to the original",
+        "persona_explanation:",
+        persona.get("status"),
+        f"profile={(persona.get('profile') or {}).get('id')}",
+        f"{sum(u.get('status') == 'accepted' for u in units)} units kept,",
+        f"{sum(u.get('status') == 'reverted' for u in units)} sent back to the original",
     )
     duty = state.get("explanation_duty_check") or {}
     applied = [row for row in duty.get("items") or [] if row.get("applied")]

@@ -41,20 +41,26 @@ def sound_input() -> dict:
                 "measures": {"E02": {"below_min_pt": []}},
             },
         },
-        "plain_language": {
-            "accepted_blocks": [
+        "persona_explanation": {
+            "status": "완료",
+            "units": [
                 {
-                    "source_id": "b1",
-                    "source_quote": "이 카드의 연회비는 15000원입니다.",
-                    "text": "이 카드는 매년 15000원의 회비를 냅니다.",
+                    "unit_id": "u1",
+                    "source_ids": ["dom-0"],
+                    "exact_fact": "이 카드의 연회비는 15000원입니다.",
+                    "explanation": "이 카드는 매년 15000원의 회비를 냅니다.",
+                    "analogy": "",
+                    "status": "accepted",
                 },
                 {
-                    "source_id": "b2",
-                    "source_quote": "단기카드대출 이자율은 연 20%입니다.",
-                    "text": "돈을 짧게 빌리면 이자가 연 20%입니다.",
+                    "unit_id": "u2",
+                    "source_ids": ["dom-1"],
+                    "exact_fact": "단기카드대출 이자율은 연 20%입니다.",
+                    "explanation": "돈을 짧게 빌리면 이자가 연 20%입니다.",
+                    "analogy": "",
+                    "status": "accepted",
                 },
             ],
-            "contract_errors": [],
             "html": PLAIN_HTML,
         },
         "explanation_duty_check": {
@@ -80,7 +86,7 @@ def run(state: dict) -> dict:
     return verify(
         state["page"],
         state["display_check"],
-        state["plain_language"],
+        state["persona_explanation"],
         state["explanation_duty_check"],
         state["loop_count"],
     )
@@ -137,23 +143,61 @@ def test_a_pass_that_contradicts_the_measurement_fails():
     assert any("모순" in reason for reason in result["reasons"])
 
 
-def test_a_fidelity_gap_is_the_plain_languages_problem_not_the_duty_checks():
+def test_a_fidelity_gap_is_the_explanations_problem_not_the_duty_checks():
     state = sound_input()
     state["explanation_duty_check"]["fidelity"] = [
-        {"source_id": "b2", "kind": "누락", "reason": "이자율 20%가 쉬운말에서 빠졌습니다"}
+        {
+            "code": "f2",
+            "source_ids": ["dom-1"],
+            "kind": "누락",
+            "reason": "이자율 20%가 설명에서 빠졌습니다",
+            "informational": False,
+        }
     ]
     result = run(state)
     assert result["passed"] is False
-    assert "plain_language" in result["failed_modules"]
+    assert "persona_explanation" in result["failed_modules"]
     assert "explanation_duty_check" not in result["failed_modules"]
+    assert result["feedback"][0]["source_id"] == "dom-1"
 
 
-def test_a_contract_error_left_over_fails_plain_language():
+def test_an_informational_fidelity_row_is_reported_but_does_not_fail():
+    """원문으로 되돌린 단위나 출처 없는 루브릭 차이는 재생성으로 고칠 수 없어 정보로만 남깁니다."""
     state = sound_input()
-    state["plain_language"]["contract_errors"] = [{"source_id": "b1", "reason": "필수 문구 누락"}]
+    state["explanation_duty_check"]["fidelity"] = [
+        {
+            "code": "f1",
+            "source_ids": ["dom-0"],
+            "kind": "누락",
+            "reason": "r",
+            "informational": True,
+        },
+        {"code": "설명05", "source_ids": [], "kind": "변경", "reason": "r", "informational": True},
+    ]
     result = run(state)
-    assert result["passed"] is False
-    assert "plain_language" in result["failed_modules"]
+    assert result["passed"] is True, result["reasons"]
+    assert sum(reason.startswith("[정보]") for reason in result["reasons"]) == 2
+
+
+def test_an_accepted_unit_whose_exact_fact_is_not_in_the_page_fails():
+    state = sound_input()
+    state["persona_explanation"]["units"][0]["exact_fact"] = "연회비는 없습니다."
+    result = run(state)
+    assert "persona_explanation" in result["failed_modules"]
+
+
+def test_a_reverted_unit_is_not_rechecked():
+    state = sound_input()
+    state["persona_explanation"]["units"][0].update(
+        exact_fact="원문에 없는 문장", status="reverted"
+    )
+    assert run(state)["passed"] is True
+
+
+def test_an_invented_number_in_an_accepted_unit_fails():
+    state = sound_input()
+    state["persona_explanation"]["units"][1]["explanation"] = "이자는 연 25%입니다."
+    assert "persona_explanation" in run(state)["failed_modules"]
 
 
 @pytest.mark.parametrize("module", ["display_check", "explanation_duty_check"])

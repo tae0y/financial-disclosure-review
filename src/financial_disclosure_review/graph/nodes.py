@@ -7,13 +7,15 @@ from langgraph.runtime import Runtime
 
 from ..core.context import Context
 from ..core.state import State
-from ..core.text import norm
+from ..core.text import norm, visible_text
 from ..core.threads import run_in_thread
 from ..domain.classification import classify_page
 from ..domain.display_check import judge_display
 from ..domain.evidence_cards import extract_evidence_cards as extract_cards
 from ..domain.explanation_duty_check import judge_explanation
-from ..domain.plain_language import generate_plain, unjudged_plain
+from ..domain.explanation_duty_check.ledger import check_ledger
+from ..domain.persona_explanation import generate_persona_explanation as generate_persona
+from ..domain.persona_explanation.profiles import PROFILES_FILE
 from ..domain.product_page import fetch_product_page
 from ..domain.report import build_report
 from ..domain.verification import verify
@@ -21,6 +23,7 @@ from ..knowledge.build_cases import CASE_CORPUS_FILE
 from ..knowledge.reference import RISK_KINDS_FILE
 from ..knowledge.reference import retrieve_reference_cases as retrieve_cases
 from ..knowledge.rubrics import rubric_bindings
+from ..llm.client import ask
 from .retry import MAX_LOOPS, RETRY_KEYS, escalation, plan_retry
 
 
@@ -108,29 +111,31 @@ def judge_display_method(state: State, runtime: Runtime[Context]) -> dict:
     return {"display_check": check}
 
 
-def generate_plain_lang(state: State, runtime: Runtime[Context]) -> dict:
-    print("[generate_plain_lang]")
-    plain: dict[str, Any] = dict(state.get("plain_language") or {})
-    page, classification = state["product_page"], state.get("classification") or {}
+def generate_persona_explanation(state: State, runtime: Runtime[Context]) -> dict:
+    """A supplementary explanation for one reviewed reader profile; never a verdict."""
+    print("[generate_persona_explanation]")
+    ctx = runtime.context
+    persona: dict[str, Any] = dict(state.get("persona_explanation") or {})
+    cards = state.get("evidence_cards") or {}
     feedback = (state.get("verification") or {}).get("feedback") or []
-    if not classification.get("product_type") or not classification.get("page_type"):
-        plain.update(unjudged_plain("classification이 비어 있음: classify_type을 먼저 실행하세요"))
-    elif not page.get("html"):
-        plain.update(
-            unjudged_plain(
-                "product_page.html이 비어 있음: preprocess_product_page를 먼저 실행하세요"
-            )
+    persona.update(
+        generate_persona(
+            cards.get("sources") or [],
+            cards.get("cards") or [],
+            state.get("classification") or {},
+            ctx,
+            feedback,
+            profiles_path=Path(ctx.rubric_dir) / PROFILES_FILE,
         )
-    else:
-        plain.update(generate_plain(page, classification, feedback, runtime.context))
-    return {"plain_language": plain}
+    )
+    return {"persona_explanation": persona}
 
 
 def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
     print("[judge_explanation_duty]")
     check: dict[str, Any] = dict(state.get("explanation_duty_check") or {})
-    page = state.get("product_page") or {}
-    plain = state.get("plain_language") or {}
+    page: dict[str, Any] = dict(state.get("product_page") or {})
+    persona: dict[str, Any] = dict(state.get("persona_explanation") or {})
     classification = state.get("classification") or {}
 
     def blocked(reason: str) -> list[dict]:
@@ -149,6 +154,7 @@ def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
             items=blocked("classification이 비어 있음; classify_type을 먼저 실행해야 함"),
             original=[],
             plain=[],
+            ledger=[],
             fidelity=[],
         )
     elif not page.get("html"):
@@ -156,27 +162,48 @@ def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
             items=blocked("product_page.html이 비어 있음"),
             original=[],
             plain=[],
+            ledger=[],
             fidelity=[],
         )
-    elif not plain.get("html"):
+    elif not persona.get("html"):
         check.update(
             items=check.get("items")
-            or blocked("plain_language.html이 비어 있음; generate_plain_lang을 먼저 실행해야 함"),
+            or blocked(
+                "persona_explanation.html이 비어 있음;"
+                " generate_persona_explanation을 먼저 실행해야 함"
+            ),
             original=check.get("original") or [],
             plain=[],
+            ledger=[],
             fidelity=[],
         )
     else:
+        feedback = (state.get("verification") or {}).get("feedback") or []
+        judged = judge_explanation(
+            page,
+            {"html": persona["html"]},
+            classification,
+            runtime.context,
+            check.get("original") or None,
+            check.get("items") or None,
+            feedback=feedback,
+        )
+        # Rubric-level differences carry no source line to regenerate, so they are reported but
+        # informational; the fact ledger decides what the explanation must preserve.
+        rubric_fidelity = [
+            {**row, "source_ids": [], "decided_by": "model", "informational": True}
+            for row in judged.get("fidelity") or []
+        ]
+        ledger = check_ledger(
+            persona.get("fact_ledger") or [],
+            persona.get("units") or [],
+            visible_text(page["html"]),
+            visible_text(persona["html"]),
+            runtime.context.model,
+            ask,
+        )
         check.update(
-            judge_explanation(
-                page,
-                plain,
-                classification,
-                runtime.context,
-                check.get("original") or None,
-                check.get("items") or None,
-                feedback=(state.get("verification") or {}).get("feedback") or [],
-            )
+            {**judged, "ledger": ledger["ledger"], "fidelity": rubric_fidelity + ledger["fidelity"]}
         )
     return {"explanation_duty_check": check}
 
@@ -193,7 +220,7 @@ def verify_answer(state: State, runtime: Runtime[Context]) -> dict:
             **verify(
                 state.get("product_page") or {},
                 state.get("display_check") or {},
-                state.get("plain_language") or {},
+                state.get("persona_explanation") or {},
                 state.get("explanation_duty_check") or {},
                 int(previous.get("loop_count") or 0),
             ),
@@ -208,6 +235,11 @@ def retry_dispatch(state: State) -> dict:
     return {"verification": verification}
 
 
+def _explanation_of(state: State) -> dict[str, Any]:
+    legacy: dict[str, Any] = dict(state).get("plain_language") or {}  # type: ignore[assignment]
+    return dict(state.get("persona_explanation") or legacy)
+
+
 def end_report(state: State, runtime: Runtime[Context]) -> dict:
     print("[end_report]")
     report: dict[str, Any] = dict(state.get("report") or {})
@@ -216,7 +248,8 @@ def end_report(state: State, runtime: Runtime[Context]) -> dict:
             state["product_page"],
             state.get("classification") or {},
             state.get("display_check") or {},
-            state.get("plain_language") or {},
+            # A checkpoint from before the persona explanation still has `plain_language`.
+            _explanation_of(state),
             state.get("explanation_duty_check") or {},
             state.get("verification") or {},
             {**escalation(state.get("verification") or {}), "max_loops": MAX_LOOPS},

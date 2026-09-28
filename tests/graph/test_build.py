@@ -26,7 +26,7 @@ def test_the_graph_compiles_with_every_node_and_edge():
         "extract_evidence_cards",
         "retrieve_reference_cases",
         "judge_display_method",
-        "generate_plain_lang",
+        "generate_persona_explanation",
         "judge_explanation_duty",
         "verify_answer",
         "retry_dispatch",
@@ -53,17 +53,21 @@ def fake_cards(page, classification, ctx) -> dict:
     }
 
 
-def fake_plain(page, classification, feedback, ctx) -> dict:
-    """A PlainLanguage value whose one block really is in the page, so verify can pass on it."""
-    quote = visible_text(page["html"])[:24]
+def fake_persona(sources, cards, classification, ctx, feedback=(), **kwargs) -> dict:
+    """A PersonaExplanation with no cards: every source stays original, nothing to trace."""
+    quote = visible_text(PAGE_HTML_FOR_PERSONA[0])[:24]
     return {
-        "items": [],
-        "draft": [{"id": "b0", "text": quote, "terms": []}],
-        "html": f'<p data-source-id="b0">{quote}</p>',
-        "term_refs": [],
-        "accepted_blocks": [{"source_id": "b0", "source_quote": quote, "text": quote}],
-        "contract_errors": [],
+        "status": "원문 대체",
+        "reason": "카드 없음",
+        "profile": {"id": "p", "version": 1, "status": "적용"},
+        "fact_ledger": [],
+        "units": [],
+        "html": f'<p data-source-id="dom-0">{quote}</p>',
+        "controls": {},
     }
+
+
+PAGE_HTML_FOR_PERSONA: list[str] = [""]
 
 
 def fake_duty(
@@ -105,7 +109,8 @@ def test_a_reviewable_page_runs_through_to_the_report(monkeypatch, revolving):
         lambda page, classification, ctx: {"items": [], "judgments": {"status": "완료"}},
     )
     monkeypatch.setattr(nodes, "extract_cards", fake_cards)
-    monkeypatch.setattr(nodes, "generate_plain", fake_plain)
+    PAGE_HTML_FOR_PERSONA[0] = page["html"]
+    monkeypatch.setattr(nodes, "generate_persona", fake_persona)
     monkeypatch.setattr(nodes, "judge_explanation", fake_duty)
     final = build_review_graph().invoke(initial(), context=Context(model="fake"))
 
@@ -113,7 +118,7 @@ def test_a_reviewable_page_runs_through_to_the_report(monkeypatch, revolving):
     assert final["display_check"]["judgments"]["status"] == "완료"
     assert final["evidence_cards"]["status"] == "카드 없음"
     assert final["reference_cases"]["status"] == "건너뜀"
-    assert final["plain_language"]["accepted_blocks"]
+    assert final["persona_explanation"]["status"] == "원문 대체"
     assert final["explanation_duty_check"]["original"]
     assert final["verification"]["passed"] is True, final["verification"]
     assert final["verification"]["loop_count"] == 1

@@ -19,11 +19,15 @@ STATE = {
         ],
         "judgments": {"status": "부적합", "reason": "1건 위반"},
     },
-    "plain_language": {
-        "accepted_blocks": ["b1", "b2"],
-        "contract_errors": ["e1"],
-        "html": "<section>쉬운말</section>",
-        "items": [{"block": "b1"}],
+    "persona_explanation": {
+        "status": "완료",
+        "profile": {"id": "nemotron-ko-70s-lowfin"},
+        "units": [
+            {"unit_id": "u1", "status": "accepted"},
+            {"unit_id": "u2", "status": "accepted"},
+            {"unit_id": "u3", "status": "reverted"},
+        ],
+        "html": "<section>독자 맞춤 설명</section>",
     },
     "explanation_duty_check": {
         "items": [{"code": "E-01", "applied": True}, {"code": "E-02", "applied": False}],
@@ -55,7 +59,7 @@ def test_summary_reports_page_size_instead_of_the_page() -> None:
 
 def test_full_detail_still_withholds_the_source_page() -> None:
     view = summarize(STATE, Detail.full)
-    assert view["plain_language"]["html"] == "<section>쉬운말</section>"
+    assert view["persona_explanation"]["html"] == "<section>독자 맞춤 설명</section>"
     assert view["explanation_duty_check"]["fidelity"] == [{"code": "E-01", "kind": "축약"}]
     assert "html" not in view["product_page"]
     assert "x" * 1000 not in _flat(view)
@@ -66,8 +70,9 @@ def test_summary_counts_what_a_caller_polls_for() -> None:
     assert view["display_check"]["status"] == "부적합"
     assert view["display_check"]["item_count"] == 2
     assert [row["verdict"] for row in view["display_check"]["verdicts"]] == ["적합", "부적합"]
-    assert view["plain_language"]["accepted_blocks"] == 2
-    assert view["plain_language"]["contract_errors"] == 1
+    assert view["persona_explanation"]["accepted_units"] == 2
+    assert view["persona_explanation"]["reverted_units"] == 1
+    assert view["persona_explanation"]["profile"] == "nemotron-ko-70s-lowfin"
     assert view["explanation_duty_check"]["applied"] == 1
     assert view["explanation_duty_check"]["fidelity_differences"] == 1
     assert view["verification"]["passed"] is False

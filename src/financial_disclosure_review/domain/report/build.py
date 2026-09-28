@@ -14,8 +14,9 @@ STATUS_INSUFFICIENT = "조사 불충분"
 # product_page.status values written by the page-evidence agent.
 PAGE_COMPLETE = "완료"
 
-PUBLISH_BLOCKED = "쉬운말 자동 게시 불가 — 원문 유지"
-PUBLISH_ALLOWED = "담당자 확인 후 쉬운말 게시 가능"
+PUBLISH_BLOCKED = "독자 맞춤 설명 자동 게시 불가 — 원문 유지"
+PUBLISH_ALLOWED = "담당자 확인 후 독자 맞춤 설명 게시 가능"
+EXPLANATION = "독자 맞춤 설명"
 
 SEVERITY_VIOLATION = "위반"
 SEVERITY_SHORTFALL = "권고 미충족"
@@ -69,6 +70,27 @@ def _clip(text: str, limit: int = 120) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _accepted(plain: Mapping[str, Any]) -> list[dict]:
+    """Accepted explanation units, or a legacy checkpoint's accepted plain-language blocks."""
+    if "units" in plain:
+        return [u for u in plain.get("units") or [] if u.get("status") == "accepted"]
+    return list(plain.get("accepted_blocks") or [])
+
+
+def _reverted(plain: Mapping[str, Any]) -> list[dict]:
+    """Units that fell back to the original line (legacy: plain-language contract errors)."""
+    if "units" in plain:
+        return [
+            {
+                "source_id": ",".join(u.get("source_ids") or []),
+                "reason": "; ".join(u.get("problems") or []),
+            }
+            for u in plain.get("units") or []
+            if u.get("status") == "reverted"
+        ]
+    return list(plain.get("contract_errors") or [])
+
+
 def _findings(
     display: Mapping[str, Any],
     duty: Mapping[str, Any],
@@ -91,7 +113,7 @@ def _findings(
                     "quotes": row.get("quotes") or [],
                 }
             )
-    for side, label in (("original", "원문"), ("plain", "쉬운말")):
+    for side, label in (("original", "원문"), ("plain", EXPLANATION)):
         for row in duty.get(side) or []:
             if row.get("verdict") in ("부적합", "판정 불가"):
                 found.append(
@@ -110,23 +132,25 @@ def _findings(
                 row["module"], bindings.get(row["code"]), page_type
             )
     for row in duty.get("fidelity") or []:
+        where = ",".join(row.get("source_ids") or []) or row.get("source_id", "")
         found.append(
             {
                 "module": "explanation_duty_check",
                 "code": row.get("code", ""),
-                "verdict": f"의미 차이({row.get('kind', '')})",
-                "target": f"쉬운말 블록 {row.get('source_id', '')}",
+                "verdict": f"의미 차이({row.get('kind', '')})"
+                + (" [정보]" if row.get("informational") else ""),
+                "target": f"{EXPLANATION} {where}".strip(),
                 "reason": row.get("reason", ""),
-                "quotes": [],
+                "quotes": [row["quote"]] if row.get("quote") else [],
             }
         )
-    for row in plain.get("contract_errors") or []:
+    for row in _reverted(plain):
         found.append(
             {
-                "module": "plain_language",
-                "code": row.get("marker", "") or "계약위반",
+                "module": "persona_explanation",
+                "code": row.get("marker", "") or "원문 대체",
                 "verdict": "원문 대체",
-                "target": f"쉬운말 블록 {row.get('source_id', '')}",
+                "target": f"{EXPLANATION} {row.get('source_id', '')}",
                 "reason": row.get("reason", ""),
                 "quotes": [],
             }
@@ -236,12 +260,12 @@ def _judged_status(
     diffs = [f for f in findings if str(f["verdict"]).startswith("의미 차이")]
     if diffs:
         actions.append(
-            f"쉬운말이 원문과 어긋난 블록 {len(diffs)}건 확인: "
+            f"{EXPLANATION}이 원문과 어긋난 항목 {len(diffs)}건 확인: "
             f"{_codes(sorted({f['code'] for f in diffs}))}"
         )
     replaced = [f for f in findings if f["verdict"] == "원문 대체"]
     if replaced:
-        actions.append(f"쉬운말 계약 검사에서 원문으로 되돌린 블록 {len(replaced)}건 확인")
+        actions.append(f"{EXPLANATION} 검사에서 원문으로 되돌린 단위 {len(replaced)}건 확인")
     if unjudged:
         by_target = sorted({row["target"] for row in unjudged})
         actions.append(
@@ -310,8 +334,8 @@ def build_report(
             1 for row in duty.get("plain") or [] if row.get("verdict") == "부적합"
         ),
         "fidelity_diffs": len(duty.get("fidelity") or []),
-        "plain_blocks": len(plain.get("accepted_blocks") or []),
-        "plain_rejected": len(plain.get("contract_errors") or []),
+        "plain_blocks": len(_accepted(plain)),
+        "plain_rejected": len(_reverted(plain)),
         "verification_passed": verification.get("passed"),
         "verification_loops": verification.get("loop_count"),
         "findings": len(findings),
@@ -537,10 +561,17 @@ def _limits(
         text = (judgments.get("assumptions") or {}).get(key)
         if text:
             limits.append("가정: " + _clip(str(text), 300))
-    if plain.get("contract_errors"):
+    if _reverted(plain):
         limits.append(
-            f"쉬운말 {len(plain['contract_errors'])}개 블록은 계약 검사를 통과하지 못해 원문"
-            " 문장으로 되돌렸습니다."
+            f"{EXPLANATION} {len(_reverted(plain))}개 단위는 검사를 통과하지 못해 원문 문장으로"
+            " 되돌렸습니다."
+        )
+    profile = plain.get("profile") or {}
+    if profile:
+        limits.append(
+            f"{EXPLANATION}은 독자 프로필 {profile.get('id', '-')} v{profile.get('version', '-')}"
+            f"({profile.get('review_status', '-')}, {profile.get('status', '-')}) 기준의 보조"
+            " 설명이며, 원문을 대신하거나 독자의 자격·혜택·상환액을 판단하지 않습니다."
         )
     unresolved = [row for row in duty.get("original") or [] if row.get("verdict") == "판정 불가"]
     if unresolved:
@@ -611,13 +642,13 @@ def _markdown(
                     str(_unjudged(duty.get("original"))),
                 ],
                 [
-                    "설명의무(쉬운말)",
+                    f"설명의무({EXPLANATION})",
                     f"{summary['duty_items_applied']}/{summary['duty_items_total']}",
                     str(summary["duty_violations_plain"]),
                     str(_unjudged(duty.get("plain"))),
                 ],
                 [
-                    "쉬운말 변환",
+                    EXPLANATION,
                     str(summary["plain_blocks"] + summary["plain_rejected"]),
                     str(summary["plain_rejected"]),
                     str(summary["fidelity_diffs"]),
@@ -667,7 +698,7 @@ def _markdown(
             ],
             ["항목", "판정", "근거 블록", "사유"],
         ),
-        "## 5. 설명의무 검토 상세 (원문 대비 쉬운말)",
+        f"## 5. 설명의무 검토 상세 (원문 대비 {EXPLANATION})",
         "",
     ]
     plain_by_code = {row.get("code"): row for row in duty.get("plain") or []}
@@ -684,30 +715,86 @@ def _markdown(
             ]
             for row in duty.get("original") or []
         ],
-        ["항목", "조건", "원문 판정", "쉬운말 판정", "의미 차이", "원문 인용"],
+        ["항목", "조건", "원문 판정", f"{EXPLANATION} 판정", "의미 차이", "원문 인용"],
     )
-    lines += ["## 6. 쉬운말 변환 결과", ""]
-    lines += _table(
-        [
-            [
-                row.get("source_id", ""),
-                _clip(row.get("source_quote", ""), 90),
-                _clip(row.get("text", ""), 90),
-            ]
-            for row in plain.get("accepted_blocks") or []
-        ],
-        ["블록", "원문", "쉬운말"],
-    )
-    term_refs = plain.get("term_refs") or []
-    if term_refs:
-        lines += ["### 용어 풀이", ""]
+    lines += [f"## 6. {EXPLANATION} 결과", ""]
+    if "units" in plain:
+        profile = plain.get("profile") or {}
+        lines += [
+            f"- 상태: {plain.get('status', '-')}"
+            + (f" ({_clip(str(plain['reason']), 120)})" if plain.get("reason") else ""),
+            f"- 독자 프로필: {profile.get('id', '-')} v{profile.get('version', '-')}"
+            f" ({profile.get('source', '-')}, {profile.get('review_status', '-')},"
+            f" {profile.get('status', '-')})",
+            "- 원문 사실(exact_fact)은 설명 옆에 그대로 남습니다."
+            " 위험 개념에는 비유를 쓰지 않습니다.",
+            "",
+        ]
         lines += _table(
             [
-                [row.get("term", ""), row.get("source_id", ""), _clip(row.get("gloss", ""), 120)]
-                for row in term_refs
+                [
+                    unit.get("unit_id", ""),
+                    ", ".join(unit.get("source_ids") or []),
+                    _clip(unit.get("exact_fact", ""), 70),
+                    _clip(unit.get("explanation", ""), 90),
+                    _clip(unit.get("analogy", ""), 40) or "-",
+                    unit.get("status", ""),
+                ]
+                for unit in plain.get("units") or []
             ],
-            ["용어", "블록", "풀이"],
+            ["단위", "출처", "원 사실", "설명", "비유", "상태"],
         )
+        ledger = duty.get("ledger") or []
+        if ledger:
+            lines += ["### 사실 원장 대조", ""]
+            lines += _table(
+                [
+                    [
+                        row.get("fact_id", ""),
+                        row.get("kind", ""),
+                        _clip(str(row.get("value", "")), 50),
+                        str(row.get("verdict", "")),
+                        str(row.get("decided_by", "")),
+                    ]
+                    for row in ledger
+                ],
+                ["사실", "종류", "값", "보존", "판단 주체"],
+            )
+        controls = plain.get("controls") or {}
+        if controls:
+            lines += [
+                "### 운영 통제 (판정 대상 아님)",
+                "",
+                f"- 화면: {', '.join(controls.get('ui') or [])}",
+                f"- 거버넌스: {', '.join(controls.get('governance') or [])}",
+                "",
+            ]
+    else:
+        lines += _table(
+            [
+                [
+                    row.get("source_id", ""),
+                    _clip(row.get("source_quote", ""), 90),
+                    _clip(row.get("text", ""), 90),
+                ]
+                for row in plain.get("accepted_blocks") or []
+            ],
+            ["블록", "원문", "쉬운말"],
+        )
+        term_refs = plain.get("term_refs") or []
+        if term_refs:
+            lines += ["### 용어 풀이", ""]
+            lines += _table(
+                [
+                    [
+                        row.get("term", ""),
+                        row.get("source_id", ""),
+                        _clip(row.get("gloss", ""), 120),
+                    ]
+                    for row in term_refs
+                ],
+                ["용어", "블록", "풀이"],
+            )
     lines += [
         "## 7. 자동 검증 결과",
         "",

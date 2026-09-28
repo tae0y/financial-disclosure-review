@@ -86,7 +86,7 @@ def test_the_markdown_carries_the_frontmatter_and_every_section():
         "## 3. 확인이 필요한 항목",
         "## 4. 표시방법 검토 상세",
         "## 5. 설명의무 검토 상세",
-        "## 6. 쉬운말 변환 결과",
+        "## 6. 독자 맞춤 설명 결과",
         "## 7. 자동 검증 결과",
         "## 8. 비용과 소요시간",
         "## 9. 한계와 가정",
@@ -154,7 +154,7 @@ def test_a_violation_blocks_the_plain_language_from_being_published():
     }
     result = report(duty=duty)
     assert result["status"] == "사람 검토 필요"
-    assert result["decision"] == "쉬운말 자동 게시 불가 — 원문 유지"
+    assert result["decision"] == "독자 맞춤 설명 자동 게시 불가 — 원문 유지"
     assert result["summary"]["duty_violations_original"] == 1
 
 
@@ -181,7 +181,7 @@ def test_a_failed_verification_escalates_with_the_stop_reason():
         stop={"reason": "재시도 한도 초과", "detail": "2회 모두 미달", "max_loops": 2},
     )
     assert result["status"] == "사람 검토 필요"
-    assert result["decision"] == "쉬운말 자동 게시 불가 — 원문 유지"
+    assert result["decision"] == "독자 맞춤 설명 자동 게시 불가 — 원문 유지"
     assert "에스컬레이션" in result["actions"][0]
     assert "재시도 한도 초과" in result["markdown"]
 
@@ -463,3 +463,60 @@ def test_a_pass_that_rests_only_on_hidden_text_is_named_as_a_limit():
     """원문 적합의 인용이 화면에 보이지 않은 문장에만 있으면, 사람이 노출 여부를 확인해야 합니다."""
     result = report(cards=CARDS)
     assert any("설명01" in limit and "보이지 않았거나" in limit for limit in result["limits"])
+
+
+PERSONA = {
+    "status": "완료",
+    "reason": "",
+    "profile": {
+        "id": "nemotron-ko-70s-lowfin",
+        "version": 1,
+        "source": "nvidia/Nemotron-Personas-Korea uuid=x (CC-BY-4.0)",
+        "review_status": "ai-drafted",
+        "status": "적용",
+    },
+    "units": [
+        {
+            "unit_id": "u1",
+            "source_ids": ["dom-0"],
+            "exact_fact": "연회비 1만원",
+            "explanation": "카드를 1년 쓰는 값으로 1만원을 냅니다.",
+            "analogy": "",
+            "status": "accepted",
+            "problems": [],
+        },
+        {
+            "unit_id": "u2",
+            "source_ids": ["dom-1"],
+            "exact_fact": "연체 시 신용평점 하락",
+            "explanation": "",
+            "analogy": "",
+            "status": "reverted",
+            "problems": ["원문에 없는 수치 3"],
+        },
+    ],
+    "controls": {"ui": ["AI 생성 고지"], "governance": ["사람 승인"]},
+}
+
+
+def test_the_persona_explanation_is_reported_with_its_profile_units_and_controls():
+    duty = {
+        **DUTY_OK,
+        "ledger": [
+            {
+                "fact_id": "f1",
+                "kind": "number",
+                "value": "1만원",
+                "verdict": "보존",
+                "decided_by": "code",
+            }
+        ],
+    }
+    result = report(plain=PERSONA, duty=duty)
+    markdown = result["markdown"]
+    assert "nemotron-ko-70s-lowfin v1" in markdown
+    assert "카드를 1년 쓰는 값으로 1만원을 냅니다." in markdown
+    assert "### 사실 원장 대조" in markdown and "### 운영 통제 (판정 대상 아님)" in markdown
+    assert result["summary"]["plain_blocks"] == 1
+    assert result["summary"]["plain_rejected"] == 1
+    assert any(f["verdict"] == "원문 대체" and "dom-1" in f["target"] for f in result["findings"])

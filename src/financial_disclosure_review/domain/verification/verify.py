@@ -11,16 +11,15 @@ from ...core.text import locate_quote, visible_text
 def verify(
     page: Mapping[str, Any],
     display_check: Mapping[str, Any],
-    plain_language: Mapping[str, Any],
+    persona_explanation: Mapping[str, Any],
     explanation_duty_check: Mapping[str, Any],
     loop_count: int,
 ) -> dict:
     """Cross-checks the three modules against each other and the input text; needs no model call."""
     product_text = visible_text(page.get("html") or "")
-    plain_text = visible_text(plain_language.get("html") or "")
-    accepted_blocks = plain_language.get("accepted_blocks") or []
-    contract_errors = plain_language.get("contract_errors") or []
-    known_plain_source_ids = {b.get("source_id", "") for b in accepted_blocks}
+    plain_text = visible_text(persona_explanation.get("html") or "")
+    units = persona_explanation.get("units") or []
+    accepted_units = [u for u in units if u.get("status") == "accepted"]
 
     failed: set[str] = set()
     reasons: list[str] = [
@@ -109,44 +108,41 @@ def verify(
                         requested_change="측정된 위반이 있으므로 이 항목을 다시 판정하세요",
                     )
 
-    # ---- plain_language ----
-    if not accepted_blocks and not contract_errors:
+    # ---- persona_explanation ----
+    # The explanation is supplementary: a unit that failed its own checks already shows the
+    # original line, so only accepted units are re-checked here.
+    if not persona_explanation:
         fail(
-            "plain_language",
-            "plain_language에 accepted_blocks와 contract_errors가 모두 없습니다."
-            " 생성된 내용이 없습니다.",
+            "persona_explanation",
+            "persona_explanation이 비어 있습니다. generate_persona_explanation을 먼저 실행하세요.",
         )
-    for error in contract_errors:
+    elif not persona_explanation.get("html"):
         fail(
-            "plain_language",
-            f"plain_language contract_errors 남음: {error.get('source_id', '')}"
-            f" - {error.get('reason', '')}",
-            source_id=error.get("source_id", ""),
-            requested_change="계약 오류를 해결하도록 이 블록을 다시 생성하세요",
+            "persona_explanation",
+            f"persona_explanation.html이 비어 있습니다: {persona_explanation.get('reason', '')}",
         )
     number_pattern = re.compile(r"\d+(?:[.,]\d+)?%?")
-    for block in accepted_blocks:
-        source_id = block.get("source_id", "")
-        source_quote, text = block.get("source_quote", ""), block.get("text", "")
-        if not source_quote or locate_quote(product_text, source_quote) is None:
+    for unit in accepted_units:
+        source_id = ",".join(unit.get("source_ids") or [])
+        exact = unit.get("exact_fact", "")
+        if not exact or locate_quote(product_text, exact) is None:
             fail(
-                "plain_language",
-                f"plain_language 블록 {source_id}: source_quote가 product_page.html에서"
+                "persona_explanation",
+                f"독자 맞춤 설명 {unit.get('unit_id', '')}: exact_fact가 product_page.html에서"
                 " 발견되지 않습니다",
                 source_id=source_id,
-                requested_change=(
-                    "source_quote를 원문에 실제로 있는 문구로 수정하거나 블록을 다시 생성하세요"
-                ),
+                requested_change="exact_fact를 원문에 실제로 있는 문구로 옮겨 적으세요",
             )
             continue
-        ungrounded = sorted({n for n in number_pattern.findall(text) if n not in source_quote})
+        said = f"{unit.get('explanation', '')} {unit.get('analogy', '')}"
+        ungrounded = sorted({n for n in number_pattern.findall(said) if n not in product_text})
         if ungrounded:
             fail(
-                "plain_language",
-                f"plain_language 블록 {source_id}: 수치 {ungrounded}이(가) source_quote에서"
+                "persona_explanation",
+                f"독자 맞춤 설명 {unit.get('unit_id', '')}: 수치 {ungrounded}이(가) 원문에서"
                 " 근거를 찾을 수 없습니다",
                 source_id=source_id,
-                requested_change=f"수치 {ungrounded}를 원문과 대조해 제거하거나 근거를 보완하세요",
+                requested_change=f"수치 {ungrounded}를 원문과 대조해 제거하세요",
             )
 
     # ---- explanation_duty_check ----
@@ -191,25 +187,25 @@ def verify(
                         target=label,
                     )
         for entry in explanation_duty_check.get("fidelity") or []:
-            source_id, kind = entry.get("source_id", ""), entry.get("kind", "")
-            reason = entry.get("reason", "")
-            fail(
-                "plain_language",
-                f"explanation_duty_check.fidelity: 쉬운말이 원문과 어긋납니다"
-                f" ({source_id}, {kind}): {reason}",
-                source_id=source_id,
-                requested_change="원문의 사실/수치/조건을 보존하도록 이 블록을 다시 생성하세요",
+            source_id = ",".join(entry.get("source_ids") or []) or entry.get("source_id", "")
+            kind, reason = entry.get("kind", ""), entry.get("reason", "")
+            line = (
+                f"explanation_duty_check.fidelity {entry.get('code', '')}: 설명문이 원문과"
+                f" 어긋납니다 ({source_id or '출처 없음'}, {kind}): {reason}"
             )
-            if source_id and known_plain_source_ids and source_id not in known_plain_source_ids:
-                fail(
-                    "explanation_duty_check",
-                    f"explanation_duty_check.fidelity의 source_id {source_id!r}가"
-                    " plain_language 블록에 없습니다",
-                    source_id=source_id,
-                    requested_change=(
-                        "plain_language.accepted_blocks에 실제로 있는 source_id를 인용하세요"
-                    ),
-                )
+            # A difference on a line that already reverted to the original, or one with no
+            # source line to regenerate, is reported for a person but cannot fail the round.
+            if entry.get("informational") or not source_id:
+                reasons.append("[정보] " + line)
+                continue
+            fail(
+                "persona_explanation",
+                line,
+                source_id=source_id,
+                requested_change=(
+                    "원문의 수치·조건·예외·불이익을 보존하도록 이 단위를 다시 생성하세요"
+                ),
+            )
 
     return {
         "passed": not failed,

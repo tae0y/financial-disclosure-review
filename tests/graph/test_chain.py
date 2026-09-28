@@ -1,5 +1,5 @@
-"""The four downstream nodes wired together: judge_display_method (faked upstream result) ->
-generate_plain_lang -> judge_explanation_duty -> verify_answer -> route_after_verify."""
+"""The downstream nodes wired together: evidence cards (given) -> generate_persona_explanation ->
+judge_explanation_duty -> verify_answer -> route_after_verify, with every model call faked."""
 
 from types import SimpleNamespace
 from typing import cast
@@ -9,19 +9,18 @@ from langgraph.runtime import Runtime
 
 from financial_disclosure_review.core.context import Context
 from financial_disclosure_review.core.state import State
+from financial_disclosure_review.domain.evidence_cards import page_sources
+from financial_disclosure_review.domain.explanation_duty_check.ledger import LedgerSemantics
 from financial_disclosure_review.domain.explanation_duty_check.schema import (
     ExplanationJudgments,
     FidelityDiffs,
     PlainJudgments,
 )
+from financial_disclosure_review.domain.persona_explanation.schema import PersonaUnitDrafts
 from financial_disclosure_review.domain.plain_language.contract import strip_ws
-from financial_disclosure_review.domain.plain_language.schema import (
-    ConditionJudgments,
-    PlainDraftAnswer,
-)
 from financial_disclosure_review.graph import nodes
 from financial_disclosure_review.graph.nodes import (
-    generate_plain_lang,
+    generate_persona_explanation,
     judge_explanation_duty,
     verify_answer,
 )
@@ -43,6 +42,42 @@ PAGE = {
     "product": {"product_name": "초록카드"},
     "html": FIXTURE_HTML,
 }
+SOURCES = page_sources(PAGE)
+FEE_LINE = "연회비는 국내전용 1만원이며 매년 부과됩니다."
+LATE_LINE = "연체 시 최고 연 20%의 연체이자율이 적용될 수 있습니다."
+
+
+def source_id_of(text: str) -> str:
+    return next(s["source_id"] for s in SOURCES if s["text"] == text)
+
+
+CARDS = [
+    {
+        "id": "c1",
+        "kind": "fee_claim",
+        "subject": "연회비",
+        "claim": "국내전용 연회비 1만원",
+        "qualifiers": ["매년 부과"],
+        "exceptions": [],
+        "numbers": ["1만원"],
+        "quote": FEE_LINE,
+        "source_id": source_id_of(FEE_LINE),
+        "visibility": "unresolved",
+    },
+    {
+        "id": "c2",
+        "kind": "warning",
+        "subject": "연체이자율",
+        "claim": "연체 시 최고 연 20%",
+        "qualifiers": [],
+        "exceptions": [],
+        "numbers": ["20%"],
+        "quote": LATE_LINE,
+        "source_id": source_id_of(LATE_LINE),
+        "visibility": "unresolved",
+    },
+]
+EVIDENCE = {"status": "완료", "sources": SOURCES, "cards": CARDS}
 
 
 @pytest.fixture(scope="module")
@@ -57,8 +92,7 @@ def routed(result: dict) -> str:
 
 
 def upstream_display_check(status: str = "완료") -> dict:
-    """judge_display_method는 이 확인의 대상이 아니므로(다른 노드), 공통 계약을 따르는 가짜 상류
-    결과를 직접 만든다. status='완료'/items=[]는 '적용 항목 없이 정상 종료'를 뜻한다."""
+    """judge_display_method는 이 확인의 대상이 아니므로 공통 계약을 따르는 가짜 상류 결과를 쓴다."""
     return {
         "items": [],
         "judgments": {
@@ -71,37 +105,43 @@ def upstream_display_check(status: str = "완료") -> dict:
     }
 
 
-def plain_ask(invent_for: str | None = None):
-    """generate_plain에 주입할 가짜 ask. quote를 그대로 text로 돌려주는 충실한 변환이 기본이고,
-    invent_for를 포함한 블록 하나에만 원문에 없는 숫자를 끼워 넣어 contract_errors -> 원문 대체
-    경로를 재현한다."""
+def persona_ask(invent: bool = False, seen: list | None = None):
+    """generate_persona_explanation에 주입할 가짜 ask. 카드마다 원문 줄을 exact_fact로 옮기고
+    수치를 그대로 둔 설명을 돌려준다. invent=True면 연회비 설명에 원문에 없는 금액을 넣는다."""
 
     def fake(model, schema, task, effort="low", **data):
-        if schema is ConditionJudgments:
-            return {
-                "items": [
-                    {"id": e["id"], "verdict": "유지", "reason": "통합 확인용"}
-                    for e in data["items"]
-                ]
-            }
-        assert schema is PlainDraftAnswer, schema
-        items = []
-        for block in data["blocks"]:
-            text = block["quote"]
-            if invent_for and invent_for in text:
-                text = text.replace("1만원", "12만원")  # 원문에 없는 숫자를 새로 만들어 넣음
-            items.append({"id": block["id"], "text": text, "terms": []})
-        return {"items": items}
+        assert schema is PersonaUnitDrafts, schema
+        if seen is not None:
+            seen.append(data.get("previous_feedback") or [])
+        fee = "카드를 쓰는 값으로 매년 1만원이 부과됩니다."
+        return {
+            "items": [
+                {
+                    "card_ids": ["c1"],
+                    "source_ids": [CARDS[0]["source_id"]],
+                    "exact_fact": FEE_LINE,
+                    "explanation": fee.replace("1만원", "12만원") if invent else fee,
+                    "analogy": "",
+                    "persona_question_answered": "이 카드를 쓰면 돈이 언제, 얼마나 나가나요?",
+                },
+                {
+                    "card_ids": ["c2"],
+                    "source_ids": [CARDS[1]["source_id"]],
+                    "exact_fact": LATE_LINE,
+                    "explanation": "돈을 늦게 내면 최고 연 20%의 연체이자가 붙을 수 있습니다.",
+                    "analogy": "",
+                    "persona_question_answered": "모르고 지나치면 손해 보는 조건이 있나요?",
+                },
+            ]
+        }
 
     return fake
 
 
 def explanation_ask(condition_status: str = "불성립"):
-    """judge_explanation에 주입할 가짜 ask. applies_condition이 없는 항목은 데이터 자체(text)에서
-    뽑은 실제 인용으로 적합 처리한다. applies_condition이 있는 항목은 condition_status에 따라
-    '불성립'(정상 경로: 조건이 성립하지 않아 제외, 판정 불가로 세지 않음)이거나 '불명확'(판정 불가
-    경로: verify_answer가 반드시 실패로 잡아야 함)으로 남긴다. 원문/쉬운말 호출 양쪽에 같은 규칙을
-    적용하므로 fidelity 후보는 생기지 않는다."""
+    """judge_explanation에 주입할 가짜 ask. applies_condition이 없는 항목은 입력 text에서 뽑은
+    실제 인용으로 적합 처리하고, 있는 항목은 condition_status('불성립' 정상 제외 또는 '불명확'
+    판정 불가)로 남긴다. 원문/설명문 양쪽에 같은 규칙을 적용하므로 fidelity 후보는 생기지 않는다."""
 
     def fake(model, schema, task, effort="low", **data):
         if schema is ExplanationJudgments:
@@ -146,6 +186,8 @@ def explanation_ask(condition_status: str = "불성립"):
                     for item in data["items"]
                 ]
             }
+        if schema is LedgerSemantics:
+            raise AssertionError("every ledger value is in the explanation; no model call")
         raise AssertionError(f"unexpected schema in the chain test: {schema}")
 
     return fake
@@ -154,20 +196,25 @@ def explanation_ask(condition_status: str = "불성립"):
 def run_chain(
     monkeypatch,
     runtime,
-    plain_fake,
+    persona_fake,
     *,
     classification=None,
+    evidence=None,
     display_status: str | None = "완료",
     explanation_fake=None,
 ) -> dict:
     from financial_disclosure_review.domain.explanation_duty_check import judge_explanation
-    from financial_disclosure_review.domain.plain_language import generate_plain
+    from financial_disclosure_review.domain.persona_explanation import (
+        generate_persona_explanation as generate,
+    )
 
     explanation_fake = explanation_fake or explanation_ask("불성립")
     monkeypatch.setattr(
         nodes,
-        "generate_plain",
-        lambda page, cls, feedback, ctx: generate_plain(page, cls, feedback, ctx, ask=plain_fake),
+        "generate_persona",
+        lambda sources, cards, cls, ctx, feedback, **kw: generate(
+            sources, cards, cls, ctx, feedback, ask=persona_fake, **kw
+        ),
     )
     monkeypatch.setattr(
         nodes,
@@ -185,60 +232,53 @@ def run_chain(
             )
         ),
     )
+    monkeypatch.setattr(nodes, "ask", explanation_fake)
     state = state_with(
         product_page=PAGE,
         classification=CLASSIFICATION if classification is None else classification,
+        evidence_cards=EVIDENCE if evidence is None else evidence,
         display_check=upstream_display_check(display_status) if display_status else {},
     )
-    state.update(generate_plain_lang(state, runtime))  # type: ignore[typeddict-item]
+    state.update(generate_persona_explanation(state, runtime))  # type: ignore[typeddict-item]
     state.update(judge_explanation_duty(state, runtime))  # type: ignore[typeddict-item]
     state.update(verify_answer(state, runtime))  # type: ignore[typeddict-item]
     return dict(state)
 
 
 def test_the_happy_path_fills_every_key_and_passes(monkeypatch, runtime):
-    result = run_chain(monkeypatch, runtime, plain_ask())
+    result = run_chain(monkeypatch, runtime, persona_ask())
 
-    assert set(result["plain_language"]) == {
-        "items",
-        "draft",
-        "html",
-        "term_refs",
-        "accepted_blocks",
-        "contract_errors",
-    }
-    assert result["plain_language"]["accepted_blocks"]
-    assert result["plain_language"]["contract_errors"] == []
-    assert set(result["explanation_duty_check"]) == {"items", "original", "plain", "fidelity"}
-    assert result["explanation_duty_check"]["original"]
-    excluded = [row for row in result["explanation_duty_check"]["items"] if not row["applied"]]
+    persona = result["persona_explanation"]
+    assert persona["status"] == "완료", persona["reason"]
+    assert [u["status"] for u in persona["units"]] == ["accepted", "accepted"]
+    assert persona["profile"]["status"] == "적용"
+    duty = result["explanation_duty_check"]
+    assert set(duty) == {"items", "original", "plain", "ledger", "fidelity"}
+    assert duty["ledger"] and all(row["decided_by"] == "code" for row in duty["ledger"])
+    assert all(row["verdict"] == "보존" for row in duty["ledger"])
+    excluded = [row for row in duty["items"] if not row["applied"]]
     assert excluded, "조건이 성립하지 않는 항목이 하나도 없으면 이 시나리오가 의미가 없음"
     assert result["verification"]["passed"] is True, result["verification"]
-    assert result["verification"]["failed_modules"] == []
     assert routed(result) == "end_report"
 
 
-def test_an_invented_number_is_replaced_by_the_original_and_still_fails_verification(
-    monkeypatch, runtime
-):
-    result = run_chain(monkeypatch, runtime, plain_ask(invent_for="연회비"))
+def test_an_invented_number_reverts_the_unit_and_the_original_line_stays(monkeypatch, runtime):
+    """지어낸 금액이 있는 단위는 원문 줄로 되돌립니다. 되돌린 단위는 원문이 그대로 보이므로
+    검증 실패가 아니며, 보고서의 확인 항목으로만 남습니다."""
+    result = run_chain(monkeypatch, runtime, persona_ask(invent=True))
 
-    assert result["plain_language"]["contract_errors"], (
-        "invented number는 contract_errors에 남아야 함"
-    )
-    rejected = result["plain_language"]["contract_errors"][0]["source_id"]
-    html = result["plain_language"]["html"]
-    assert f'data-source-id="{rejected}"' in html
-    assert "12만원" not in html, "지어낸 수치가 최종 html에 남으면 안 됨"
-    assert "1만원" in html, "대체된 블록은 원문 그대로 보여야 함"
-    assert result["verification"]["passed"] is False
-    assert "plain_language" in result["verification"]["failed_modules"]
-    assert routed(result) == "retry_dispatch", "조치 가능한 피드백이 있으면 재생성으로 돌아감"
+    persona = result["persona_explanation"]
+    fee_unit = next(u for u in persona["units"] if u["card_ids"] == ["c1"])
+    assert fee_unit["status"] == "reverted"
+    assert "12만원" not in persona["html"], "지어낸 수치가 최종 html에 남으면 안 됨"
+    assert "1만원" in persona["html"], "되돌린 줄은 원문 그대로 보여야 함"
+    assert result["verification"]["passed"] is True, result["verification"]
+    assert routed(result) == "end_report"
 
 
 def test_an_unclear_condition_is_never_counted_as_a_pass(monkeypatch, runtime):
     result = run_chain(
-        monkeypatch, runtime, plain_ask(), explanation_fake=explanation_ask("불명확")
+        monkeypatch, runtime, persona_ask(), explanation_fake=explanation_ask("불명확")
     )
 
     assert any(
@@ -249,43 +289,55 @@ def test_an_unclear_condition_is_never_counted_as_a_pass(monkeypatch, runtime):
     assert routed(result) == "end_report"
 
 
-def test_a_missing_upstream_result_fails_all_three_modules(monkeypatch, runtime):
-    result = run_chain(monkeypatch, runtime, plain_ask(), classification={}, display_status=None)
+def test_a_missing_upstream_result_fails_every_module_and_goes_to_a_person(monkeypatch, runtime):
+    result = run_chain(
+        monkeypatch, runtime, persona_ask(), classification={}, evidence={}, display_status=None
+    )
 
-    assert result["plain_language"]["contract_errors"]
+    assert result["persona_explanation"]["html"] == ""
     assert result["explanation_duty_check"]["original"] == []
     assert result["verification"]["passed"] is False
     assert result["verification"]["failed_modules"] == [
         "display_check",
         "explanation_duty_check",
-        "plain_language",
+        "persona_explanation",
     ]
-    assert routed(result) == "retry_dispatch"
+    assert routed(result) == "end_report", "고칠 수 있는 피드백이 없으면 재시도하지 않음"
 
 
-def test_the_second_round_is_handed_what_the_verification_asked_for(monkeypatch, runtime):
+def test_the_retry_round_hands_the_generator_what_verification_asked_for(monkeypatch, runtime):
     """A retry that repeats the same call without the feedback would pay twice for one answer."""
-    from financial_disclosure_review.domain.plain_language import generate_plain
-
-    first = run_chain(monkeypatch, runtime, plain_ask(invent_for="연회비"))
-    requests = [f for f in first["verification"]["feedback"] if f["module"] == "plain_language"]
-    assert requests, first["verification"]
+    first = run_chain(monkeypatch, runtime, persona_ask())
+    request = {
+        "module": "persona_explanation",
+        "code": "f1",
+        "source_id": CARDS[0]["source_id"],
+        "reason": "사실 원장 f1 누락",
+        "requested_change": "원문의 수치·조건·예외·불이익을 보존하도록 이 단위를 다시 생성하세요",
+        "target": "",
+    }
+    first["verification"] = {**first["verification"], "feedback": [request]}
 
     seen: list[list[dict]] = []
-    faithful = plain_ask()
+    run_chain(monkeypatch, runtime, persona_ask(seen=seen))  # installs the capturing fake
+    generate_persona_explanation(cast(State, first), runtime)
 
-    def capturing(model, schema, task, effort="low", **data):
-        if schema is PlainDraftAnswer:
-            seen.append(data["previous_feedback"])
-        return faithful(model, schema, task, effort, **data)
+    assert seen[-1], "재시도 회차의 설명 생성이 검증 피드백을 받지 못함"
+    assert {entry["source_id"] for entry in seen[-1]} == {CARDS[0]["source_id"]}
 
-    monkeypatch.setattr(
-        nodes,
-        "generate_plain",
-        lambda page, cls, feedback, ctx: generate_plain(page, cls, feedback, ctx, ask=capturing),
-    )
-    generate_plain_lang(first, runtime)  # type: ignore[arg-type]
 
-    assert seen and seen[0], "재시도 회차의 쉬운말 생성이 검증 피드백을 받지 못함"
-    asked = {entry["source_id"] for entry in seen[0]}
-    assert asked == {entry["source_id"] for entry in requests}
+def test_a_persona_failure_is_routed_back_to_the_generator(monkeypatch, runtime):
+    """이름을 바꾼 뒤 재시도 라우팅이 조용히 end_report로 빠지지 않는지 확인합니다."""
+    from financial_disclosure_review.graph.retry import plan_retry
+    from financial_disclosure_review.graph.routes import route_after_retry
+
+    verification = {
+        "passed": False,
+        "loop_count": 1,
+        "failed_modules": ["persona_explanation"],
+        "feedback": [{"module": "persona_explanation", "requested_change": "다시 생성"}],
+    }
+    state = state_with(verification=verification)
+    assert routed(dict(state)) == "retry_dispatch"
+    state["verification"] = {**verification, **plan_retry(verification)}  # type: ignore[typeddict-item]
+    assert route_after_retry(state) == "generate_persona_explanation"

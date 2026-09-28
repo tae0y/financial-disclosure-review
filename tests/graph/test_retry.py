@@ -45,14 +45,16 @@ def test_a_passed_verification_is_never_retried():
 
 
 def test_a_failure_with_actionable_feedback_goes_back_to_the_owning_node():
-    v = verification(failed_modules=["plain_language"], feedback=[feedback_for("plain_language")])
-    assert retryable_modules(v) == ["plain_language"]
+    v = verification(
+        failed_modules=["persona_explanation"], feedback=[feedback_for("persona_explanation")]
+    )
+    assert retryable_modules(v) == ["persona_explanation"]
     assert should_retry(v) is True
     assert route_after_verify(state_of(v)) == "retry_dispatch"  # type: ignore[arg-type]
     plan = plan_retry(v)
-    assert plan["retry_target"] == "generate_plain_lang"
-    assert plan["retry_modules"] == ["plain_language"]
-    assert route_after_retry(state_of({**v, **plan})) == "generate_plain_lang"  # type: ignore[arg-type]
+    assert plan["retry_target"] == "generate_persona_explanation"
+    assert plan["retry_modules"] == ["persona_explanation"]
+    assert route_after_retry(state_of({**v, **plan})) == "generate_persona_explanation"  # type: ignore[arg-type]
 
 
 def test_a_failure_with_no_requested_change_is_not_retried():
@@ -75,8 +77,8 @@ def test_display_check_is_escalated_instead_of_retried():
 
 def test_the_loop_stops_at_the_cap():
     v = verification(
-        failed_modules=["plain_language"],
-        feedback=[feedback_for("plain_language")],
+        failed_modules=["persona_explanation"],
+        feedback=[feedback_for("persona_explanation")],
         loop_count=MAX_LOOPS,
     )
     assert should_retry(v) is False
@@ -86,14 +88,16 @@ def test_the_loop_stops_at_the_cap():
 
 def test_the_earliest_failed_node_is_the_target_so_the_rest_follows_by_edges():
     v = verification(
-        failed_modules=["explanation_duty_check", "plain_language"],
-        feedback=[feedback_for("plain_language"), feedback_for("explanation_duty_check")],
+        failed_modules=["explanation_duty_check", "persona_explanation"],
+        feedback=[feedback_for("persona_explanation"), feedback_for("explanation_duty_check")],
     )
-    assert plan_retry(v)["retry_target"] == "generate_plain_lang"
+    assert plan_retry(v)["retry_target"] == "generate_persona_explanation"
 
 
 def test_every_round_is_recorded_in_the_history():
-    v = verification(failed_modules=["plain_language"], feedback=[feedback_for("plain_language")])
+    v = verification(
+        failed_modules=["persona_explanation"], feedback=[feedback_for("persona_explanation")]
+    )
     first = plan_retry(v)
     second = plan_retry({**v, **first, "loop_count": 2})
     assert len(second["retry_history"]) == 2

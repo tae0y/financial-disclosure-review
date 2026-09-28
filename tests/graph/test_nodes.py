@@ -11,7 +11,7 @@ from financial_disclosure_review.graph import nodes
 from financial_disclosure_review.graph.nodes import (
     classify_type,
     end_report,
-    generate_plain_lang,
+    generate_persona_explanation,
     judge_display_method,
     judge_explanation_duty,
     retry_dispatch,
@@ -54,24 +54,25 @@ def test_judge_display_method_needs_html_and_snapshots():
     assert update["display_check"]["judgments"]["reason"].startswith("product_page has no html")
 
 
-def test_generate_plain_lang_needs_a_classification_and_an_html():
-    update = generate_plain_lang(empty_state(), RUNTIME)
-    assert update["plain_language"]["accepted_blocks"] == []
-    assert update["plain_language"]["contract_errors"][0]["reason"].startswith("classification")
+def test_generate_persona_explanation_without_sources_calls_no_model(monkeypatch):
+    def no_model(*args, **kwargs):
+        raise AssertionError("no model call without evidence sources")
 
-    state = state_with(classification={"product_type": "리볼빙", "page_type": "업무광고"})
-    update = generate_plain_lang(state, RUNTIME)
-    assert update["plain_language"]["contract_errors"][0]["reason"].startswith("product_page.html")
+    monkeypatch.setattr("financial_disclosure_review.llm.client.ask", no_model)
+    update = generate_persona_explanation(empty_state(), RUNTIME)
+    assert set(update) == {"persona_explanation"}
+    assert update["persona_explanation"]["html"] == ""
+    assert update["persona_explanation"]["status"] == "판정 불가"
 
 
-def test_judge_explanation_duty_needs_a_classification_an_html_and_a_plain_html():
+def test_judge_explanation_duty_needs_a_classification_an_html_and_an_explanation():
     update = judge_explanation_duty(empty_state(), RUNTIME)
     assert update["explanation_duty_check"]["items"][0]["reason"].startswith("classification")
     assert update["explanation_duty_check"]["original"] == []
 
     state = state_with(
         classification={"product_type": "리볼빙", "page_type": "업무광고"},
-        plain_language={"html": "<p>x</p>"},
+        persona_explanation={"html": "<p>x</p>"},
     )
     update = judge_explanation_duty(state, RUNTIME)
     assert "product_page.html" in update["explanation_duty_check"]["items"][0]["reason"]
@@ -81,7 +82,7 @@ def test_judge_explanation_duty_needs_a_classification_an_html_and_a_plain_html(
         product_page={"html": "<p>x</p>"},
     )
     update = judge_explanation_duty(state, RUNTIME)
-    assert "plain_language.html" in update["explanation_duty_check"]["items"][0]["reason"]
+    assert "persona_explanation.html" in update["explanation_duty_check"]["items"][0]["reason"]
 
 
 def test_judge_explanation_duty_keeps_the_original_side_of_a_previous_round():
@@ -114,7 +115,7 @@ def test_verify_answer_fails_every_module_that_has_no_answer_yet():
     assert update["verification"]["failed_modules"] == [
         "display_check",
         "explanation_duty_check",
-        "plain_language",
+        "persona_explanation",
     ]
 
 

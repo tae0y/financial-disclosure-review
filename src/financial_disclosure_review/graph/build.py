@@ -8,7 +8,7 @@ from .nodes import (
     classify_type,
     end_report,
     extract_evidence_cards,
-    generate_plain_lang,
+    generate_persona_explanation,
     judge_display_method,
     judge_explanation_duty,
     preprocess_product_page,
@@ -31,7 +31,7 @@ def build_review_graph(checkpointer=None):
     builder.add_node("extract_evidence_cards", extract_evidence_cards)
     builder.add_node("retrieve_reference_cases", retrieve_reference_cases)
     builder.add_node("judge_display_method", judge_display_method)
-    builder.add_node("generate_plain_lang", generate_plain_lang)
+    builder.add_node("generate_persona_explanation", generate_persona_explanation)
     builder.add_node("judge_explanation_duty", judge_explanation_duty)
     builder.add_node("verify_answer", verify_answer)
     builder.add_node("retry_dispatch", retry_dispatch)
@@ -50,8 +50,8 @@ def build_review_graph(checkpointer=None):
     )
     builder.add_edge("extract_evidence_cards", "retrieve_reference_cases")
     builder.add_edge("retrieve_reference_cases", "judge_display_method")
-    builder.add_edge("judge_display_method", "generate_plain_lang")
-    builder.add_edge("generate_plain_lang", "judge_explanation_duty")
+    builder.add_edge("judge_display_method", "generate_persona_explanation")
+    builder.add_edge("generate_persona_explanation", "judge_explanation_duty")
     builder.add_edge("judge_explanation_duty", "verify_answer")
     builder.add_conditional_edges(
         "verify_answer",
@@ -62,7 +62,7 @@ def build_review_graph(checkpointer=None):
         "retry_dispatch",
         route_after_retry,
         {
-            "generate_plain_lang": "generate_plain_lang",
+            "generate_persona_explanation": "generate_persona_explanation",
             "judge_explanation_duty": "judge_explanation_duty",
             "end_report": "end_report",
         },
