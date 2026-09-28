@@ -14,7 +14,10 @@ created: 2026-09-28
 
 The riskiest thing a legal-review tool can do is cite a provision that does not exist or does not
 apply. The corpus is small and already structured: 17 source documents, 141 rubric items with
-their article locations and verbatim quotes (`05 법령·지침 원문 검증/카드사 가드레일 루브릭/`).
+their article locations and verbatim quotes. The yaml the app reads is `assets/`; the authoring
+trail — source snapshots with URL and SHA-256 (`manifest.csv`), comparison tables and the quote-check
+scripts — is kept in the project folder `05 법령·지침 원문 검증/카드사 가드레일 루브릭/`, one level up
+from this repository.
 The questions asked of it are point lookups — which items apply to this product and page type.
 
 ## Decision
