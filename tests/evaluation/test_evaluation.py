@@ -209,6 +209,60 @@ def test_both_arms_judge_the_same_deletions_chosen_from_what_both_passed(tmp_pat
     ]
 
 
+class ForgetfulAsk(FakeDutyAsk):
+    """FakeDutyAsk, except the pipeline answers one item only once the neutral sentence is gone."""
+
+    NEUTRAL = "이 카드는 여행을 자주 가는 고객을 위해 만든 상품이며"
+
+    def __call__(self, model, schema, task, effort="low", **data):
+        answer = super().__call__(model, schema, task, effort, **data)
+        if schema.__name__ == "ExplanationJudgments" and self.NEUTRAL not in data["text"]:
+            answer["items"] = answer["items"][:1]
+        return answer
+
+
+def test_a_variant_the_arm_cannot_judge_is_recorded_as_a_failure_not_a_crash(tmp_path, monkeypatch):
+    from financial_disclosure_review.evaluation import suites
+
+    items = [
+        {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
+        for code in FakeDutyAsk.QUOTES
+    ]
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, product_type: items)
+    html_path = tmp_path / "page.html"
+    html_path.write_text(HTML, encoding="utf-8")
+    config = {
+        "base_html": str(html_path),
+        "classification": {"product_type": "신용카드", "page_type": "상품광고"},
+        "prefer_codes": ["F11", "F15"],
+    }
+    cassette = Cassette(tmp_path / "forgetful.json", mode="live", ask=ForgetfulAsk())
+
+    result = run_duty_flip(Context(model="fake"), cassette, config, max_flips=2)
+    metrics = metrics_for(result)
+
+    neutral = result["rows"][-1]
+    assert neutral["case"] == "neutral-delete" and neutral["after_verdict"] == "판정 실패"
+    assert metrics["failed"] == ["neutral-delete"]
+    assert metrics["detected"] == 2
+
+
+def test_the_cassette_is_saved_even_when_a_suite_stops_halfway(tmp_path, monkeypatch):
+    import financial_disclosure_review.evaluation as evaluation
+
+    def stop_after_one_answer(ctx, suites, root, cassette, *rest):
+        cassette.entries["paid-key"] = {"answer": {"value": "kept"}}
+        raise RuntimeError("stopped halfway")
+
+    monkeypatch.setattr(evaluation, "_run_suites", stop_after_one_answer)
+
+    with pytest.raises(RuntimeError, match="stopped halfway"):
+        evaluation.run_evaluation(Context(model="fake"), mode="record", eval_dir=tmp_path)
+
+    saved = json.loads((tmp_path / "cassettes" / "fake.json").read_text(encoding="utf-8"))
+    assert saved["entries"]["paid-key"]["answer"]["value"] == "kept"
+
+
 # ---------------------------------------------------------------- plain contract
 
 

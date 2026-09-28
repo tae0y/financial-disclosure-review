@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from ..core.context import Context
 from ..core.text import locate_quote, visible_text
+from ..core.usage import BudgetError
 from ..domain.classification import classify_page
 from ..domain.classification.schema import PAGE_TYPE_BY_PRODUCT
 from ..domain.explanation_duty_check.check import (
@@ -33,7 +34,7 @@ from ..domain.explanation_duty_check.check import (
 )
 from ..domain.plain_language.contract import verify_block, verify_source_quote
 from ..domain.plain_language.judge import judge_condition_preservation
-from .cassette import Asks, Cassette
+from .cassette import Asks, Cassette, CassetteMissError
 from .defects import longest_unused_sentence, remove_quote
 
 ABLATION_TASK = """당신은 카드회사 상품광고 페이지 원문(text)이 설명의무 기준(items)을 지켰는지
@@ -137,6 +138,21 @@ def _ablation_verdicts(items: list[dict], text: str, ctx: Context, ask) -> dict:
 ARMS = {"pipeline": _pipeline_verdicts, "ablation": _ablation_verdicts}
 
 
+def _judge_variant(judge, items: list[dict], text: str, ctx: Context, ask) -> tuple[dict, str]:
+    """An arm's verdicts on one variant, or no verdicts and the reason the arm gave up.
+
+    A model that returns the wrong set of items twice makes the pipeline raise, as it does in a
+    real review. Here that is a measured outcome of the arm, not a reason to lose the run. A
+    replay miss or a spent budget is still raised: those are faults of the harness, not answers.
+    """
+    try:
+        return judge(items, text, ctx, ask), ""
+    except (CassetteMissError, BudgetError):
+        raise
+    except RuntimeError as exc:
+        return {}, str(exc)[:200]
+
+
 def _base_rows(verdicts: dict, text: str) -> list[dict]:
     return [
         {
@@ -229,14 +245,15 @@ def run_duty_flip(
             rows.append(row)
             continue
         variant_text = target["text"]
-        after = judge(items, variant_text, ctx, cassette.ask)
-        verdict = (after.get(target["code"]) or {}).get("verdict")
+        after, failure = _judge_variant(judge, items, variant_text, ctx, cassette.ask)
+        verdict = (after.get(target["code"]) or {}).get("verdict") if after else "판정 실패"
         row.update(
             after_verdict=verdict,
             detected=verdict == "부적합",
             softened=verdict == "판정 불가",
+            failed=bool(failure),
             groundedness=_groundedness(after, variant_text),
-            note="",
+            note=f"판정 실패(오탐·미탐이 아니라 답을 내지 못함): {failure}" if failure else "",
         )
         rows.append(row)
 
@@ -254,18 +271,21 @@ def run_duty_flip(
         }
         if landed:
             variant_text = visible_text(variant_html)
-            after = judge(items, variant_text, ctx, cassette.ask)
+            after, failure = _judge_variant(judge, items, variant_text, ctx, cassette.ask)
             flipped = sorted(
                 row_["code"]
                 for row_ in passed
                 if (after.get(row_["code"]) or {}).get("verdict") == "부적합"
             )
             row.update(
-                after_verdict=f"{len(flipped)} flipped",
-                false_flips=flipped,
+                after_verdict="판정 실패" if failure else f"{len(flipped)} flipped",
+                false_flips=None if failure else flipped,
                 detected=None,
+                failed=bool(failure),
                 groundedness=_groundedness(after, variant_text),
-                note="적합→부적합으로 바뀐 항목이 없어야 정상",
+                note=f"판정 실패로 오탐 여부를 알 수 없음: {failure}"
+                if failure
+                else "적합→부적합으로 바뀐 항목이 없어야 정상",
             )
         else:
             row.update(after_verdict=None, detected=None, note="삭제가 적용되지 않아 제외")

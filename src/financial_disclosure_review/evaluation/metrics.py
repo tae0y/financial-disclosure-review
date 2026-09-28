@@ -39,8 +39,10 @@ def duty_flip_metrics(result: dict) -> dict:
         "detection_rate": rate(len(detected), len(injected)),
         "softened_to_unjudged": len(softened),
         "missed": [row["code"] for row in injected if not row.get("detected")],
+        # A variant the arm could not judge at all counts as missed above and is named here too.
+        "failed": [row["case"] for row in rows if row.get("failed")],
         "skipped_variants": [row["case"] for row in skipped],
-        "false_flips": (neutral or {}).get("false_flips", []),
+        "false_flips": (neutral or {}).get("false_flips") or [],
         "quote_groundedness": {"quoted": quoted, "found": found, "rate": rate(found, quoted)},
         "base_verdicts": result["base"]["verdicts"],
         "base_groundedness": result["base"]["groundedness"],

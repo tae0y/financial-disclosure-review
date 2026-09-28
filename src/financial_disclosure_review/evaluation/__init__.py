@@ -67,7 +67,32 @@ def run_evaluation(
     meter = start_run(max_calls=80, max_usd=1.0)
     cassette = Cassette(root / "cassettes" / f"{ctx.model}.json", mode=mode)
     results = []
+    try:
+        _run_suites(ctx, suites, root, cassette, results, max_flips, arms, repeats)
+    finally:
+        # Paid answers are kept even when a suite stops halfway, so the rerun replays them.
+        saved = cassette.save()
+    return {
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "model": ctx.model,
+        "mode": mode,
+        "cassette": {**cassette.stats(), "saved": saved},
+        "suites": [{"result": result, "metrics": metrics_for(result)} for result in results],
+        "cost": (meter if meter is current() else current()).summary(),
+        "limits": LIMITS,
+    }
 
+
+def _run_suites(
+    ctx: Context,
+    suites: tuple[str, ...],
+    root: Path,
+    cassette: Cassette,
+    results: list[dict],
+    max_flips: int,
+    arms: tuple[str, ...],
+    repeats: int,
+) -> None:
     if "classification" in suites:
         results.append(run_classification(ctx, cassette, _fixtures()))
         if "ablation" in arms:
@@ -94,17 +119,6 @@ def run_evaluation(
             (Path(__file__).resolve().parents[3] / config["base_html"]).resolve()
         )
         results.append(run_stability(ctx, cassette, _fixtures(), config, repeats, arms))
-
-    saved = cassette.save()
-    return {
-        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "model": ctx.model,
-        "mode": mode,
-        "cassette": {**cassette.stats(), "saved": saved},
-        "suites": [{"result": result, "metrics": metrics_for(result)} for result in results],
-        "cost": (meter if meter is current() else current()).summary(),
-        "limits": LIMITS,
-    }
 
 
 __all__ = ["LIMITS", "SUITES", "default_eval_dir", "render", "run_evaluation"]

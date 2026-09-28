@@ -88,7 +88,8 @@ def render(run: dict) -> str:
                     f"결함 탐지 {_pct(metrics['detection_rate'])},"
                     f" 인용 유효 {_pct(metrics['quote_groundedness']['rate'])}",
                     f"오탐(대조군) {len(metrics['false_flips'])}건,"
-                    f" 미탐 {metrics['missed'] or '없음'}",
+                    f" 미탐 {metrics['missed'] or '없음'}"
+                    + (f", 판정 실패 {metrics['failed']}" if metrics.get("failed") else ""),
                 ]
             )
         else:
@@ -180,7 +181,16 @@ def render(run: dict) -> str:
                 ],
                 [
                     "대조군 오탐 건수",
-                    *[str(len(m["false_flips"])) for m in arms.values()],
+                    *[
+                        "판정 실패"
+                        if "neutral-delete" in m.get("failed", [])
+                        else str(len(m["false_flips"]))
+                        for m in arms.values()
+                    ],
+                ],
+                [
+                    "답을 내지 못한 변형",
+                    *[str(m.get("failed") or "없음") for m in arms.values()],
                 ],
                 [
                     "판정 불가로 보류",
