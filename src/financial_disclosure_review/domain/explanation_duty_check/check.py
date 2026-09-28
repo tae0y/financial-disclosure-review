@@ -154,8 +154,16 @@ def judge_fidelity_rows(candidates: list[dict], model: str, ask) -> list[dict]:
     answer = call_ask(
         ask, model, FidelityDiffs, FIDELITY_TASK, check, "low", salvage, items=evidence
     )
+    quotes = {c["code"]: (c["original"]["quote"], c["plain"]["quote"]) for c in candidates}
     return [
-        {"code": f["code"], "source_id": "", "kind": f["kind"], "reason": f["reason"]}
+        {
+            "code": f["code"],
+            "source_id": "",
+            "kind": f["kind"],
+            "reason": f["reason"],
+            "original_quote": quotes.get(f["code"], ("", ""))[0],
+            "quote": quotes.get(f["code"], ("", ""))[1],
+        }
         for f in answer["items"]
         if f["kind"] != "변화없음"
     ]

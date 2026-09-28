@@ -341,3 +341,33 @@ def test_a_persona_failure_is_routed_back_to_the_generator(monkeypatch, runtime)
     assert routed(dict(state)) == "retry_dispatch"
     state["verification"] = {**verification, **plan_retry(verification)}  # type: ignore[typeddict-item]
     assert route_after_retry(state) == "generate_persona_explanation"
+
+
+def test_a_rubric_difference_tied_to_an_accepted_unit_fails_verification(monkeypatch, runtime):
+    """실측 설명06: 경고의 원인을 바꾼 설명 단위가 정보 행으로만 남아 게시 후보가 됐습니다."""
+    first = run_chain(monkeypatch, runtime, persona_ask())
+    unit = next(u for u in first["persona_explanation"]["units"] if u["status"] == "accepted")
+    judged_rows = {
+        "items": first["explanation_duty_check"]["items"],
+        "original": first["explanation_duty_check"]["original"],
+        "plain": first["explanation_duty_check"]["plain"],
+        "fidelity": [
+            {
+                "code": "설명06",
+                "source_id": "",
+                "kind": "변경",
+                "reason": "원인이 바뀜",
+                "original_quote": unit["exact_fact"],
+                "quote": unit["explanation"],
+            }
+        ],
+    }
+    monkeypatch.setattr(nodes, "judge_explanation", lambda *a, **k: judged_rows)
+    state = dict(first)
+    state.update(judge_explanation_duty(cast(State, state), runtime))
+    state.update(verify_answer(cast(State, state), runtime))
+    verification = state["verification"]
+    assert verification["passed"] is False
+    assert "persona_explanation" in verification["failed_modules"]
+    request = next(f for f in verification["feedback"] if f["module"] == "persona_explanation")
+    assert request["source_id"] == ",".join(unit["source_ids"])

@@ -9,14 +9,18 @@ from ...core.text import locate_quote
 from ...llm.client import call_ask
 from ..plain_language.contract import counter_ones, number_set, strip_ws
 
-LEDGER_TASK = """사실 원장(items)의 각 값이 독자 맞춤 설명문(text)에서 뜻으로 보존됐는지 판단합니다.
+LEDGER_TASK = """사실 원장(items)의 각 값이 독자 맞춤 설명문에서 뜻으로 보존됐는지 판단합니다.
 items의 각 항목은 fact_id, kind(number/period/limit/target/condition/exception/penalty), 원문 표기
-그대로의 value, 원문에서 그 값 주변 문맥(original_context)으로 구성됩니다. 이 값들은 설명문에 글자
-그대로는 없다고 코드가 이미 확인한 것입니다. 각 항목마다 다음 중 하나로 답합니다.
-- 보존: 설명문이 같은 값·조건·예외·불이익을 다른 표기로 분명히 말함(예: "30만원"을 "300,000원"으로).
-- 약화: 설명문에 관련 내용은 있으나 값·범위·조건이 흐려지거나 불이익이 덜 위험하게 읽힘.
-- 누락: 설명문에서 이 값의 뜻을 찾을 수 없음.
-보존이나 약화이면 quote에 그 판단의 근거가 되는 설명문 문장을 그대로 인용합니다(요약·수정 금지).
+그대로의 value, 원문에서 그 값 주변 문맥(original_context), 그리고 이 값을 설명해야 하는
+설명 단위의 글(scope_text)로 구성됩니다. 이 값들은 scope_text에 글자 그대로는 없다고 코드가
+이미 확인한 것입니다. 판단은 그 항목의 scope_text만 보고 합니다. 다른 항목의 scope_text에 있는
+내용으로 보존됐다고 보지 않습니다. 각 항목마다 다음 중 하나로 답합니다.
+- 보존: scope_text가 같은 값·조건·예외·불이익을 다른 표기로 분명히 말함
+  (예: "30만원"을 "300,000원"으로).
+- 약화: scope_text에 관련 내용은 있으나 값·범위·조건이 흐려지거나 불이익이 덜 위험하게 읽힘.
+- 누락: scope_text에서 이 값의 뜻을 찾을 수 없음.
+보존이나 약화이면 quote에 그 판단의 근거가 되는 scope_text 문장을 그대로 인용합니다
+(요약·수정 금지).
 누락이면 quote는 빈 문자열입니다. reason에는 결론과 한두 문장의 짧은 근거만 씁니다.
 준법 여부나 적합·부적합은 판단하지 않습니다."""
 ORIGINAL_CONTEXT_CHARS = 60
@@ -70,15 +74,39 @@ def _source_ids(
     return ids or [UNMAPPED_SOURCE]
 
 
+def _unit_text(unit: Mapping[str, Any]) -> str:
+    return " ".join(unit.get(k) or "" for k in ("exact_fact", "explanation", "analogy"))
+
+
+def scope_text(
+    fact: Mapping[str, Any],
+    units: Sequence[Mapping[str, Any]],
+    explanation_text: str,
+) -> str:
+    """Where a fact must be preserved: the text of its accepted units. A fact none of whose units
+    was accepted is shown in its original line, so the whole explanation page is its scope.
+
+    Scoping to the unit keeps a value dropped from one unit from counting as preserved just
+    because another line of the page repeats it."""
+    by_id = {u["unit_id"]: u for u in units}
+    accepted = [
+        by_id[u]
+        for u in _related_units(fact, units)
+        if u in by_id and by_id[u].get("status") == "accepted"
+    ]
+    return " ".join(_unit_text(u) for u in accepted) if accepted else explanation_text
+
+
 def judge_ledger_semantics(
     pending: Sequence[Mapping[str, Any]],
     original_text: str,
-    explanation_text: str,
     model: str,
     ask,
 ) -> dict[str, dict]:
-    """One model call over every fact whose value is not literally in the explanation."""
+    """One model call over every fact whose value is not literally in its scope text; each
+    pending fact carries its own `scope_text`."""
     wanted = [f["fact_id"] for f in pending]
+    scopes = {f["fact_id"]: f["scope_text"] for f in pending}
 
     def check(answer: dict) -> list[str]:
         seen = [j["fact_id"] for j in answer["items"]]
@@ -89,9 +117,9 @@ def judge_ledger_semantics(
             if not j["reason"].strip():
                 problems.append(f"{j['fact_id']}: 근거 없음")
             if j["verdict"] != "누락" and not (
-                j["quote"] and locate_quote(explanation_text, j["quote"])
+                j["quote"] and locate_quote(scopes.get(j["fact_id"], ""), j["quote"])
             ):
-                problems.append(f"{j['fact_id']}: quote가 설명문에 없음")
+                problems.append(f"{j['fact_id']}: quote가 scope_text에 없음")
         return problems
 
     def salvage(answer: dict, problems: list[str]) -> dict:
@@ -126,10 +154,10 @@ def judge_ledger_semantics(
                 "kind": f["kind"],
                 "value": f["value"],
                 "original_context": _context(original_text, f["value"]),
+                "scope_text": f["scope_text"],
             }
             for f in pending
         ],
-        text=explanation_text,
     )
     return {j["fact_id"]: j for j in answer["items"]}
 
@@ -177,8 +205,10 @@ def check_ledger(
     """{"ledger": 사실 원장 행별 대조, "fidelity": 누락·약화·추가·판정 불가 행}을 돌려준다."""
     by_id = {u["unit_id"]: u for u in units}
     rows = []
+    scopes = {}
     for fact in fact_ledger:
-        present = _contains(explanation_text, fact["value"])
+        scopes[fact["fact_id"]] = scope_text(fact, units, explanation_text)
+        present = _contains(scopes[fact["fact_id"]], fact["value"])
         rows.append(
             {
                 "fact_id": fact["fact_id"],
@@ -194,14 +224,16 @@ def check_ledger(
                 "decided_by": "code" if present else "model",
                 "verdict": "보존" if present else "",
                 "quote": fact["value"] if present else "",
-                "reason": "설명문에 원문 값이 그대로 있음" if present else "",
+                "reason": "설명 단위에 원문 값이 그대로 있음" if present else "",
             }
         )
 
-    pending = [r for r in rows if not r["in_explanation"]]
+    pending = [{**r, "scope_text": scopes[r["fact_id"]]} for r in rows if not r["in_explanation"]]
     if pending:
-        judged = judge_ledger_semantics(pending, original_text, explanation_text, model, ask)
-        for row in pending:
+        judged = judge_ledger_semantics(pending, original_text, model, ask)
+        for row in rows:
+            if row["in_explanation"]:
+                continue
             j = judged[row["fact_id"]]
             row.update(verdict=j["verdict"], quote=j["quote"], reason=j["reason"])
 
@@ -221,3 +253,48 @@ def check_ledger(
     ]
     fidelity += _added_numbers(units, original_text, explanation_text, by_id)
     return {"ledger": rows, "fidelity": fidelity}
+
+
+MIN_OVERLAP_CHARS = 6
+
+
+def _overlaps(a: str, b: str) -> bool:
+    """Either string contains the other, whitespace-insensitive, and the shorter is not trivial."""
+    a, b = strip_ws(a), strip_ws(b)
+    short, long = sorted((a, b), key=len)
+    return len(short) >= MIN_OVERLAP_CHARS and short in long
+
+
+def map_rubric_fidelity(
+    rows: Sequence[Mapping[str, Any]], units: Sequence[Mapping[str, Any]]
+) -> list[dict]:
+    """Tie each rubric-level difference to the explanation units it came from.
+
+    A row maps to a unit when its explanation-side quote lies in the unit's text, or its
+    original-side quote overlaps the unit's `exact_fact` (the unit replaced that line). A row tied
+    to an accepted unit fails verification, and its `source_ids` tell the retry which unit to
+    regenerate; a row tied to none (or only to reverted units) describes lines the reader sees
+    in their original wording, so it stays informational. A `판정 불가` row is informational: the
+    comparison itself did not hold, and regenerating a unit would not settle it."""
+    mapped = []
+    for row in rows:
+        plain_quote, original_quote = row.get("quote") or "", row.get("original_quote") or ""
+        hits = [
+            u
+            for u in units
+            if (plain_quote and _overlaps(plain_quote, _unit_text(u)))
+            or (original_quote and _overlaps(original_quote, u.get("exact_fact") or ""))
+        ]
+        accepted = [u for u in hits if u.get("status") == "accepted"]
+        by_id = {u["unit_id"]: u for u in hits}
+        unit_ids = [u["unit_id"] for u in (accepted or hits)]
+        mapped.append(
+            {
+                **row,
+                "source_ids": _source_ids([], unit_ids, by_id),
+                "unit_ids": unit_ids,
+                "decided_by": "model",
+                "informational": not accepted or row.get("kind") == "판정 불가",
+            }
+        )
+    return mapped

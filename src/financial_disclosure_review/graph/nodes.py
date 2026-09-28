@@ -13,7 +13,7 @@ from ..domain.classification import classify_page
 from ..domain.display_check import judge_display
 from ..domain.evidence_cards import extract_evidence_cards as extract_cards
 from ..domain.explanation_duty_check import judge_explanation
-from ..domain.explanation_duty_check.ledger import check_ledger
+from ..domain.explanation_duty_check.ledger import check_ledger, map_rubric_fidelity
 from ..domain.persona_explanation import generate_persona_explanation as generate_persona
 from ..domain.persona_explanation.profiles import PROFILES_FILE
 from ..domain.product_page import fetch_product_page
@@ -188,12 +188,11 @@ def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
             check.get("items") or None,
             feedback=feedback,
         )
-        # Rubric-level differences carry no source line to regenerate, so they are reported but
-        # informational; the fact ledger decides what the explanation must preserve.
-        rubric_fidelity = [
-            {**row, "source_ids": [], "decided_by": "model", "informational": True}
-            for row in judged.get("fidelity") or []
-        ]
+        # Rubric-level differences are tied to the units they came from; one tied to an accepted
+        # unit (e.g. a warning whose cause the explanation changed) fails verification.
+        rubric_fidelity = map_rubric_fidelity(
+            judged.get("fidelity") or [], persona.get("units") or []
+        )
         ledger = check_ledger(
             persona.get("fact_ledger") or [],
             persona.get("units") or [],
