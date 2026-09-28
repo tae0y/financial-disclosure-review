@@ -49,6 +49,15 @@ The guards live in the tools, never in the prompt.
 - A click is refused by `reject_reason` unless the element is a visible tab, accordion or
   in-page anchor. Form controls, submit/reset/file/password inputs, anything whose text reads
   like apply, login, submit, pay or download, and any navigation link are all refused.
+- One input is allowed (user decision, 2026-09-29): a checkbox/radio that is a direct child of a
+  `.collapse` container and outside every form -- the DaisyUI accordion toggle, which only flips
+  CSS. `.collapse-title` and the `.collapse` container are clicked *through* that toggle
+  (`CLICK_TARGET_JS`), because the toggle is layered over the title. An already-checked toggle is
+  skipped (`already open`) so a second expand never closes a panel.
+- Wording (`RISKY_TEXT`) is checked on the control's own label. For an accordion toggle that is
+  its title, never the panel it opens. An action noun followed by an information noun
+  (`결제일`, `결제 금액`, `신청 방법`, `발급 대상`, …; `INFO_SUFFIX`) is not action wording, so
+  "국내외 가맹점 결제일 할인" opens while "결제하기" and "카드 신청" stay refused.
 - `PageSession.guard_navigation` aborts any main-frame navigation the code did not ask for, and
   the aborted URLs are reported back to the agent.
 - Popups are closed, dialogs dismissed, downloads cancelled.
@@ -105,18 +114,27 @@ no actionable open gap remaining (`full_coverage`). `Context` does not yet decla
 `getattr` with the Stage 1 defaults, so adding the fields later needs no code change here.
 
 On an accepted `submit_rule`, `coverage.finalize_coverage` evaluates every `unexpanded_control`/
-`hidden_text` gap that falls inside the submitted include/exclude regions. None left ->
-`product_page.status = "완료"`, `stop_reason = "full_coverage"`. Some left -> `"조사 불충분"`,
-with `stop_reason` = the reason exploration closed, else `"no_viable_control"` (no untried
-control among what remains) or `"submitted_with_gaps"`. `benefit_without_condition` and
-`image_only` gaps are reported but never change `status`.
+`hidden_text` gap that falls inside the submitted include/exclude regions. An untried
+`unexpanded_control` always counts. A `hidden_text` gap counts only while some control on the
+page is still untried; once every reachable control was tried (or none existed), text that is
+still hidden is excluded, its gap becomes `unresolved`, and the report lists it as a limitation
+(user decision, 2026-09-29). None left -> `product_page.status = "완료"`, `stop_reason =
+"full_coverage"`, or `"reachable_coverage"` when unreachable hidden text was excluded. Some left
+-> `"조사 불충분"`, with `stop_reason` = the reason exploration closed, else
+`"no_viable_control"` or `"submitted_with_gaps"`. `benefit_without_condition` and `image_only`
+gaps are reported but never change `status`.
+
+Hidden-text gaps are keyed by selector *and* the block's text: the structural selector of one
+accordion panel often matches every panel, so keying by selector alone merged dozens of blocks
+into one gap. One `expand` over many accordions closes each control gap whose element the click
+actually reached (`MARK_CLICKED_JS` marks clicked elements in a page-side `WeakSet`).
 
 `fetch_product_page` never raises for a page or agent failure. It always returns `{url, product,
 actions, snapshots, html, status, stop_reason, error, coverage, agent_trace}`. `status` is one of
 `완료`, `조사 불충분`, `수집 실패`; `stop_reason` is one of `rule_reused`, `full_coverage`,
 `submitted_with_gaps`, `no_viable_control`, `no_new_evidence`, `repeated_action`, `turn_budget`,
 `interaction_budget`, `max_turns`, `budget_exhausted`, `fetch_error`, `visit_cap`, `invalid_url`,
-`replay_failed`. `coverage` is `{before, after, gaps}` (count dicts plus the gap list); `html` is
+`replay_failed`, `reachable_coverage`. `coverage` is `{before, after, gaps}` (count dicts plus the gap list); `html` is
 `""` whenever `status != "완료"`. `discover(sess, ctx, chat=None)` and
 `fetch_product_page(url, ctx, chat_factory=None)` accept an injected chat (matching
 `llm.client.ToolChat`'s `system`/`user`/`tool_result`/`turn` interface) so tests can script the

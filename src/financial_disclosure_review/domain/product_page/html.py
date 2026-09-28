@@ -155,7 +155,8 @@ def selector_for(el, soup, depth: int = 0) -> str:
 CONTROL_QUERY = (
     "[role=tab], summary, [aria-expanded], [aria-controls], [class*=tab] a, [class*=tab] button, "
     "[class*=acc] button, [class*=toggle], a[href^='#'], a[href^='javascript:'], "
-    "[onclick], [data-toggle], [class*=more], [class*=fold]"
+    "[onclick], [data-toggle], [class*=more], [class*=fold], [class*=collapse-title], "
+    ".collapse > input[type=checkbox], .collapse > input[type=radio]"
 )
 
 

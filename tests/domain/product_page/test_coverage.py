@@ -103,7 +103,8 @@ def test_a_hidden_benefit_condition_is_closed_by_the_scripted_expand(tmp_path):
             sess.close()
 
 
-def test_b_hidden_text_with_no_control_is_submitted_with_gaps(tmp_path):
+def test_b_hidden_text_with_no_control_is_excluded_from_the_status(tmp_path):
+    """Superseded rule (user decision 2026-09-29): see test_collapse for the full case."""
     with sync_playwright() as playwright:
         sess = _session(NO_CONTROL_HTML, tmp_path, playwright)
         try:
@@ -117,8 +118,8 @@ def test_b_hidden_text_with_no_control_is_submitted_with_gaps(tmp_path):
 
             assert result["accepted"] is True
             assert sess.final_coverage == {
-                "status": "조사 불충분",
-                "stop_reason": "no_viable_control",
+                "status": "완료",
+                "stop_reason": "reachable_coverage",
             }
         finally:
             sess.close()

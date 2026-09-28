@@ -168,8 +168,14 @@ class VisitCapReached(RuntimeError):  # noqa: N818 - moved from the notebook unr
     pass
 
 
+# An action word followed by one of these nouns names information, not the action itself:
+# "결제일 할인", "신청 방법", "발급 대상" open an explanation; "결제하기", "카드 신청" do not.
+INFO_SUFFIX = (
+    r"(?!\s*(?:일|금액|대금|계좌|방법|방식|수단|예정|내역|조건|대상|자격|기준|안내|절차|서류"
+    r"|시|전|후))"
+)
 RISKY_TEXT = re.compile(
-    r"신청|발급|로그인|가입|제출|다운로드|결제|주문"
+    rf"(?:신청|발급|가입|결제|주문){INFO_SUFFIX}|로그인|제출|다운로드"
     r"|찜|좋아요|담기|비교|공유|상담|알림|전화|쿠폰|응모|참여|동의"
     r"|apply|log ?in|sign ?(in|up)|submit|download|order|pay",
     re.I,
@@ -189,22 +195,55 @@ DOWNLOAD_EXT = (
     ".csv",
 )
 MAX_CLICKS = 30
-GUARD_JS = """(e) => ({
-  tag: e.tagName.toLowerCase(), type: (e.getAttribute('type') || '').toLowerCase(),
-  href: e.getAttribute('href') || '', cls: String(e.className || ''),
-  expandable: e.hasAttribute('aria-expanded') || e.hasAttribute('aria-controls')
-    || e.tagName === 'SUMMARY' || e.getAttribute('role') === 'tab',
-  in_form: !!e.closest('form'),
-  text: (e.innerText || e.getAttribute('aria-label') || '').trim().slice(0, 60),
-  visible: !!(e.offsetWidth || e.offsetHeight)
-})"""
+GUARD_JS = r"""(e) => {
+  const tokens = (el) => String((el && el.className) || '').split(/\s+/);
+  const type = (e.getAttribute('type') || '').toLowerCase();
+  const parent = e.parentElement;
+  // A DaisyUI-style accordion toggle: a checkbox/radio that is a direct child of a `.collapse`
+  // container and outside any form. Checking it only toggles CSS; nothing is submitted.
+  const collapseToggle = e.tagName === 'INPUT' && (type === 'checkbox' || type === 'radio')
+    && tokens(parent).includes('collapse') && !e.closest('form');
+  const title = collapseToggle
+    && parent.querySelector(':scope > .collapse-title, :scope > [class*=collapse-title]');
+  // Wording is checked on the control's own label: for an accordion toggle that is its title,
+  // never the panel it opens (a panel may mention 결제 or 신청 without being an action).
+  const label = collapseToggle ? (title ? title.innerText : (e.getAttribute('aria-label') || ''))
+    : (e.innerText || e.getAttribute('aria-label') || '');
+  return {
+    tag: e.tagName.toLowerCase(), type: type,
+    href: e.getAttribute('href') || '', cls: String(e.className || ''),
+    expandable: e.hasAttribute('aria-expanded') || e.hasAttribute('aria-controls')
+      || e.tagName === 'SUMMARY' || e.getAttribute('role') === 'tab',
+    collapse_toggle: collapseToggle,
+    checked: collapseToggle ? !!e.checked : false,
+    in_form: !!e.closest('form'),
+    text: label.trim().slice(0, 60),
+    visible: !!(e.offsetWidth || e.offsetHeight)
+  };
+}"""
+# `.collapse-title` and a `.collapse` container are clicked through their toggle input: the input
+# is layered over the title, so a real click on the title lands on it anyway.
+CLICK_TARGET_JS = r"""(e) => {
+  const tokens = (el) => String((el && el.className) || '').split(/\s+/);
+  const box = tokens(e).includes('collapse') ? e
+    : (tokens(e).some(t => t.includes('collapse-title')) ? e.parentElement : null);
+  const toggle = box && tokens(box).includes('collapse')
+    && box.querySelector(':scope > input[type=checkbox], :scope > input[type=radio]');
+  return toggle || e;
+}"""
+MARK_CLICKED_JS = """(e) => {
+  window.__fdrClicked = window.__fdrClicked || new WeakSet();
+  window.__fdrClicked.add(e);
+}"""
 
 
 def reject_reason(info: dict) -> str:
     """Why an element may not be clicked; empty when it is a safe tab/accordion expander."""
     href = info["href"].strip().lower()
     in_page_link = href in ("", "#") or href.startswith(("#", "javascript:"))
-    if info["in_form"] or info["tag"] in ("input", "select", "textarea"):
+    if info["in_form"]:
+        return "form control"
+    if info["tag"] in ("input", "select", "textarea") and not info.get("collapse_toggle"):
         return "form control"
     if info["type"] in ("submit", "reset", "file", "password"):
         return "form control"
@@ -217,6 +256,7 @@ def reject_reason(info: dict) -> str:
     # expander: clicking it could trigger an unrelated action (wishlist, compare, share, ...).
     if not (
         info["expandable"]
+        or info.get("collapse_toggle")
         or (info["tag"] == "a" and in_page_link)
         or EXPANDER_CLASS.search(info["cls"])
     ):
@@ -468,15 +508,16 @@ class PageSession:
         report = {"matched": total, "clicked": 0, "new_states": 0, "skipped": []}
         with self.interacting_window():
             for i in range(min(total, MAX_CLICKS)):
-                element = locator.nth(i)
                 try:
+                    element = locator.nth(i).evaluate_handle(CLICK_TARGET_JS).as_element()
+                    assert element is not None
                     info = element.evaluate(GUARD_JS)
-                except PlaywrightError as error:
+                except (PlaywrightError, AssertionError) as error:
                     report["skipped"].append(
-                        {"index": i, "reason": str(error).splitlines()[0][:60]}
+                        {"index": i, "reason": str(error).splitlines()[0][:60] or "no element"}
                     )
                     continue
-                reason = reject_reason(info)
+                reason = reject_reason(info) or ("already open" if info.get("checked") else "")
                 if reason:
                     report["skipped"].append(
                         {"index": i, "reason": reason, "text": info["text"][:30]}
@@ -492,6 +533,7 @@ class PageSession:
                     )
                     continue
                 report["clicked"] += 1
+                element.evaluate(MARK_CLICKED_JS)
                 if self.snapshot_if_changed(kind, f"expand {selector}[{i}] {info['text'][:20]!r}"):
                     report["new_states"] += 1
         report["skipped"] = report["skipped"][:6]

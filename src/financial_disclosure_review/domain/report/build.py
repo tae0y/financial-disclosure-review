@@ -380,6 +380,11 @@ def _collection_section(page: Mapping[str, Any]) -> list[str]:
     """What the page agent did, why it stopped, and which evidence gaps stayed open."""
     coverage = page.get("coverage") or {}
     trace = page.get("agent_trace") or []
+    unreachable = [
+        g
+        for g in coverage.get("gaps") or []
+        if g.get("kind") == "hidden_text" and g.get("status") == "unresolved"
+    ]
     lines = [
         "## 10. 페이지 수집 agent 기록",
         "",
@@ -389,6 +394,15 @@ def _collection_section(page: Mapping[str, Any]) -> list[str]:
         f"- 조사 범위(전 → 후): {coverage.get('before') or '-'} → {coverage.get('after') or '-'}",
         "- `조사 불충분`은 누락의 증거가 아닙니다. 보이지 않은 조건은 위반이 아니라 조사 공백으로"
         " 남깁니다.",
+        *(
+            [
+                "- 한계: 열 수 있는 컨트롤을 모두 시도해도 보이지 않은"
+                f" 숨김 글 {len(unreachable)}건은 상태 판단에서 제외했습니다."
+                " 이 글에 조건·예외가 있다면 이 검토는 확인하지 못했습니다."
+            ]
+            if unreachable
+            else []
+        ),
         "",
     ]
     lines += _table(

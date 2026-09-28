@@ -405,6 +405,30 @@ def test_a_completed_collection_adds_no_action():
     assert not any(action.startswith("페이지 수집") for action in result["actions"])
 
 
+def test_unreachable_hidden_text_is_a_listed_limitation_not_a_lower_status():
+    page = {
+        **PAGE,
+        "html": "<p>연회비 1만원</p>",
+        "status": "완료",
+        "stop_reason": "reachable_coverage",
+        "coverage": {
+            "gaps": [
+                {
+                    "id": "gap-2",
+                    "kind": "hidden_text",
+                    "detail": "hidden text: '약관 요약'",
+                    "target": "div.notice > p",
+                    "status": "unresolved",
+                    "closed_by": "",
+                }
+            ]
+        },
+    }
+    result = report(page=page)
+    assert result["status"] == "검토 완료"
+    assert "보이지 않은 숨김 글 1건" in result["markdown"]
+
+
 CARDS = {
     "status": "완료",
     "reason": "",
