@@ -9,6 +9,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from financial_disclosure_review.core import urls
 from financial_disclosure_review.serving.api.app import MissingTokenError, agent_of, create_app
 from financial_disclosure_review.serving.api.client import AgentError
 from financial_disclosure_review.serving.api.jobs import JobStore
@@ -16,6 +17,14 @@ from financial_disclosure_review.serving.schemas import JobStatus, RunResult
 from financial_disclosure_review.serving.settings import ApiSettings
 
 URL = "https://example.test/card/apply"
+
+
+@pytest.fixture(autouse=True)
+def public_dns(monkeypatch):
+    """`example.test` does not resolve; stand in a public address so only the URL rules decide."""
+    monkeypatch.setattr(urls, "resolve", lambda host: ["211.45.27.10"])
+
+
 TOKEN = "fdr_test_token_value"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
@@ -63,6 +72,7 @@ def build(tmp_path, agent: StubAgent, **overrides) -> tuple[TestClient, StubAgen
 def wait_for(client: TestClient, job_id: str, *, headers=None, timeout: float = 5.0) -> dict:
     """Poll the way a caller does, until the job leaves queued/running."""
     deadline = time.time() + timeout
+    body: dict = {}
     while time.time() < deadline:
         body = client.get(f"/v1/reviews/{job_id}", headers=headers or AUTH).json()
         if body["status"] not in ("queued", "running"):
@@ -177,6 +187,41 @@ def test_a_bad_url_is_rejected_before_a_job_exists(tmp_path, stub) -> None:
         assert bad.status_code == 422
         assert client.get("/v1/reviews", headers=AUTH).json()["count"] == 0
     assert agent.calls == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1:8100/run",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://10.0.0.8/admin",
+        "http://[::1]/",
+    ],
+)
+def test_an_address_only_the_server_can_reach_is_refused_before_a_job_exists(
+    tmp_path, stub, url
+) -> None:
+    client, agent = build(tmp_path, stub)
+    with client:
+        refused = client.post("/v1/reviews", json={"url": url}, headers=AUTH)
+        assert refused.status_code == 422
+        assert "non-public address" in refused.json()["detail"]
+        assert client.get("/v1/reviews", headers=AUTH).json()["count"] == 0
+    assert agent.calls == []
+
+
+def test_the_allowed_list_limits_which_domains_are_reviewed(tmp_path, stub) -> None:
+    client, agent = build(tmp_path, stub, allowed_hosts=("lottecard.co.kr",))
+    with client:
+        refused = client.post("/v1/reviews", json={"url": URL}, headers=AUTH)
+        assert refused.status_code == 422
+        assert "not in the allowed list" in refused.json()["detail"]
+        accepted = client.post(
+            "/v1/reviews", json={"url": "https://www.lottecard.co.kr/app/x.lc"}, headers=AUTH
+        )
+        assert accepted.status_code == 202
+        wait_for(client, accepted.json()["job_id"])
+    assert len(agent.calls) == 1
 
 
 def test_max_usd_over_the_cap_is_rejected(tmp_path, stub) -> None:

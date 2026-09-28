@@ -51,7 +51,9 @@ def fake_plain(page, classification, feedback, ctx) -> dict:
     }
 
 
-def fake_duty(page, classification, plain, ctx, previous_original, previous_items) -> dict:
+def fake_duty(
+    page, classification, plain, ctx, previous_original, previous_items, *, feedback=()
+) -> dict:
     row = {
         "code": "설명01",
         "verdict": "적합",

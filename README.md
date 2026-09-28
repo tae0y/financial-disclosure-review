@@ -41,14 +41,21 @@ checked before each call, and hitting it raises `BudgetError` rather than spendi
 ## Evaluate
 
 ```bash
-uv run python -m financial_disclosure_review evaluate                       # free: replays the cassette
-uv run python -m financial_disclosure_review evaluate --suite plain-contract # free: no model at all
-uv run python -m financial_disclosure_review evaluate --live --record --ablation
+uv run python -m financial_disclosure_review evaluate --ablation      # free: replays the cassette
+uv run python -m financial_disclosure_review evaluate --suite display-flip --ablation
+uv run python -m financial_disclosure_review evaluate --record --ablation   # pays only for new questions
+uv run python eval/out_of_scope_report.py    # free: the out-of-scope report, replayed
+uv run python eval/demo_report.py            # free: rebuild the representative report from its state
+uv run python eval/cost_ledger.py            # free: per-review cost out of data/checkpoints.sqlite
 ```
 
-The default run replays recorded model answers from `eval/cassettes/`, so the numbers in
-`docs/evaluation.md` can be re-derived without paying. `--live --record` calls the real model and
-writes the answers down. Results land in `eval/results/` as both `.json` and `.md`.
+Five suites — `classification`, `duty-flip`, `display-flip`, `plain-contract`, `stability` — each
+with the label source and comparison arm described in `docs/evaluation.md`. The default run
+replays the recorded answers in `eval/cassettes/gpt-5-mini.json` (68 answers; all five suites in
+about 6 seconds, $0), so every number in `docs/evaluation.md` can be re-derived without paying.
+`--record` calls the model only for questions the cassette does not hold; the recordings in that
+cassette cost $0.72 in total (68 calls, 2026-09-27 and 2026-09-28). `--model gpt-5-nano` (or `gpt-5`) runs the same suites
+against that model's own cassette. Results land in `eval/results/` as both `.json` and `.md`.
 
 ## Serve
 
@@ -78,7 +85,9 @@ curl -sS -H "$AUTH" localhost:8000/v1/reviews/9f2c…/report.md
 ```
 
 Every `/v1` route needs the issued token and the gateway refuses to start without one, so there is
-no unauthenticated mode to forget about. `docs/api.md` has the full surface and
+no unauthenticated mode to forget about. A submitted URL that resolves to a loopback, private or
+link-local address is refused with 422 before a job exists, and `FDR_ALLOWED_HOSTS` can narrow the
+accepted domains (`docs/operations.md` §Misuse of the service itself). `docs/api.md` has the full surface and
 `docs/openapi.yaml` the generated spec.
 
 ## Test
@@ -98,6 +107,8 @@ local HTML fixture and reaches no network.
 - `docs/design.md` — principles, package layout, input, graph, State, rubrics, checkpoints, caps
 - `docs/cases.md` — the sanction/dispute case corpus, sqlite-vec, and the `search_cases` node
 - `docs/evaluation.md` — evaluation design, gold labels, measured results, failure analysis
+- `docs/adr/` — the architecture decisions the report relies on (notebook → src, defect
+  injection, staged classification, fixed statute lookup, display-flip)
 - `docs/operations.md` — escalation, retry policy, cost caps, information protection, constraints
 - `docs/product_page.md`, `docs/classification.md`, `docs/display_check.md`,
   `docs/plain_language.md`, `docs/explanation_duty_check.md`, `docs/report.md` — per-domain rules
@@ -108,4 +119,4 @@ local HTML fixture and reaches no network.
 - `docs/setup-docker.md`, `docs/setup-cloudflare.md` — the two containers and the tunnel
 - `docs/agent-prompt-serving.md` — a task prompt for reproducing this serving pattern elsewhere
 - `docs/src-layout-migration.md` — what moved out of the notebook, and what changed with it
-- `localdocs/` — plans, worklog and ADRs (local only)
+- `localdocs/` — plans and worklog (local only, gitignored); the ADRs are in `docs/adr/`

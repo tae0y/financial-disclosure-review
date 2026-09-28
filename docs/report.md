@@ -26,6 +26,23 @@ A `판정 불가` item is a task, never a pass. `findings` collects every row a 
 `부적합` and `판정 불가` from both checks, every fidelity difference, and every plain-language
 block that fell back to its original wording.
 
+## 위반 or 권고 미충족
+
+A `부적합` is not always a breach of law, and the report says which kind it is (`severity`,
+`basis` on each finding). The rubric's `binding` field and the page type decide it, in code
+(`domain/report/build.py:severity`):
+
+| Finding | Reading | Why |
+|---|---|---|
+| Advertising rule (A–C groups, `binding` 법령) on a public product page | 위반(법령) | A public page is an advertisement under 금소법 제22조; the rule binds it directly. |
+| Display rule (E group, `binding` 협회 자율규제) | 위반(협회 자율규제) | The association's advertising rules bind card-company ads directly. |
+| Explanation-duty item on a 상품광고/업무광고 page | 권고 미충족(설명의무 준용) | 제19조 arises when a contract is solicited; on an ad page its items are applied by analogy. |
+| Any item whose binding is 금융위 가이드라인, 참고 기준 or 자체 설계 | 권고 미충족 | Guidance never makes a breach. |
+| Binding unknown (DB missing) | 위반(구속력 미상) | The stricter reading is kept. |
+
+The publish decision does not change with the reading: any `부적합` still keeps the plain-language
+draft unpublished. The reading changes what the reviewer is told, not what the tool lets through.
+
 ## Sections of the markdown
 
 Frontmatter first (`ai-generated: true`, `human-review: false`), so a generated report can never
@@ -48,5 +65,11 @@ context with no graph at all, which is how `tests/domain/report/test_report_buil
 ## Cost
 
 `report.cost` is the run meter's summary (`core/usage.py`): calls, tokens per step, derived USD and
-KRW, elapsed seconds, and the caps that were in force. The CLI prints the same line, so a run's
-cost is visible without opening the report.
+KRW, elapsed seconds, and the caps that were in force, with a line per step. The CLI prints the
+same line, so a run's cost is visible without opening the report.
+
+Rebuilding only the report from a checkpoint (`rerun --from-node end_report`) makes no model call.
+Until 2026-09-28 that printed the rebuild's own zero in place of what the review cost; `end_report`
+now passes the cost already on the thread's report, and a rebuild that made no call carries it
+forward and says so (`carried_forward`). A run that did call the model always reports its own
+cost.

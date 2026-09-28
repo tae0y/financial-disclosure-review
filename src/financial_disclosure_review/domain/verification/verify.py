@@ -41,6 +41,7 @@ def verify(
         code: str = "",
         source_id: str = "",
         requested_change: str = "",
+        target: str = "",
     ):
         failed.add(module)
         reasons.append(reason)
@@ -52,6 +53,7 @@ def verify(
                     "source_id": source_id,
                     "reason": reason,
                     "requested_change": requested_change,
+                    "target": target,
                 }
             )
 
@@ -187,6 +189,7 @@ def verify(
                         " 발견되지 않습니다",
                         code=code,
                         requested_change=f"{source_name}에 실제로 있는 문구로 다시 인용하세요",
+                        target=label,
                     )
         for entry in explanation_duty_check.get("fidelity") or []:
             source_id, kind = entry.get("source_id", ""), entry.get("kind", "")

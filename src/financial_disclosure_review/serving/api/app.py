@@ -24,6 +24,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.concurrency import run_in_threadpool
 
+from ...core.urls import url_problem
 from ..schemas import (
     Health,
     Job,
@@ -299,6 +300,14 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         request: ReviewRequest, http: Request, store: Store, agent: Agent, _: Authorized
     ) -> JobAccepted:
         """Queue a review of one product page URL."""
+        problem = await run_in_threadpool(
+            url_problem, str(request.url), http.app.state.settings.allowed_hosts
+        )
+        if problem:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"url refused: {problem}",
+            )
         job = await run_in_threadpool(
             store.create, url=str(request.url), thread_id=request.thread_id, model=request.model
         )

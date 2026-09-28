@@ -57,13 +57,16 @@ is answered per run rather than estimated once in a plan.
   `display_max_visual_crops` bounds how many rendered crops a vision call may carry.
 - `max_turns` (20) and `max_visits` (3) bound the page-discovery agent.
 
-Measured, not assumed. One real page end to end on 2026-09-27: **$0.1456 (about 204원), 12 calls,
-538 seconds**, including one retry round (run log
-`eval/results/260927-175600-review-demo-run.log`; the report itself is
-`data/reports/demo-260927.md`, whose cost section shows the *last* render of it, which was a free
-re-render from the checkpoint). Six classification pages:
-$0.035, 8 calls. Regenerating the report alone from its checkpoint: 0 calls, $0. The evaluation's
-per-suite figures are in `docs/evaluation.md`.
+Measured, not assumed. Three reviews run end to end on 2026-09-28 cost **$0.148–$0.193 (median
+$0.184, about 258원), 20–24 calls, 513–723 seconds** each, including two verification rounds and,
+on a site seen for the first time, 6–10 page-discovery calls
+(`eval/results/260928-191135-cost-ledger.md`, copied out of the checkpoint DB by
+`eval/cost_ledger.py`). The representative one is `data/reports/demo-260928.md` (22 calls,
+$0.1844, 723 s) with its terminal transcript in `eval/results/260928-demo-review-run.txt`; its
+report can be rebuilt for free with `eval/demo_report.py`. At 20 reviews a month that is about
+$3.7 (5,200원). Regenerating the report alone from a checkpoint costs 0 calls and now carries the
+review's recorded cost forward (`docs/report.md` §Cost). Six classification pages: $0.035, 8
+calls. The evaluation's per-suite figures are in `docs/evaluation.md`.
 
 ## Information protection
 
@@ -79,6 +82,30 @@ per-suite figures are in `docs/evaluation.md`.
   reviewed one.
 - The evaluation cassettes hold model answers about public pages only.
 
+## Misuse of the service itself
+
+A review opens whatever URL it is given in a real browser, so the service has to refuse being
+used to reach what only the server can reach.
+
+- `core/urls.py:url_problem` refuses a scheme other than http(s), credentials inside the URL, a
+  host that does not resolve, and any host that resolves to a non-public address — loopback,
+  private and shared ranges, link-local (169.254.169.254, where cloud metadata answers), and the
+  compose service name of the worker. The gateway answers 422 before a job exists
+  (`tests/serving/test_api.py`), and `fetch_product_page` refuses again before a browser starts,
+  so the CLI and a worker reached some other way are covered too (`tests/core/test_urls.py`,
+  `tests/domain/product_page/test_fetch_failures.py`).
+- `FDR_ALLOWED_HOSTS` narrows accepted hosts to given domains and their subdomains — for a
+  deployment that serves one card company, its own domains.
+- Every `/v1` route needs the issued bearer token and the gateway refuses to start without one
+  (fail closed). Tokens are compared in constant time.
+- The discovery agent has no typing, form-filling, script-evaluation or download tool; a click
+  that would leave the page's host is refused and reported back to it; turns (20) and page visits
+  (3) are capped.
+- What is not covered: the check resolves the name when the job is submitted and again before the
+  browser starts, but the browser resolves it once more itself, and a redirect from a public page
+  to an internal address is not intercepted. A deployment that must rule these out adds an egress
+  firewall on the worker container.
+
 ## Operating constraints
 
 - `SqliteSaver` serializes writes to one file. Fine for one reviewer at a time; a concurrent
@@ -86,6 +113,16 @@ per-suite figures are in `docs/evaluation.md`.
 - Playwright's sync API binds objects to their thread, so a whole review runs in one worker
   thread. Two reviews in one process would need separate threads and separate meters — the run
   meter in `core/usage.py` is process-wide by design, started once per run.
+- Rate limits and transient errors. Structured calls (`ask` in `llm/client.py`) and the
+  site-exploration tool calls (`ToolChat`) use the OpenAI SDK with `max_retries=3`, which backs
+  off and retries on rate limits (429), timeouts and server errors; embeddings use
+  `max_retries=2` with a 60-second timeout. The vision call (`ask_images`) does not retry
+  (`max_retries=0`, 90-second timeout): when it fails, rate limit included, the image-text blocks
+  stay in `unresolved_ids` and those items end as 판정 불가 instead of failing the review. The run
+  meter counts a call once, when its answer arrives; `call_ask`'s second attempt after an invalid
+  answer is a new call and counts against the caps. The worker runs one review at a time by
+  default (`FDR_AGENT_CONCURRENCY=1`), so a deployment sends one review's calls at a time;
+  raising it multiplies the request rate against the same OpenAI account limit.
 - The rubric DB has to be rebuilt (`build-db`) whenever a rubric yaml changes; the app reads the
   DB, not the yaml, so a stale DB silently judges by old criteria. `data/reference.sqlite` is the
   versioned artifact to watch.

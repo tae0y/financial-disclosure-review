@@ -49,19 +49,29 @@ and the grounds (`report.status` is `검토 대상 아님` or `판정 불가`). 
 
 ## Test scenarios
 
-Fixtures live in `tests/fixtures/classify/<case>.json` as `{url, product, html, expected}`.
+Fixtures live in `tests/fixtures/classify/<case>.json` as `{url, product, source, html, expected}`.
 Their html is the `content_llm.html` of the earlier `financial-product-disclosure-and-plain-language`
 project, so it may differ in shape from what `preprocess_product_page` produces today — S-15
-below keeps that gap on the record.
+below keeps that gap on the record. Only `url`, `product` and `html` reach the model; `source`
+records where the page came from and does not change a cassette key.
 
-| case | product_type | page_type |
-|---|---|---|
-| lottecard-loca-professional | 신용카드 | 상품광고 |
-| lottecard-card-loan | 장기카드대출 | 상품광고 |
-| lottecard-auto-installment | 할부금융·리스 | 상품광고 |
-| lottecard-revolving | 리볼빙 | 업무광고 |
-| samsungfire-direct-auto-insurance | 범위 밖 (step 2) | None |
-| kakaobank-fixed-deposit | 범위 밖 (step 2) | None |
+| case | product_type | page_type | capture |
+|---|---|---|---|
+| lottecard-loca-professional | 신용카드 | 상품광고 | not recorded |
+| lottecard-card-loan | 장기카드대출 | 상품광고 | 2026-09-14 06:57:34 +0900 |
+| lottecard-auto-installment | 할부금융·리스 | 상품광고 | 2026-09-14 06:57:26 +0900 |
+| lottecard-revolving | 리볼빙 | 업무광고 | 2026-09-14 06:57:00 +0900 |
+| samsungfire-direct-auto-insurance | 범위 밖 (step 2) | None | not recorded |
+| kakaobank-fixed-deposit | 범위 밖 (step 2) | None | not recorded |
+
+All six are public product pages listed in the earlier project's `data/samples.yaml`, and all six
+entered this repository in commit `9f05488` (2026-09-27 12:35 +0900) with the html unchanged
+since (each fixture's `source.html_sha256`). The three capture times come from the earlier
+project's synthetic-violation cases, whose `case.yaml` names the snapshot they were cut from:
+removing the one deleted line from the card-loan or revolving fixture reproduces that case's
+`content_llm.html` byte for byte, and the auto-installment fixture is byte-identical to its
+case's file, which only edited styles. The other three snapshots were gitignored in the earlier
+project and not kept, so their capture time is unknown beyond "before 2026-09-27".
 
 ### A. Faked model — free, in the default `pytest` run
 

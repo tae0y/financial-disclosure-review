@@ -132,6 +132,12 @@ def display_blocks(page: Mapping[str, Any]) -> tuple[list[dict], dict]:
             seen_text.add(text)
             covered.add(text)
             px = float(row["font_size"].removesuffix("px")) if row["font_size"] else None
+            # Text set below 1px is not drawn at all — the usual image-replacement trick, where
+            # the reader sees a picture of the words. Its computed size says nothing about what
+            # is on screen, so it is kept out of the size measurements and treated like
+            # image-backed text: unmeasured, never a pass and never a failure on its own.
+            undrawn = px is not None and px < 1
+            visual_risk = [*row.get("visual_risk", []), *(["undrawn_text"] if undrawn else [])]
             weight = int(float(row["font_weight"])) if row["font_weight"] else None
             line = next((candidate for candidate in lines if text in norm(candidate)), "")
             large = px is not None and (px >= 24 or (px >= 18.66 and (weight or 400) >= 700))
@@ -143,12 +149,13 @@ def display_blocks(page: Mapping[str, Any]) -> tuple[list[dict], dict]:
                     "text": row["text"],
                     "tag": row["tag"],
                     "px": px,
-                    "pt": round(px * PX_TO_PT, 2) if px is not None else None,
+                    "pt": round(px * PX_TO_PT, 2) if px is not None and not undrawn else None,
+                    "size_unmeasured": undrawn,
                     "weight": weight,
                     "color": row["color"],
                     "background": row["background"],
                     "background_source": row["background_source"],
-                    "visual_risk": row.get("visual_risk", []),
+                    "visual_risk": visual_risk,
                     "visual_png": entry["visual_png"],
                     "large_text": large,
                     "contrast": contrast_ratio(row["color"], row["background"]),

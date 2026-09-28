@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
 from ...core.context import Context
+from ...core.urls import url_problem
 from .discover import discover
 from .rules import (
     check_rule,
@@ -23,7 +24,13 @@ from .session import PageSession
 
 
 def fetch_product_page(url: str, ctx: Context) -> dict:
-    """Reuse a validated site rule, or discover one with the agent. Runs in one worker thread."""
+    """Reuse a validated site rule, or discover one with the agent. Runs in one worker thread.
+
+    A URL that is not a public http(s) address is refused before a browser starts, whichever way
+    the call arrived (CLI, the HTTP worker, a rerun)."""
+    problem = url_problem(url)
+    if problem:
+        raise ValueError(f"refusing to open {url}: {problem}")
     rules_dir = Path(ctx.data_dir) / ctx.rules_subdir
     with sync_playwright() as playwright:
         sess = PageSession(playwright, url, ctx)

@@ -10,8 +10,14 @@ PAGE = {
 CLASSIFICATION = {"product_type": "신용카드", "page_type": "상품광고", "reason": "3단계 통과"}
 DISPLAY_OK = {
     "items": [
-        {"code": "E02", "verdict": "적합", "block_ids": ["v1-3"], "quotes": ["연회비 1만원"],
-         "measured": [], "reason": "9pt 이상"},
+        {
+            "code": "E02",
+            "verdict": "적합",
+            "block_ids": ["v1-3"],
+            "quotes": ["연회비 1만원"],
+            "measured": [],
+            "reason": "9pt 이상",
+        },
     ],
     "judgments": {"status": "완료", "assumptions": {"font_size": "px x 0.75"}, "limits": {}},
 }
@@ -24,10 +30,24 @@ PLAIN_OK = {
 }
 DUTY_OK = {
     "items": [{"code": "설명01", "applied": True, "condition_status": "성립", "reason": ""}],
-    "original": [{"code": "설명01", "condition_status": "성립", "verdict": "적합",
-                  "quote": "연회비 1만원", "reason": "표기됨"}],
-    "plain": [{"code": "설명01", "condition_status": "성립", "verdict": "적합",
-               "quote": "1년에 1만원", "reason": "유지됨"}],
+    "original": [
+        {
+            "code": "설명01",
+            "condition_status": "성립",
+            "verdict": "적합",
+            "quote": "연회비 1만원",
+            "reason": "표기됨",
+        }
+    ],
+    "plain": [
+        {
+            "code": "설명01",
+            "condition_status": "성립",
+            "verdict": "적합",
+            "quote": "1년에 1만원",
+            "reason": "유지됨",
+        }
+    ],
     "fidelity": [],
 }
 PASSED = {"passed": True, "reasons": [], "failed_modules": [], "feedback": [], "loop_count": 1}
@@ -81,14 +101,19 @@ def test_the_actions_are_grouped_by_target_rather_than_one_line_per_item():
     duty = {
         **DUTY_OK,
         "original": [
-            {"code": f"설명{n:02d}", "condition_status": "성립", "verdict": "부적합",
-             "quote": "연회비 1만원", "reason": "누락"}
+            {
+                "code": f"설명{n:02d}",
+                "condition_status": "성립",
+                "verdict": "부적합",
+                "quote": "연회비 1만원",
+                "reason": "누락",
+            }
             for n in range(1, 16)
         ],
     }
     result = report(duty=duty)
     assert len(result["findings"]) == 15
-    grouped = [a for a in result["actions"] if a.startswith("원문 위반")]
+    grouped = [a for a in result["actions"] if a.startswith("원문 권고 미충족")]
     assert len(grouped) == 1, result["actions"]
     assert "15건" in grouped[0]
     assert "외 3건" in grouped[0], "12개까지만 코드로 보여 주고 나머지는 건수로"
@@ -98,8 +123,14 @@ def test_an_unjudged_display_item_becomes_a_human_task_not_a_pass():
     display = {
         **DISPLAY_OK,
         "items": [
-            {"code": "E04", "verdict": "판정 불가", "block_ids": [], "quotes": [],
-             "measured": [], "reason": "이미지 안 글자는 측정 불가"}
+            {
+                "code": "E04",
+                "verdict": "판정 불가",
+                "block_ids": [],
+                "quotes": [],
+                "measured": [],
+                "reason": "이미지 안 글자는 측정 불가",
+            }
         ],
     }
     result = report(display=display)
@@ -111,8 +142,15 @@ def test_an_unjudged_display_item_becomes_a_human_task_not_a_pass():
 def test_a_violation_blocks_the_plain_language_from_being_published():
     duty = {
         **DUTY_OK,
-        "original": [{"code": "설명01", "condition_status": "성립", "verdict": "부적합",
-                      "quote": "연회비 1만원", "reason": "중도해지 손실 문구 없음"}],
+        "original": [
+            {
+                "code": "설명01",
+                "condition_status": "성립",
+                "verdict": "부적합",
+                "quote": "연회비 1만원",
+                "reason": "중도해지 손실 문구 없음",
+            }
+        ],
     }
     result = report(duty=duty)
     assert result["status"] == "사람 검토 필요"
@@ -180,3 +218,110 @@ def test_the_cost_is_reported_from_the_run_meter():
 
 def test_the_limits_section_always_states_that_a_pass_is_not_legal_compliance():
     assert any("법률 준수" in limit for limit in report()["limits"])
+
+
+def display_with(code: str, verdict: str = "부적합") -> dict:
+    return {
+        **DISPLAY_OK,
+        "items": [
+            {
+                "code": code,
+                "verdict": verdict,
+                "block_ids": [],
+                "quotes": [],
+                "measured": [],
+                "reason": "측정값 미달",
+            }
+        ],
+    }
+
+
+def duty_with(code: str) -> dict:
+    return {
+        **DUTY_OK,
+        "original": [
+            {
+                "code": code,
+                "condition_status": "해당없음",
+                "verdict": "부적합",
+                "quote": "",
+                "reason": "누락",
+            }
+        ],
+    }
+
+
+def test_a_display_rule_binds_an_ad_page_directly_so_its_failure_is_a_violation():
+    result = report(display=display_with("E02"), bindings={"E02": "협회 자율규제"})
+    row = next(f for f in result["findings"] if f["code"] == "E02")
+    assert (row["severity"], row["basis"]) == ("위반", "협회 자율규제")
+    expected = "판매 화면 표시방법 위반(협회 자율규제) 1건"
+    assert any(a.startswith(expected) for a in result["actions"]), result["actions"]
+    assert result["summary"]["violations"] == 1 and result["summary"]["shortfalls"] == 0
+
+
+def test_an_explanation_item_on_an_ad_page_is_applied_by_analogy_so_it_is_a_shortfall():
+    # 설명의무(제19조) is a contract-stage duty; on an ad page it is applied by analogy.
+    result = report(duty=duty_with("F01"), bindings={"F01": "법령"})
+    row = next(f for f in result["findings"] if f["code"] == "F01")
+    assert (row["severity"], row["basis"]) == ("권고 미충족", "설명의무 준용")
+    assert "권고 미충족(설명의무 준용)" in result["markdown"]
+
+
+def test_the_same_item_on_a_solicitation_screen_is_a_violation():
+    screen = {**CLASSIFICATION, "page_type": "권유"}
+    result = report(classification=screen, duty=duty_with("F01"), bindings={"F01": "법령"})
+    row = next(f for f in result["findings"] if f["code"] == "F01")
+    assert (row["severity"], row["basis"]) == ("위반", "법령")
+
+
+def test_a_guideline_never_makes_a_violation():
+    result = report(display=display_with("E09"), bindings={"E09": "금융위 가이드라인"})
+    row = next(f for f in result["findings"] if f["code"] == "E09")
+    assert (row["severity"], row["basis"]) == ("권고 미충족", "금융위 가이드라인")
+
+
+def test_an_item_of_unknown_binding_keeps_the_stricter_reading():
+    result = report(display=display_with("E02"))
+    row = next(f for f in result["findings"] if f["code"] == "E02")
+    assert (row["severity"], row["basis"]) == ("위반", "구속력 미상")
+
+
+def test_a_rebuilt_report_carries_the_reviews_own_cost_forward():
+    """Rebuilding from a checkpoint makes no call; the reviewer must still see what the review
+    cost, not the rebuild's zero."""
+    recorded = {
+        "calls": 20,
+        "elapsed_seconds": 513.1,
+        "input_tokens": 160934,
+        "output_tokens": 53767,
+        "usd": 0.147718,
+        "krw": 206.8,
+        "usd_krw": 1400.0,
+        "by_step": {"ExplanationJudgments": {"calls": 3, "input": 1, "output": 1, "usd": 0.06}},
+        "caps": {"max_calls": 60, "max_usd": 1.0},
+    }
+    result = report(previous_cost=recorded)
+    assert result["cost"]["calls"] == 20 and result["cost"]["carried_forward"] is True
+    assert "원래 검토 실행" in result["markdown"]
+    assert "모델 호출 20회" in result["markdown"]
+    assert "ExplanationJudgments 3회" in result["markdown"]
+
+
+def test_a_run_that_made_calls_reports_its_own_cost_not_the_previous_one():
+    from financial_disclosure_review.core.usage import current
+
+    start_run()
+    current().record("gpt-5-mini", "ExplanationJudgments", 1000, 500)
+    result = build_report(
+        PAGE,
+        CLASSIFICATION,
+        DISPLAY_OK,
+        PLAIN_OK,
+        DUTY_OK,
+        PASSED,
+        {"max_loops": 2},
+        previous_cost={"calls": 99, "usd": 9.9},
+    )
+    assert result["cost"]["calls"] == 1
+    assert "carried_forward" not in result["cost"]

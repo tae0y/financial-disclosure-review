@@ -14,6 +14,7 @@ from ..domain.plain_language import generate_plain, unjudged_plain
 from ..domain.product_page import fetch_product_page
 from ..domain.report import build_report
 from ..domain.verification import verify
+from ..knowledge.rubrics import rubric_bindings
 from ..knowledge.search import search_cases_for
 from .retry import MAX_LOOPS, escalation, plan_retry
 
@@ -143,6 +144,7 @@ def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
                 runtime.context,
                 check.get("original") or None,
                 check.get("items") or None,
+                feedback=(state.get("verification") or {}).get("feedback") or [],
             )
         )
     return {"explanation_duty_check": check}
@@ -169,7 +171,7 @@ def retry_dispatch(state: State) -> dict:
     return {"verification": verification}
 
 
-def end_report(state: State) -> dict:
+def end_report(state: State, runtime: Runtime[Context]) -> dict:
     print("[end_report]")
     report: dict[str, Any] = dict(state.get("report") or {})
     report.update(
@@ -181,6 +183,8 @@ def end_report(state: State) -> dict:
             state.get("explanation_duty_check") or {},
             state.get("verification") or {},
             {**escalation(state.get("verification") or {}), "max_loops": MAX_LOOPS},
+            bindings=rubric_bindings(runtime.context.db_path),
+            previous_cost=report.get("cost"),
         )
     )
     return {"report": report}

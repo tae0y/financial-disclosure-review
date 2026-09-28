@@ -59,9 +59,7 @@ def ask_images(
     )
     tokens = response.usage.model_dump() if response.usage else None
     if tokens:
-        meter.record(
-            model, "vision", tokens.get("input_tokens", 0), tokens.get("output_tokens", 0)
-        )
+        meter.record(model, "vision", tokens.get("input_tokens", 0), tokens.get("output_tokens", 0))
     return response.output_text, tokens
 
 

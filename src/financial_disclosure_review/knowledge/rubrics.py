@@ -83,3 +83,13 @@ def item_scope(item: dict, classification: Mapping[str, Any]) -> str:
     if page_type not in item["page_types"]:
         return f"page_types {item['page_types']} does not include {page_type!r}"
     return ""
+
+
+def rubric_bindings(db_path: str | Path) -> dict[str, str]:
+    """Every rubric code with its binding level, so a report can tell a 위반 from a 권고 미충족.
+    An absent DB gives an empty map: the report then keeps the stricter reading for every item."""
+    path = Path(db_path).resolve()
+    if not path.exists():
+        return {}
+    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as conn:
+        return dict(conn.execute("SELECT code, binding FROM rubric_items").fetchall())

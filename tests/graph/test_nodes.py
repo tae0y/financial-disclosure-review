@@ -131,7 +131,7 @@ def test_retry_dispatch_writes_only_the_verification_key():
 
 
 def test_end_report_writes_only_the_report_key_and_never_passes_an_unjudged_page():
-    update = end_report(empty_state())
+    update = end_report(empty_state(), RUNTIME)
     assert set(update) == {"report"}
     assert update["report"]["status"] == "판정 불가"
     assert update["report"]["markdown"].startswith("---")

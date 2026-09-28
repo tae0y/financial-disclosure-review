@@ -94,3 +94,14 @@ def test_an_image_backed_block_reports_its_contrast_as_unknown():
     assert notice["visual_risk"] == ["background_image"]
     columns = compact_block(notice).split("|")
     assert columns[5] == "image-backed" and columns[6] == "crvision-unknown"
+
+
+def test_text_set_below_one_pixel_is_unmeasured_not_zero_points():
+    """An image-replaced heading keeps its words in the DOM at font-size 0; the reader sees the
+    picture. Measuring it as 0pt would turn a technique into a size failure."""
+    blocks, _ = display_blocks(make_render_page(notice_px=0.0))
+    notice = next(block for block in blocks if block["text"] == NOTICE)
+    assert notice["pt"] is None and notice["size_unmeasured"] is True
+    assert "undrawn_text" in notice["visual_risk"]
+    columns = compact_block(notice).split("|")
+    assert columns[2] == "-" and columns[5] == "image-backed"

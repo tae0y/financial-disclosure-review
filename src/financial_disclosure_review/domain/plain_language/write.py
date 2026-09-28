@@ -52,9 +52,8 @@ def generate_plain(
 
     by_id = {b["id"]: b for b in blocks}
     wanted = set(by_id)
-    own_feedback = [
-        f for f in feedback if not f.get("module") or f["module"] == "generate_plain_lang"
-    ]
+    # `verify` addresses feedback by module (the State key), not by the node that owns it.
+    own_feedback = [f for f in feedback if not f.get("module") or f["module"] == "plain_language"]
 
     def check_draft(answer: dict) -> list[str]:
         problems = []

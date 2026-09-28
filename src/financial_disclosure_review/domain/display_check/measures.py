@@ -68,6 +68,7 @@ def group_measures(blocks: list[dict], ids: list[str], min_pt: float | None) -> 
             b["id"] for b in rows if b["contrast"] is None or b["id"] in visual_unresolved
         ],
         "visual_unresolved": visual_unresolved,
+        "size_unmeasured": [b["id"] for b in rows if b.get("size_unmeasured")],
         "vision_readable": [b["id"] for b in rows if b.get("vision_readable") is True],
         "dom_below_contrast_min": [
             b["id"]

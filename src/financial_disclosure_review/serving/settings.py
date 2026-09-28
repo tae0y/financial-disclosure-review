@@ -58,6 +58,9 @@ class ApiSettings:
     # The issued bearer token. Required: the gateway refuses to start without one, so forgetting
     # it cannot quietly publish an unauthenticated API. Several values allow a rotation.
     api_tokens: tuple[str, ...] = field(default_factory=lambda: _tokens("FDR_API_TOKEN"))
+    # Domains a review may be submitted for (a subdomain counts). Empty means any public host;
+    # a non-public address is refused either way (`core.urls.url_problem`).
+    allowed_hosts: tuple[str, ...] = field(default_factory=lambda: _tokens("FDR_ALLOWED_HOSTS"))
     run_timeout_seconds: float = field(default_factory=lambda: _float("FDR_RUN_TIMEOUT", 1800.0))
     concurrency: int = field(default_factory=lambda: _int("FDR_AGENT_CONCURRENCY", 1))
     job_retention_days: int = field(default_factory=lambda: _int("FDR_JOB_RETENTION_DAYS", 30))

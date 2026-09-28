@@ -34,10 +34,13 @@ def test_a_changed_period_is_still_caught_through_the_missing_number():
 def test_a_short_phrase_inside_another_word_is_not_a_superlative():
     """'결제일에'의 '제일'은 최상급 표현이 아니다."""
     assert has_phrase("결제일에 카드 대금을 내지 않으면", "제일") is False
-    assert verify_block(
-        "카드 대금을 연체하면 개인신용평점이 하락할 수 있습니다.",
-        "결제일에 카드 대금을 내지 않고 연체하면 신용평점이 하락할 수 있습니다.",
-    ) == []
+    assert (
+        verify_block(
+            "카드 대금을 연체하면 개인신용평점이 하락할 수 있습니다.",
+            "결제일에 카드 대금을 내지 않고 연체하면 신용평점이 하락할 수 있습니다.",
+        )
+        == []
+    )
 
 
 def test_a_real_superlative_is_still_caught_with_or_without_a_space():
