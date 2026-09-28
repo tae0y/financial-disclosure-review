@@ -1,0 +1,188 @@
+{
+  "ai_drafted": true,
+  "human_review": false,
+  "notes": "eval/fixtures/display_lottecard_card_loan.json and eval/fixtures/display_lottecard_loca_classic.json were asked for as the source of real page text and classification, but eval/fixtures/ is gitignored (see .gitignore: 'eval/fixtures/' and 'tests/fixtures/classify/') and neither file is present in this isolated worktree. Built instead from the committed, real-text corpus at tests/fixtures/cases/case_corpus.yaml: each positive card paraphrases that case's own issue/mvp_signal text closely enough to guarantee BM25 slot overlap, each negative either names a product type with no cases in that corpus or shares no vocabulary with any case. db_path for this gold set is the case DB built from tests/fixtures/cases (build_case_db(FIXTURE_DIR / 'cases', ...)), not the real assets/case_corpus.yaml. All four corpus cases have page_only_detectability: full, so expected_page_only_partial is False on every entry here; tests/knowledge/test_reference.py exercises the partial/review_required/out_of_scope note path directly against retrieve_reference_cases instead.",
+  "db": "tests/fixtures/cases",
+  "entries": [
+    {
+      "fixture": "tests_fixtures_cases#case.test_revolving_min_rate#claim",
+      "classification": {"product_type": "리볼빙"},
+      "card": {
+        "id": "p1",
+        "kind": "rate_claim",
+        "subject": "리볼빙 이자율",
+        "claim": "리볼빙 이자율은 최소 이자율만 첫 화면에 표기하고 평균 이자율은 안내하지 않습니다",
+        "qualifiers": ["평균 이자율 언급 없음"],
+        "exceptions": [],
+        "numbers": ["5.4%"],
+        "quote": "리볼빙 이자율은 최소 5.4%부터 적용됩니다",
+        "source_id": "dom-1",
+        "visibility": "visible"
+      },
+      "expected_case_ids": ["case.test_revolving_min_rate"],
+      "expected_page_only_partial": false
+    },
+    {
+      "fixture": "tests_fixtures_cases#case.test_revolving_legibility#claim",
+      "classification": {"product_type": "리볼빙"},
+      "card": {
+        "id": "p2",
+        "kind": "warning",
+        "subject": "리볼빙 가입 안내문",
+        "claim": "가입화면 안내문의 글자 크기가 작고 모두 검은색으로 기재되어 중요사항을 구별하기 어렵습니다",
+        "qualifiers": [],
+        "exceptions": [],
+        "numbers": [],
+        "quote": "가입화면 안내문의 글자 크기가 작고 검은색으로만 표기됩니다",
+        "source_id": "dom-2",
+        "visibility": "visible"
+      },
+      "expected_case_ids": ["case.test_revolving_legibility"],
+      "expected_page_only_partial": false
+    },
+    {
+      "fixture": "tests_fixtures_cases#case.test_card_benefit_condition#claim",
+      "classification": {"product_type": "신용카드"},
+      "card": {
+        "id": "p3",
+        "kind": "benefit_claim",
+        "subject": "무이자할부 포인트 적립",
+        "claim": "무이자할부를 이용해도 포인트 적립과 할인 혜택을 그대로 받을 수 있습니다",
+        "qualifiers": ["실적 산정 및 포인트 적립 제외 조건 미기재"],
+        "exceptions": [],
+        "numbers": [],
+        "quote": "무이자할부 이용 시 포인트가 적립됩니다",
+        "source_id": "dom-3",
+        "visibility": "visible"
+      },
+      "expected_case_ids": ["case.test_card_benefit_condition"],
+      "expected_page_only_partial": false
+    },
+    {
+      "fixture": "tests_fixtures_cases#case.test_loan_eligibility#claim",
+      "classification": {"product_type": "장기카드대출"},
+      "card": {
+        "id": "p4",
+        "kind": "eligibility",
+        "subject": "장기카드대출 자격",
+        "claim": "일정한 대출거절요건에 해당하는 고객에게는 대출을 불허함에도 특정 연령대 누구나 대출을 허용해주는 것처럼 안내합니다",
+        "qualifiers": ["연령 제한만 안내, 소득·신용평점 조건은 생략"],
+        "exceptions": [],
+        "numbers": [],
+        "quote": "만 20세~60세 누구나 대출 가능",
+        "source_id": "dom-4",
+        "visibility": "visible"
+      },
+      "expected_case_ids": ["case.test_loan_eligibility"],
+      "expected_page_only_partial": false
+    },
+    {
+      "fixture": "tests_fixtures_cases#no_case_for_product_type",
+      "classification": {"product_type": "할부금융·리스"},
+      "card": {
+        "id": "p5",
+        "kind": "benefit_claim",
+        "subject": "리스료 혜택",
+        "claim": "리스료가 업계 최저 수준입니다",
+        "qualifiers": [],
+        "exceptions": [],
+        "numbers": [],
+        "quote": "업계 최저 리스료",
+        "source_id": "dom-5",
+        "visibility": "visible"
+      },
+      "expected_case_ids": [],
+      "expected_page_only_partial": false
+    },
+    {
+      "fixture": "tests_fixtures_cases#weak_overlap_negative_1",
+      "classification": {"product_type": "리볼빙"},
+      "card": {
+        "id": "p6",
+        "kind": "footnote",
+        "subject": "카드 디자인",
+        "claim": "카드 디자인을 다섯 가지 색상 중에서 고를 수 있습니다",
+        "qualifiers": [],
+        "exceptions": [],
+        "numbers": ["5가지"],
+        "quote": "카드 디자인을 다섯 가지 색상 중에서 고를 수 있습니다",
+        "source_id": "dom-6",
+        "visibility": "visible"
+      },
+      "expected_case_ids": [],
+      "expected_page_only_partial": false
+    },
+    {
+      "fixture": "tests_fixtures_cases#weak_overlap_negative_2",
+      "classification": {"product_type": "신용카드"},
+      "card": {
+        "id": "p7",
+        "kind": "footnote",
+        "subject": "고객센터 운영시간",
+        "claim": "고객센터는 평일 오전 9시부터 오후 6시까지 운영합니다",
+        "qualifiers": [],
+        "exceptions": [],
+        "numbers": ["9", "6"],
+        "quote": "고객센터는 평일 오전 9시부터 오후 6시까지 운영합니다",
+        "source_id": "dom-7",
+        "visibility": "visible"
+      },
+      "expected_case_ids": [],
+      "expected_page_only_partial": false
+    },
+    {
+      "fixture": "tests_fixtures_cases#case.test_revolving_min_rate#second_card",
+      "classification": {"product_type": "리볼빙"},
+      "card": {
+        "id": "p8",
+        "kind": "fee_claim",
+        "subject": "리볼빙 이자율 범위",
+        "claim": "리볼빙 이자율은 최소~최대 범위로만 고시되어 있고 평균 이자율 병행 표기가 없습니다",
+        "qualifiers": ["최소이자율만 첫 화면에 노출"],
+        "exceptions": [],
+        "numbers": ["6.9%", "19.95%"],
+        "quote": "연 6.9~19.95%",
+        "source_id": "dom-8",
+        "visibility": "visible"
+      },
+      "expected_case_ids": ["case.test_revolving_min_rate"],
+      "expected_page_only_partial": false
+    },
+    {
+      "fixture": "tests_fixtures_cases#case.test_card_benefit_condition#second_card",
+      "classification": {"product_type": "신용카드"},
+      "card": {
+        "id": "p9",
+        "kind": "condition",
+        "subject": "무이자할부 실적 제외",
+        "claim": "무이자할부를 이용할 경우 실적 산정과 포인트 적립, 할인 등이 제외됩니다",
+        "qualifiers": ["실적 제외 조건이 혜택 문구와 멀리 떨어져 있음"],
+        "exceptions": ["무이자할부 이용분은 실적에서 제외"],
+        "numbers": [],
+        "quote": "무이자할부를 이용할 경우 실적 산정, 포인트 적립 및 할인 등이 제외됩니다",
+        "source_id": "dom-9",
+        "visibility": "visible"
+      },
+      "expected_case_ids": ["case.test_card_benefit_condition"],
+      "expected_page_only_partial": false
+    },
+    {
+      "fixture": "tests_fixtures_cases#weak_overlap_negative_3",
+      "classification": {"product_type": "장기카드대출"},
+      "card": {
+        "id": "p10",
+        "kind": "footnote",
+        "subject": "앱 다운로드 안내",
+        "claim": "앱스토어에서 전용 앱을 내려받아 이용할 수 있습니다",
+        "qualifiers": [],
+        "exceptions": [],
+        "numbers": [],
+        "quote": "앱스토어에서 전용 앱을 내려받아 이용할 수 있습니다",
+        "source_id": "dom-10",
+        "visibility": "visible"
+      },
+      "expected_case_ids": [],
+      "expected_page_only_partial": false
+    }
+  ]
+}
