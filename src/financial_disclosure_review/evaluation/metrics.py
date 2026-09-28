@@ -39,6 +39,12 @@ def duty_flip_metrics(result: dict) -> dict:
         "detection_rate": rate(len(detected), len(injected)),
         "softened_to_unjudged": len(softened),
         "missed": [row["code"] for row in injected if not row.get("detected")],
+        # Missed, yet 적합 on another sentence found on the edited page: the label is in doubt.
+        "missed_with_evidence_on_page": [
+            row["code"]
+            for row in injected
+            if row.get("after_verdict") == "적합" and row.get("after_quote_on_page")
+        ],
         # A variant the arm could not judge at all counts as missed above and is named here too.
         "failed": [row["case"] for row in rows if row.get("failed")],
         "skipped_variants": [row["case"] for row in skipped],

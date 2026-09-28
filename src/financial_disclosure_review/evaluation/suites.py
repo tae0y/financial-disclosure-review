@@ -246,9 +246,17 @@ def run_duty_flip(
             continue
         variant_text = target["text"]
         after, failure = _judge_variant(judge, items, variant_text, ctx, cassette.ask)
-        verdict = (after.get(target["code"]) or {}).get("verdict") if after else "판정 실패"
+        after_row = after.get(target["code"]) or {}
+        verdict = after_row.get("verdict") if after else "판정 실패"
+        after_quote = after_row.get("quote") or ""
         row.update(
             after_verdict=verdict,
+            # What the arm cited after the deletion. A 적합 resting on another sentence that is
+            # really on the page means the deleted sentence was not the only place the fact is
+            # stated, so the "deleted, therefore 부적합" label does not hold for that case.
+            after_quote=after_quote[:160],
+            after_quote_on_page=bool(after_quote)
+            and locate_quote(variant_text, after_quote) is not None,
             detected=verdict == "부적합",
             softened=verdict == "판정 불가",
             failed=bool(failure),

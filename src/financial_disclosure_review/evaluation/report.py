@@ -310,7 +310,16 @@ def render(run: dict) -> str:
                 "",
             ]
             lines += _table(
-                ["케이스", "유형", "항목", "삭제 전", "삭제 후", "탐지", "삭제된 문장"],
+                [
+                    "케이스",
+                    "유형",
+                    "항목",
+                    "삭제 전",
+                    "삭제 후",
+                    "탐지",
+                    "삭제된 문장",
+                    "삭제 후 근거",
+                ],
                 [
                     [
                         row["case"],
@@ -320,10 +329,24 @@ def render(run: dict) -> str:
                         row["after_verdict"] or "-",
                         {True: "O", False: "X", None: "-"}[row.get("detected")],
                         row["removed_quote"],
+                        (
+                            ("본문에 있음: " if row.get("after_quote_on_page") else "본문에 없음: ")
+                            + row["after_quote"][:60]
+                        )
+                        if row.get("after_quote")
+                        else "-",
                     ]
                     for row in result["rows"]
                 ],
             )
+            if metrics.get("missed_with_evidence_on_page"):
+                lines += [
+                    f"- 미탐 중 {metrics['missed_with_evidence_on_page']}는 삭제 뒤에도 본문에"
+                    " 실제로 있는 다른 문장을 근거로 적합을 냈습니다. 같은 사실이 다른 곳에 남아"
+                    " 있으면 '삭제했으므로 부적합'이라는 정답이 성립하지 않으므로, 이 사례는 정답을"
+                    " 다시 봐야 합니다.",
+                    "",
+                ]
         else:
             lines += _table(
                 ["케이스", "주입 결함", "적발", "정답 일치", "적발 내용"],

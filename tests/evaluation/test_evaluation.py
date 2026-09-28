@@ -209,6 +209,45 @@ def test_both_arms_judge_the_same_deletions_chosen_from_what_both_passed(tmp_pat
     ]
 
 
+class FallbackAsk(FakeDutyAsk):
+    """FakeDutyAsk, except F15 stays 적합 on another sentence once its own sentence is gone."""
+
+    OTHER = (
+        "이 카드는 여행을 자주 가는 고객을 위해 만든 상품이며"
+        " 다양한 제휴처에서 편하게 쓸 수 있습니다."
+    )
+
+    def __call__(self, model, schema, task, effort="low", **data):
+        answer = super().__call__(model, schema, task, effort, **data)
+        for row in answer["items"]:
+            if row["code"] == "F15" and row["verdict"] == "부적합" and self.OTHER in data["text"]:
+                row.update(verdict="적합", quote=self.OTHER, reason="다른 문장에 있음")
+        return answer
+
+
+def test_a_miss_resting_on_another_sentence_on_the_page_is_named(tmp_path, monkeypatch):
+    from financial_disclosure_review.evaluation import suites
+
+    items = [
+        {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
+        for code in ("F11", "F15")
+    ]
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, product_type: items)
+    html_path = tmp_path / "page.html"
+    html_path.write_text(HTML, encoding="utf-8")
+    config = {
+        "base_html": str(html_path),
+        "classification": {"product_type": "신용카드", "page_type": "상품광고"},
+        "prefer_codes": ["F11", "F15"],
+    }
+    cassette = Cassette(tmp_path / "fallback.json", mode="live", ask=FallbackAsk())
+
+    metrics = metrics_for(run_duty_flip(Context(model="fake"), cassette, config, max_flips=2))
+
+    assert metrics["missed"] == ["F15"]
+    assert metrics["missed_with_evidence_on_page"] == ["F15"]
+
+
 class ForgetfulAsk(FakeDutyAsk):
     """FakeDutyAsk, except the pipeline answers one item only once the neutral sentence is gone."""
 
