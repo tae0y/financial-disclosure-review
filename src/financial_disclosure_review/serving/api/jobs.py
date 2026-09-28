@@ -135,7 +135,9 @@ class JobStore:
         if status is not None:
             query += " WHERE status = ?"
             params.append(status.value)
-        query += " ORDER BY created_at DESC LIMIT ?"
+        # Two jobs can share a timestamp (the Windows clock often returns the same value for
+        # back-to-back calls), so insertion order breaks the tie.
+        query += " ORDER BY created_at DESC, rowid DESC LIMIT ?"
         params.append(limit)
         with self._lock:
             rows = self._db.execute(query, params).fetchall()
