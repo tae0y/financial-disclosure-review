@@ -96,9 +96,14 @@ class ToolChat:
     """One tool-calling conversation. Holds the message list so callers only pass and read dicts."""
 
     def __init__(
-        self, model: str, tools: list[dict], effort: str = "low", max_retries: int = 3
+        self,
+        model: str,
+        tools: list[dict],
+        effort: str = "low",
+        max_retries: int = 3,
+        label: str = "discover",
     ) -> None:
-        self.model = model
+        self.model, self.label = model, label
         self.llm = ChatOpenAI(
             model=model, reasoning_effort=effort, max_retries=max_retries
         ).bind_tools(tools)
@@ -116,12 +121,12 @@ class ToolChat:
     def turn(self) -> dict:
         """One model turn. Returns the requested tool calls and the turn's token total."""
         meter = current()
-        meter.check("discover")
+        meter.check(self.label)
         reply = self.llm.invoke(self.messages)
         self.messages.append(reply)
         usage = reply.usage_metadata or {}
         meter.record(
-            self.model, "discover", usage.get("input_tokens", 0), usage.get("output_tokens", 0)
+            self.model, self.label, usage.get("input_tokens", 0), usage.get("output_tokens", 0)
         )
         return {
             "tool_calls": [dict(call) for call in reply.tool_calls],
