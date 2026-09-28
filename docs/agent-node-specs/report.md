@@ -80,3 +80,14 @@ Until 2026-09-28 that printed the rebuild's own zero in place of what the review
 now passes the cost already on the thread's report, and a rebuild that made no call carries it
 forward and says so (`carried_forward`). A run that did call the model always reports its own
 cost.
+
+## One finding per explanation-duty topic
+
+The F group of `card_guardrail_rubric` and the 설명의무 group of `plain_service_rubric` state
+the same duties on two code axes (`core/duty_codes.DUTY_TWINS`: F01–F19 ↔ 설명01–19, F21 ↔ 설명27,
+F22 ↔ 설명28; F20 has no twin). Both stay judged so each citation survives, but `_findings`
+merges a code and its twin into one row (`설명07/F07`) when they have the same verdict on the
+same side, so the action list names each duty once. Twins with different verdicts stay separate.
+`summary.duty_topics_violated_original` counts distinct topics; `duty_violations_original` still
+counts rows. The §5 table keeps every row, ordered so twins sit together (audit P1-7).
+

@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from typing import Any
 
+from ...core.duty_codes import duty_topic
 from ...core.usage import current
 
 STATUS_PASSED = "검토 완료"
@@ -91,6 +92,27 @@ def _reverted(plain: Mapping[str, Any]) -> list[dict]:
     return list(plain.get("contract_errors") or [])
 
 
+def _merge_twins(found: list[dict]) -> list[dict]:
+    """One row per explanation-duty topic: a 설명 code and its F twin with the same verdict on the
+    same side read as `설명07/F07`, so a reviewer does not act on the same duty twice."""
+    merged: list[dict] = []
+    by_key: dict[tuple, dict] = {}
+    for row in found:
+        if row["module"] != "explanation_duty_check":
+            merged.append(row)
+            continue
+        key = (duty_topic(row["code"]), row["verdict"], row["target"])
+        first = by_key.get(key)
+        if first is None:
+            by_key[key] = row
+            merged.append(row)
+            continue
+        codes = sorted({*first["code"].split("/"), row["code"]}, key=lambda c: c[0] == "F")
+        first["code"] = "/".join(codes)
+        first["quotes"] = list(dict.fromkeys(first["quotes"] + row["quotes"]))
+    return merged
+
+
 def _findings(
     display: Mapping[str, Any],
     duty: Mapping[str, Any],
@@ -131,6 +153,7 @@ def _findings(
             row["severity"], row["basis"] = severity(
                 row["module"], bindings.get(row["code"]), page_type
             )
+    found = _merge_twins(found)
     for row in duty.get("fidelity") or []:
         where = ",".join(row.get("source_ids") or []) or row.get("source_id", "")
         found.append(
@@ -332,6 +355,13 @@ def build_report(
         ),
         "duty_violations_plain": sum(
             1 for row in duty.get("plain") or [] if row.get("verdict") == "부적합"
+        ),
+        "duty_topics_violated_original": len(
+            {
+                duty_topic(row.get("code", ""))
+                for row in duty.get("original") or []
+                if row.get("verdict") == "부적합"
+            }
         ),
         "fidelity_diffs": len(duty.get("fidelity") or []),
         "plain_blocks": len(_accepted(plain)),
@@ -727,10 +757,18 @@ def _markdown(
                 str((fidelity_by_code.get(row.get("code")) or {}).get("kind", "-")),
                 _clip(row.get("quote", ""), 80),
             ]
-            for row in duty.get("original") or []
+            for row in sorted(
+                duty.get("original") or [],
+                key=lambda r: (duty_topic(r.get("code", "")), r.get("code", "")[:1] == "F"),
+            )
         ],
         ["항목", "조건", "원문 판정", f"{EXPLANATION} 판정", "의미 차이", "원문 인용"],
     )
+    lines += [
+        "- F01–F19·F21·F22는 같은 의무를 담은 설명 코드(설명01–19·27·28)와 한 주제입니다."
+        " 표에는 둘 다 남기고, 조치 목록에서는 같은 판정이면 한 번만 셉니다.",
+        "",
+    ]
     lines += [f"## 6. {EXPLANATION} 결과", ""]
     if "units" in plain:
         profile = plain.get("profile") or {}

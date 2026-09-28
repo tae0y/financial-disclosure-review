@@ -544,3 +544,27 @@ def test_the_persona_explanation_is_reported_with_its_profile_units_and_controls
     assert result["summary"]["plain_blocks"] == 1
     assert result["summary"]["plain_rejected"] == 1
     assert any(f["verdict"] == "원문 대체" and "dom-1" in f["target"] for f in result["findings"])
+
+
+def test_a_duty_and_its_f_twin_with_the_same_verdict_are_one_finding():
+    """감사 P1-7: 데모의 원문 부적합 19건은 실제 11개 주제였습니다."""
+    duty = {
+        "items": [],
+        "original": [
+            {"code": "설명07", "verdict": "부적합", "reason": "연체 불이익 없음", "quote": ""},
+            {"code": "F07", "verdict": "부적합", "reason": "연체 이자율 없음", "quote": ""},
+            {"code": "F20", "verdict": "부적합", "reason": "강조 없음", "quote": ""},
+            {"code": "설명11", "verdict": "판정 불가", "reason": "-", "quote": ""},
+            {"code": "F11", "verdict": "부적합", "reason": "-", "quote": ""},
+        ],
+        "plain": [],
+        "fidelity": [],
+    }
+    result = report(page={**PAGE, "html": "<p>연회비 1만원</p>", "status": "완료"}, duty=duty)
+    codes = [f["code"] for f in result["findings"] if f["module"] == "explanation_duty_check"]
+    assert codes.count("설명07/F07") == 1
+    assert "설명07" not in codes and "F07" not in codes
+    assert "F20" in codes
+    assert "설명11" in codes and "F11" in codes  # different verdicts stay apart
+    assert result["summary"]["duty_violations_original"] == 4
+    assert result["summary"]["duty_topics_violated_original"] == 3
