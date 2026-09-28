@@ -188,22 +188,42 @@ def build_cases(args: argparse.Namespace) -> int:
     return 0
 
 
-def parser() -> argparse.ArgumentParser:
-    data_dir = default_data_dir()
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--model", default=Context.model)
-    common.add_argument("--data-dir", default=data_dir)
-    common.add_argument("--db-path", default=default_db_path())
-    common.add_argument("--checkpoints", default=default_checkpoint_path(data_dir))
-    common.add_argument(
-        "--max-calls", type=int, default=60, help="model calls one run may make; 0 for no cap"
-    )
-    common.add_argument(
-        "--max-usd", type=float, default=1.0, help="USD one run may spend; 0 for no cap"
-    )
+def common_options(defaults: bool) -> argparse.ArgumentParser:
+    """Options every command takes. They may come before or after the subcommand: the copy on
+    the subcommand has no defaults, so it only overrides what was actually typed after it."""
 
+    def default(value):
+        return value if defaults else argparse.SUPPRESS
+
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--model", default=default(Context.model))
+    common.add_argument("--data-dir", default=default(default_data_dir()))
+    common.add_argument("--db-path", default=default(default_db_path()))
+    common.add_argument(
+        "--checkpoints", default=default(None), help="default: <data-dir>/checkpoints.sqlite"
+    )
+    common.add_argument(
+        "--max-calls",
+        type=int,
+        default=default(60),
+        help="model calls one run may make; 0 for no cap",
+    )
+    common.add_argument(
+        "--max-usd", type=float, default=default(1.0), help="USD one run may spend; 0 for no cap"
+    )
+    return common
+
+
+def resolve_paths(args: argparse.Namespace) -> argparse.Namespace:
+    if not args.checkpoints:
+        args.checkpoints = default_checkpoint_path(args.data_dir)
+    return args
+
+
+def parser() -> argparse.ArgumentParser:
+    common = common_options(defaults=False)
     root = argparse.ArgumentParser(
-        prog="financial_disclosure_review", description=__doc__, parents=[common]
+        prog="financial_disclosure_review", description=__doc__, parents=[common_options(True)]
     )
     commands = root.add_subparsers(dest="command", required=True)
 
@@ -263,7 +283,7 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(find_dotenv(usecwd=True))
-    args = parser().parse_args(argv)
+    args = resolve_paths(parser().parse_args(argv))
     return args.run(args)
 
 
