@@ -117,6 +117,17 @@ def test_a_quote_that_is_not_in_the_page_fails_the_explanation_duty_check():
     assert "explanation_duty_check" in result["failed_modules"]
 
 
+def test_a_quote_request_names_the_side_it_belongs_to():
+    """The duty check re-judges only the flagged side, so the request must say which one."""
+    state = sound_input()
+    state["explanation_duty_check"]["original"][0]["quote"] = "이 문장은 원문 어디에도 없습니다"
+    result = run(state)
+    requests = [f for f in result["feedback"] if f["module"] == "explanation_duty_check"]
+    assert requests, result["feedback"]
+    assert {f["target"] for f in requests} == {"original"}
+    assert all(f["code"] for f in requests)
+
+
 def test_a_pass_that_contradicts_the_measurement_fails():
     state = sound_input()
     state["display_check"]["judgments"]["measures"]["E02"]["below_min_pt"] = ["blk1"]

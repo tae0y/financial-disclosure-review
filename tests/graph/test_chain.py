@@ -172,8 +172,17 @@ def run_chain(
     monkeypatch.setattr(
         nodes,
         "judge_explanation",
-        lambda page, plain, cls, ctx, previous_original, previous_items: judge_explanation(
-            page, plain, cls, ctx, previous_original, previous_items, ask=explanation_fake
+        lambda page, plain, cls, ctx, previous_original, previous_items, *, feedback=(): (
+            judge_explanation(
+                page,
+                plain,
+                cls,
+                ctx,
+                previous_original,
+                previous_items,
+                ask=explanation_fake,
+                feedback=feedback,
+            )
         ),
     )
     state = state_with(
@@ -252,3 +261,31 @@ def test_a_missing_upstream_result_fails_all_three_modules(monkeypatch, runtime)
         "plain_language",
     ]
     assert routed(result) == "retry_dispatch"
+
+
+def test_the_second_round_is_handed_what_the_verification_asked_for(monkeypatch, runtime):
+    """A retry that repeats the same call without the feedback would pay twice for one answer."""
+    from financial_disclosure_review.domain.plain_language import generate_plain
+
+    first = run_chain(monkeypatch, runtime, plain_ask(invent_for="연회비"))
+    requests = [f for f in first["verification"]["feedback"] if f["module"] == "plain_language"]
+    assert requests, first["verification"]
+
+    seen: list[list[dict]] = []
+    faithful = plain_ask()
+
+    def capturing(model, schema, task, effort="low", **data):
+        if schema is PlainDraftAnswer:
+            seen.append(data["previous_feedback"])
+        return faithful(model, schema, task, effort, **data)
+
+    monkeypatch.setattr(
+        nodes,
+        "generate_plain",
+        lambda page, cls, feedback, ctx: generate_plain(page, cls, feedback, ctx, ask=capturing),
+    )
+    generate_plain_lang(first, runtime)  # type: ignore[arg-type]
+
+    assert seen and seen[0], "재시도 회차의 쉬운말 생성이 검증 피드백을 받지 못함"
+    asked = {entry["source_id"] for entry in seen[0]}
+    assert asked == {entry["source_id"] for entry in requests}

@@ -218,7 +218,7 @@ def test_the_previous_rounds_feedback_reaches_the_next_draft(ctx, block_ids):
     wanted = "연회비는 카드를 쓰는 동안 해마다 내는 돈으로, 국내전용 1만원입니다."
     feedback = [
         {
-            "module": "generate_plain_lang",
+            "module": "plain_language",
             "code": "쉬운말10",
             "source_id": fee,
             "reason": "용어 설명 부족",
@@ -234,7 +234,7 @@ def test_feedback_addressed_to_another_module_is_filtered_out(ctx, blocks, block
     fee = block_ids["fee"]
     other = [
         {
-            "module": "judge_explanation_duty",
+            "module": "explanation_duty_check",
             "code": "X",
             "source_id": fee,
             "reason": "n/a",

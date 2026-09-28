@@ -58,9 +58,11 @@ class FakeExplanationAsk:
         self.plain = plain or {}
         self.fidelity = fidelity or {}
         self.calls: list[str] = []
+        self.sent: list[tuple[str, dict]] = []
 
     def __call__(self, model, schema, task, effort="low", **data):
         self.calls.append(schema.__name__)
+        self.sent.append((schema.__name__, data))
         if schema is ExplanationJudgments:
             return {"items": [self._original_row(item) for item in data["items"]]}
         if schema is PlainJudgments:
@@ -288,3 +290,88 @@ def test_a_retry_reuses_the_original_side_and_recomputes_only_the_plain_side(
         "조건 불명확 항목은 재시도에서도 재호출 없이 그대로 재사용"
     )
     assert result["plain"] != previous["plain"]
+
+
+QUOTE_REQUEST = {
+    "module": "explanation_duty_check",
+    "code": "설명02",
+    "source_id": "",
+    "reason": (
+        "explanation_duty_check.original 설명02: 인용문이 product_page.html에서 발견되지 않습니다"
+    ),
+    "requested_change": "product_page.html에 실제로 있는 문구로 다시 인용하세요",
+    "target": "original",
+}
+
+
+def test_a_first_round_sends_no_feedback_field(first_round):
+    """Recorded first-round calls are keyed by what was sent; a new empty field would orphan
+    every cassette entry."""
+    assert all("previous_feedback" not in data for _, data in first_round["ask"].sent)
+
+
+def test_a_retry_re_judges_only_the_flagged_original_code_and_tells_the_model_why(ctx, first_round):
+    previous = first_round["result"]
+    fixed_quote = "일시불 이용시 이자가 없으며, 할부 이용시 수수료율은 정확히 15%입니다."
+    ask = FakeExplanationAsk(
+        original={
+            "설명02": {
+                "condition_status": "해당없음",
+                "verdict": "적합",
+                "quote": fixed_quote,
+                "reason": "상환방법별 금액·이자율이 있음(다시 인용)",
+            }
+        }
+    )
+    unrelated = {**QUOTE_REQUEST, "module": "plain_language", "code": "설명05"}
+    result = judge_explanation(
+        PAGE,
+        PLAIN_1,
+        CLASSIFICATION,
+        ctx,
+        previous["original"],
+        previous["items"],
+        ask=ask,
+        feedback=[QUOTE_REQUEST, unrelated],
+    )
+
+    original_calls = [data for name, data in ask.sent if name == "ExplanationJudgments"]
+    assert len(original_calls) == 1
+    assert [item["code"] for item in original_calls[0]["items"]] == ["설명02"]
+    assert original_calls[0]["previous_feedback"] == [
+        {
+            "code": "설명02",
+            "reason": QUOTE_REQUEST["reason"],
+            "requested_change": QUOTE_REQUEST["requested_change"],
+        }
+    ]
+    by_code = {row["code"]: row for row in result["original"]}
+    assert by_code["설명02"]["reason"].endswith("(다시 인용)")
+    untouched = [row for row in previous["original"] if row["code"] != "설명02"]
+    assert all(by_code[row["code"]] == row for row in untouched)
+    assert [row["code"] for row in result["items"]] == [row["code"] for row in previous["items"]]
+
+
+def test_plain_side_feedback_reaches_the_plain_judgment_only(ctx, first_round):
+    previous = first_round["result"]
+    request = {
+        **QUOTE_REQUEST,
+        "code": "설명01",
+        "target": "plain",
+        "requested_change": "plain_language.html에 실제로 있는 문구로 다시 인용하세요",
+    }
+    ask = FakeExplanationAsk()
+    judge_explanation(
+        PAGE,
+        PLAIN_2,
+        CLASSIFICATION,
+        ctx,
+        previous["original"],
+        previous["items"],
+        ask=ask,
+        feedback=[request],
+    )
+
+    assert "ExplanationJudgments" not in ask.calls, "원문 쪽 지적이 없으면 원문은 다시 묻지 않음"
+    plain_calls = [data for name, data in ask.sent if name == "PlainJudgments"]
+    assert plain_calls and plain_calls[0]["previous_feedback"][0]["code"] == "설명01"

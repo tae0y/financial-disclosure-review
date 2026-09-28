@@ -143,6 +143,7 @@ def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
                 runtime.context,
                 check.get("original") or None,
                 check.get("items") or None,
+                feedback=(state.get("verification") or {}).get("feedback") or [],
             )
         )
     return {"explanation_duty_check": check}
