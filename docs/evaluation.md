@@ -150,7 +150,22 @@ reproducible for about a quarter of the explanation-duty items. Source:
 
 The same cassette-backed suites run with `--model`; each model has its own cassette.
 
-MODEL_COMPARISON_TABLE
+| Suite | gpt-5-mini (default) | gpt-5-nano | gpt-5 |
+|---|---|---|---|
+| classification (6 pages) | **6/6** · 8 calls · $0.0354 · 104 s | 4/6 · 11 calls · $0.0244 · 350 s | 5/6 · 9 calls · $0.1903 · 184 s |
+| duty-flip, pipeline arm | **2/3**, quotes 66/66 | 0/3, quotes 38/38 | not run |
+| duty-flip, ablation arm | 1/3, quotes 66/156 | 0/3, quotes 59/127 | not run |
+| duty-flip, both arms | 11 calls · $0.2166 · 802 s | 15 calls · $0.1319 · 2,308 s | — |
+| plain-contract | 9/9, 0/4 false alarms | 9/9, 0/4 | 9/9, 0/4 |
+
+Misclassifications: gpt-5 rejected the auto-installment page (할부금융·리스) as out of scope; gpt-5-nano
+rejected the card-loan page (장기카드대출) as out of scope and returned 판정 불가 for the insurance
+page. An in-scope page rejected as out of scope is the costliest error — it is never reviewed —
+and both other models made it. gpt-5-nano also wrote about three times gpt-5-mini's output tokens on
+the explanation-duty judgments, took 38 minutes and detected none of the deleted disclosures.
+gpt-5 was not run on duty-flip; at about five times the classification cost it would have cost
+roughly $1. Files: `eval/results/*-gpt-5-nano.*`, `eval/results/*-gpt-5.*`; cassettes
+`eval/cassettes/gpt-5-nano.json`, `eval/cassettes/gpt-5.json`.
 
 ## Failure analysis
 

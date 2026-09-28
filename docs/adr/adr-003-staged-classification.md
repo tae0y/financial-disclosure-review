@@ -39,8 +39,10 @@ mapping checked against the law (`PAGE_TYPE_BY_PRODUCT`), not from a second mode
 ## Consequences
 
 - Measured on six captured pages: gpt-5-mini 6/6 with a reason for every page, 8 calls, $0.035
-  (2026-09-27). gpt-5-nano 4/6 on the same pages (2026-09-28), missing the card loan and taking an
-  insurance page as in scope.
+  (2026-09-27). On the same pages on 2026-09-28, gpt-5 scored 5/6 for $0.190 (it rejected the
+  auto-installment page as out of scope) and gpt-5-nano 4/6 for $0.024 (it rejected the card-loan
+  page and returned 판정 불가 for the insurance page). Both larger and smaller models dropped an
+  in-scope card page, the costliest error: that page would not be reviewed at all.
 - The keyword baseline also scored 6/6 on those six pages. The pages are easy for it: each names
   its product repeatedly. The claim that keywords break on paraphrase is therefore untested by
   this suite; showing it needs pages that mention several products or rename them.
