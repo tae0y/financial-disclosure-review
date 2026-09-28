@@ -307,3 +307,19 @@ tmbootpicker.efi
 
 # Rebuilt copies of committed reports (eval/demo_report.py writes them; regenerate for free)
 data/reports/*.rebuilt.md
+
+# Local authoring and public-release exclusions. These can contain workstation paths, captured
+# third-party pages, model responses, or deployment-specific instructions; keep them outside the
+# public source distribution.
+.claude/
+ralph/
+notebooks/
+.mcp.json
+CLAUDE.md
+docs/team-usage-guide.md
+data/reports/*
+!data/reports/README.md
+data/sample_urls.txt
+eval/cassettes/
+eval/fixtures/
+eval/results/

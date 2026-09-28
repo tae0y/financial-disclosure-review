@@ -113,10 +113,17 @@ local HTML fixture and reaches no network.
 - `docs/product_page.md`, `docs/classification.md`, `docs/display_check.md`,
   `docs/plain_language.md`, `docs/explanation_duty_check.md`, `docs/report.md` — per-domain rules
 - `docs/api.md` — the HTTP surface, the job model, `detail` levels, concurrency and cost
-- `docs/team-usage-guide.md` — calling the deployed instance: base URL, auth, submit/poll example
+- `docs/team-usage-guide.md` — generic deployment auth and submit/poll example; no live endpoint
 - `docs/openapi.yaml` — the OpenAPI 3.1 document, generated from the app; regenerate with
   `uv run python -m financial_disclosure_review.serving.openapi`
 - `docs/setup-docker.md`, `docs/setup-cloudflare.md` — the two containers and the tunnel
 - `docs/agent-prompt-serving.md` — a task prompt for reproducing this serving pattern elsewhere
 - `docs/src-layout-migration.md` — what moved out of the notebook, and what changed with it
 - `localdocs/` — plans and worklog (local only, gitignored); the ADRs are in `docs/adr/`
+
+## License and source material
+
+Project-authored source code and documentation are licensed under MIT; see `LICENSE`. The
+repository also identifies official legal and regulatory sources for review criteria. Those source
+materials, as well as third-party product pages, names, and marks, are not licensed by this
+repository; see `THIRD_PARTY_NOTICES.md` and verify the source terms before reuse.
