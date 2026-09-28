@@ -411,11 +411,18 @@ def _markdown(
             ],
             ["검토 영역", "검토 항목", "위반·반려", "판정 불가·차이"],
         ),
-        f"부적합 {summary['violations'] + summary['shortfalls']}건 중 위반"
-        f" {summary['violations']}건, 권고 미충족 {summary['shortfalls']}건입니다. 광고 규정과"
-        " 협회 표시 규정은 공개 상품 페이지(광고)에 직접 적용되어 위반으로 읽고, 설명의무 항목은"
-        " 계약 권유 단계의 의무를 광고 화면에 준용한 것이어서 권고 미충족으로 읽습니다.",
-        "",
+        *(
+            [
+                f"부적합 {summary['violations'] + summary['shortfalls']}건 중 위반"
+                f" {summary['violations']}건, 권고 미충족 {summary['shortfalls']}건입니다. 광고"
+                " 규정과 협회 표시 규정은 공개 상품 페이지(광고)에 직접 적용되어 위반으로 읽고,"
+                " 설명의무 항목은 계약 권유 단계의 의무를 광고 화면에 준용한 것이어서 권고"
+                " 미충족으로 읽습니다.",
+                "",
+            ]
+            if summary["violations"] + summary["shortfalls"]
+            else []
+        ),
         "## 3. 확인이 필요한 항목",
         "",
         *_table(
@@ -516,7 +523,10 @@ def _markdown(
         f"- 소요시간 {cost.get('elapsed_seconds')}초",
         f"- 상한: {cost.get('caps')}",
         *(
-            ["- 이 실행은 모델을 부르지 않았고, 원래 실행의 비용 기록도 없습니다."]
+            [
+                "- 이 문서는 모델 호출 없이 만들어졌습니다(녹음 재생 또는 체크포인트 재생성)."
+                " 원래 검토의 비용은 이 문서에 기록되지 않았습니다."
+            ]
             if not cost.get("calls")
             else []
         ),

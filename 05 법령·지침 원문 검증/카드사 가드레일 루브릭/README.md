@@ -58,8 +58,8 @@ created: 2026-09-26
 
 | 파일 | 용도 |
 | --- | --- |
-| [01 사람 대조표](<01 사람 대조표.md>) | card_guardrail_rubric.yaml 68항목을 그룹별로 나열합니다. 스크립트가 생성합니다. |
-| [03 설명의무·표시방법·쉬운말 루브릭 대조표](<03 설명의무·표시방법·쉬운말 루브릭 대조표.md>) | plain_service_rubric.yaml 61항목을 그룹별로 나열합니다. 스크립트가 생성합니다. |
+| [01 사람 대조표](<01 사람 대조표.md>) | card_guardrail_rubric.yaml 78항목을 그룹별로 나열합니다. 스크립트가 생성합니다. |
+| [03 설명의무·표시방법·쉬운말 루브릭 대조표](<03 설명의무·표시방법·쉬운말 루브릭 대조표.md>) | plain_service_rubric.yaml 63항목을 그룹별로 나열합니다. 스크립트가 생성합니다. |
 | [card_guardrail_rubric.yaml](<card_guardrail_rubric.yaml>) | 광고 가드레일 루브릭 원본입니다. |
 | [plain_service_rubric.yaml](<plain_service_rubric.yaml>) | 세 축 가드레일 루브릭 원본입니다. |
 | `원문 스냅샷/` | 원문 17종의 텍스트와 `manifest.csv`(출처 URL, 원본 SHA-256, 추출 시각)입니다. |

@@ -79,6 +79,30 @@ per-suite figures are in `docs/evaluation.md`.
   reviewed one.
 - The evaluation cassettes hold model answers about public pages only.
 
+## Misuse of the service itself
+
+A review opens whatever URL it is given in a real browser, so the service has to refuse being
+used to reach what only the server can reach.
+
+- `core/urls.py:url_problem` refuses a scheme other than http(s), credentials inside the URL, a
+  host that does not resolve, and any host that resolves to a non-public address — loopback,
+  private and shared ranges, link-local (169.254.169.254, where cloud metadata answers), and the
+  compose service name of the worker. The gateway answers 422 before a job exists
+  (`tests/serving/test_api.py`), and `fetch_product_page` refuses again before a browser starts,
+  so the CLI and a worker reached some other way are covered too (`tests/core/test_urls.py`,
+  `tests/domain/product_page/test_fetch_failures.py`).
+- `FDR_ALLOWED_HOSTS` narrows accepted hosts to given domains and their subdomains — for a
+  deployment that serves one card company, its own domains.
+- Every `/v1` route needs the issued bearer token and the gateway refuses to start without one
+  (fail closed). Tokens are compared in constant time.
+- The discovery agent has no typing, form-filling, script-evaluation or download tool; a click
+  that would leave the page's host is refused and reported back to it; turns (20) and page visits
+  (3) are capped.
+- What is not covered: the check resolves the name when the job is submitted and again before the
+  browser starts, but the browser resolves it once more itself, and a redirect from a public page
+  to an internal address is not intercepted. A deployment that must rule these out adds an egress
+  firewall on the worker container.
+
 ## Operating constraints
 
 - `SqliteSaver` serializes writes to one file. Fine for one reviewer at a time; a concurrent
