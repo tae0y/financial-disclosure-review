@@ -51,7 +51,8 @@ Answers are recorded in a cassette so every number can be replayed for free.
   sentence left the ground intact. Targets should be topics the page states once.
 - The control turned F13·설명13 부적합 although their quote stayed. The three-round stability
   measurement of 2026-09-28 (`--suite stability`) found 11 of the 39 items changing between
-  identical runs of the unchanged page (F05, F09, F11, F12, F14, their 설명 twins, and 설명21), but
+  identical runs of the unchanged page (F05, F09, F11, F12, F14, 설명05, 설명09, 설명11, 설명14,
+  설명21, 설명22), but
   F13 and 설명13 were steady there. Their flip is therefore a reaction to the page changing (a
   shorter prompt tipping a borderline 적합), not run-to-run noise — which is what the control is
   there to expose.

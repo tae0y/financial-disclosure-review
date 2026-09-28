@@ -137,6 +137,8 @@ def evaluate(args: argparse.Namespace) -> int:
     folder = Path(args.eval_dir) / "results"
     folder.mkdir(parents=True, exist_ok=True)
     stem = f"{datetime.now().strftime('%y%m%d-%H%M%S')}-{args.suite}-{mode}"
+    if args.model != Context.model:
+        stem += f"-{args.model}"  # results of another model sit next to the default's
     (folder / f"{stem}.json").write_text(
         json.dumps(run, ensure_ascii=False, indent=1), encoding="utf-8"
     )

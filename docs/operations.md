@@ -57,13 +57,16 @@ is answered per run rather than estimated once in a plan.
   `display_max_visual_crops` bounds how many rendered crops a vision call may carry.
 - `max_turns` (20) and `max_visits` (3) bound the page-discovery agent.
 
-Measured, not assumed. One real page end to end on 2026-09-27: **$0.1456 (about 204원), 12 calls,
-538 seconds**, including one retry round (run log
-`eval/results/260927-175600-review-demo-run.log`; the report itself is
-`data/reports/demo-260927.md`, whose cost section shows the *last* render of it, which was a free
-re-render from the checkpoint). Six classification pages:
-$0.035, 8 calls. Regenerating the report alone from its checkpoint: 0 calls, $0. The evaluation's
-per-suite figures are in `docs/evaluation.md`.
+Measured, not assumed. Three reviews run end to end on 2026-09-28 cost **$0.148–$0.193 (median
+$0.184, about 258원), 20–24 calls, 513–723 seconds** each, including two verification rounds and,
+on a site seen for the first time, 6–10 page-discovery calls
+(`eval/results/260928-191135-cost-ledger.md`, copied out of the checkpoint DB by
+`eval/cost_ledger.py`). The representative one is `data/reports/demo-260928.md` (22 calls,
+$0.1844, 723 s) with its terminal transcript in `eval/results/260928-demo-review-run.txt`; its
+report can be rebuilt for free with `eval/demo_report.py`. At 20 reviews a month that is about
+$3.7 (5,200원). Regenerating the report alone from a checkpoint costs 0 calls and now carries the
+review's recorded cost forward (`docs/report.md` §Cost). Six classification pages: $0.035, 8
+calls. The evaluation's per-suite figures are in `docs/evaluation.md`.
 
 ## Information protection
 

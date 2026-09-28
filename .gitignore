@@ -304,3 +304,6 @@ Backups.backupdb
 .MobileBackups.trash
 MobileBackups.trash
 tmbootpicker.efi
+
+# Rebuilt copies of committed reports (eval/demo_report.py writes them; regenerate for free)
+data/reports/*.rebuilt.md
