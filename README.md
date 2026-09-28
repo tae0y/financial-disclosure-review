@@ -51,10 +51,10 @@ uv run python eval/cost_ledger.py            # free: per-review cost out of data
 
 Five suites — `classification`, `duty-flip`, `display-flip`, `plain-contract`, `stability` — each
 with the label source and comparison arm described in `docs/evaluation.md`. The default run
-replays the recorded answers in `eval/cassettes/gpt-5-mini.json` (62 answers; all five suites in
-about 5 seconds, $0), so every number in `docs/evaluation.md` can be re-derived without paying.
-`--record` calls the model only for questions the cassette does not hold; recording everything
-from scratch cost $0.62 on 2026-09-28. `--model gpt-5-nano` (or `gpt-5`) runs the same suites
+replays the recorded answers in `eval/cassettes/gpt-5-mini.json` (68 answers; all five suites in
+about 6 seconds, $0), so every number in `docs/evaluation.md` can be re-derived without paying.
+`--record` calls the model only for questions the cassette does not hold; the recordings in that
+cassette cost $0.72 in total (68 calls, 2026-09-27 and 2026-09-28). `--model gpt-5-nano` (or `gpt-5`) runs the same suites
 against that model's own cassette. Results land in `eval/results/` as both `.json` and `.md`.
 
 ## Serve

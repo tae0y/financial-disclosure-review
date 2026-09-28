@@ -113,6 +113,16 @@ used to reach what only the server can reach.
 - Playwright's sync API binds objects to their thread, so a whole review runs in one worker
   thread. Two reviews in one process would need separate threads and separate meters — the run
   meter in `core/usage.py` is process-wide by design, started once per run.
+- Rate limits and transient errors. Structured calls (`ask` in `llm/client.py`) and the
+  site-exploration tool calls (`ToolChat`) use the OpenAI SDK with `max_retries=3`, which backs
+  off and retries on rate limits (429), timeouts and server errors; embeddings use
+  `max_retries=2` with a 60-second timeout. The vision call (`ask_images`) does not retry
+  (`max_retries=0`, 90-second timeout): when it fails, rate limit included, the image-text blocks
+  stay in `unresolved_ids` and those items end as 판정 불가 instead of failing the review. The run
+  meter counts a call once, when its answer arrives; `call_ask`'s second attempt after an invalid
+  answer is a new call and counts against the caps. The worker runs one review at a time by
+  default (`FDR_AGENT_CONCURRENCY=1`), so a deployment sends one review's calls at a time;
+  raising it multiplies the request rate against the same OpenAI account limit.
 - The rubric DB has to be rebuilt (`build-db`) whenever a rubric yaml changes; the app reads the
   DB, not the yaml, so a stale DB silently judges by old criteria. `data/reference.sqlite` is the
   versioned artifact to watch.
