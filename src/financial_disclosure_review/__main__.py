@@ -1,4 +1,4 @@
-"""CLI: run one review, re-run a thread from a node, or build the reference DB."""
+"""CLI: run one review, re-run a thread from a node, build the reference DB, fetch personas."""
 
 import argparse
 import json
@@ -12,6 +12,14 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from .core.context import Context, default_data_dir, default_db_path, default_rubric_dir
 from .core.state import empty_state
 from .core.usage import start_run
+from .domain.persona_explanation.dataset import (
+    DATASET,
+    REVISION,
+    dataset_dir,
+    ensure_dataset,
+    filters_from_pairs,
+    missing_shards,
+)
 from .evaluation import SUITES, default_eval_dir, render, run_evaluation
 from .graph.build import build_review_graph
 from .knowledge.build import build_rubric_db
@@ -23,7 +31,25 @@ def default_checkpoint_path(data_dir: str) -> str:
 
 
 def context_from(args: argparse.Namespace) -> Context:
-    return Context(model=args.model, data_dir=args.data_dir, db_path=args.db_path)
+    attributes: dict = {}
+    for pair in getattr(args, "persona_attr", None) or []:
+        attributes.update(pair)
+    return Context(
+        model=args.model,
+        data_dir=args.data_dir,
+        db_path=args.db_path,
+        persona_request=getattr(args, "persona", "") or "",
+        persona_uuid=getattr(args, "persona_uuid", "") or "",
+        persona_attributes=attributes or None,
+    )
+
+
+def persona_attr(text: str) -> dict:
+    """One --persona-attr key=value, checked against the dataset filter fields."""
+    try:
+        return filters_from_pairs([text])
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from None
 
 
 def save_report(state: dict, data_dir: str, thread_id: str) -> str:
@@ -188,6 +214,24 @@ def build_cases(args: argparse.Namespace) -> int:
     return 0
 
 
+def fetch_personas(args: argparse.Namespace) -> int:
+    """Download and verify the pinned persona dataset; exit 1 when any shard failed."""
+    folder = dataset_dir(args.data_dir)
+    if args.if_missing and not missing_shards(args.data_dir):
+        print(f"persona dataset present at {folder}")
+        return 0
+    print(f"persona dataset {DATASET}@{REVISION[:7]} -> {folder}")
+    report = ensure_dataset(args.data_dir)
+    rows = report["shards"]
+    good = [r for r in rows if r["status"] != "failed"]
+    fetched = sum(r["bytes"] for r in rows if r["status"] == "downloaded")
+    print(
+        f"{len(good)}/{len(rows)} shards verified,"
+        f" {sum(r['bytes'] for r in good) / 1e9:.2f} GB on disk, {fetched / 1e9:.2f} GB downloaded"
+    )
+    return 0 if report["ok"] else 1
+
+
 def common_options(defaults: bool) -> argparse.ArgumentParser:
     """Options every command takes. They may come before or after the subcommand: the copy on
     the subcommand has no defaults, so it only overrides what was actually typed after it."""
@@ -230,6 +274,15 @@ def parser() -> argparse.ArgumentParser:
     one = commands.add_parser("review", help="review one product page URL", parents=[common])
     one.add_argument("url")
     one.add_argument("--thread", default="", help="thread id; a timestamped one by default")
+    one.add_argument("--persona", default="", help="the reader in free text (Korean)")
+    one.add_argument("--persona-uuid", default="", help="one exact persona dataset row")
+    one.add_argument(
+        "--persona-attr",
+        action="append",
+        type=persona_attr,
+        metavar="KEY=VALUE",
+        help="persona dataset filter, repeatable (e.g. age_min=70, province=서울,경기)",
+    )
     one.set_defaults(run=review)
 
     again = commands.add_parser("rerun", help="re-run a thread from one node", parents=[common])
@@ -253,6 +306,16 @@ def parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="print what would be embedded and spend nothing"
     )
     cases.set_defaults(run=build_cases)
+
+    personas = commands.add_parser(
+        "fetch-personas",
+        help="download and verify the pinned persona dataset (about 2GB)",
+        parents=[common],
+    )
+    personas.add_argument(
+        "--if-missing", action="store_true", help="do nothing when every shard file exists"
+    )
+    personas.set_defaults(run=fetch_personas)
 
     check = commands.add_parser(
         "evaluate", help="run the evaluation suites (replay is free)", parents=[common]

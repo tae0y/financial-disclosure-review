@@ -230,14 +230,17 @@ def generate_persona_explanation(
     ask=ask,
     profile_id: str | None = None,
     profiles_path: str | Path | None = None,
+    profile: dict | None = None,
 ) -> dict:
     """독자 맞춤 설명 생성. PersonaExplanation의 모든 필드를 돌려준다.
 
     {status, reason, profile, fact_ledger, units, html, controls}. 모델 호출은 최대 한 번(구조가
-    깨진 답에 한해 한 번 재질문)이며, 검증에 걸린 단위는 원문 줄로 남는다.
+    깨진 답에 한해 한 번 재질문)이며, 검증에 걸린 단위는 원문 줄로 남는다. `profile`이 주어지면
+    (choose_profile의 결과) 다시 고르지 않고 그대로 쓴다: 재시도도 같은 독자로 설명한다.
     """
-    wanted_profile = profile_id if profile_id is not None else ctx.persona_profile
-    profile = resolve_profile(wanted_profile, profiles_path)
+    if profile is None:
+        wanted_profile = profile_id if profile_id is not None else ctx.persona_profile
+        profile = resolve_profile(wanted_profile, profiles_path)
     ledger = build_fact_ledger(cards)
     if not sources:
         return _fallback("판정 불가", "설명할 원문 출처(sources)가 없음", profile, ledger, sources)

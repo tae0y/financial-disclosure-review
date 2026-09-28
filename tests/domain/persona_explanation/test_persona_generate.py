@@ -10,6 +10,8 @@ from financial_disclosure_review.domain.persona_explanation.generate import (
     CONTROLS,
     generate_persona_explanation,
 )
+from financial_disclosure_review.domain.persona_explanation.profiles import resolve_profile
+from financial_disclosure_review.domain.persona_explanation.prompts import PERSONA_TASK
 from tests.domain.persona_explanation.persona_fixtures import (
     CLASSIFICATION,
     FIRSTCARD,
@@ -325,3 +327,41 @@ def test_only_this_modules_feedback_reaches_the_prompt():
             "requested_change": "일부 가맹점 제외를 남기세요",
         }
     ]
+
+
+def test_a_given_profile_is_used_as_is_and_its_reader_reaches_the_prompt(tmp_path):
+    fixture = load_persona_fixture("threshold_exclusion")
+    profile = copy.deepcopy(resolve_profile(LOWFIN, PROFILES))
+    profile["id"] = "nemotron:" + "0" * 32
+    profile["attributes"]["reader"] = "74세 여자 · 학력 초등학교 · 직업 무직\n가상의 인물입니다."
+    fake = scripted_ask({"items": fixture["drafts"]["lowfin"]})
+    result = generate_persona_explanation(
+        fixture["sources"],
+        fixture["cards"],
+        CLASSIFICATION,
+        fake_ctx(),
+        ask=fake,
+        profile_id="unknown-id-that-would-be-invalid",
+        profiles_path=tmp_path / "missing.yaml",
+        profile=profile,
+    )
+    assert result["profile"] is profile
+    assert result["status"] == "완료"
+    assert fake.data[0]["profile"]["reader"] == profile["attributes"]["reader"]
+
+
+def test_an_invalid_given_profile_keeps_the_original_text():
+    fixture = load_persona_fixture("threshold_exclusion")
+    profile = {
+        **resolve_profile(LOWFIN, PROFILES),
+        "status": "무효",
+        "reason": "템플릿 버전 불일치",
+    }
+    result, fake = run(fixture, fixture["drafts"]["lowfin"], profile=profile)
+    assert result["status"] == "원문 대체" and "템플릿 버전 불일치" in result["reason"]
+    assert fake.calls == []
+
+
+def test_the_task_limits_the_reader_sketch_to_register():
+    assert "reader" in PERSONA_TASK
+    assert "자격" in PERSONA_TASK.split("reader", 1)[1]

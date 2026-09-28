@@ -43,6 +43,12 @@ class Context:
     case_rerank: bool = False
     # Reader profile id from assets/persona_profiles.yaml; empty picks the file's default.
     persona_profile: str = ""
+    # Reader wanted in free text (Korean); a small tool loop turns it into dataset filters.
+    persona_request: str = ""
+    # Reader wanted as dataset filters (domain/persona_explanation/dataset.Filters fields).
+    persona_attributes: dict | None = None
+    # One exact dataset row; wins over persona_attributes and persona_request.
+    persona_uuid: str = ""
     # A deployment can narrow the public sites a review may reach. This setting travels with the
     # graph so the browser checks the same allow-list again for every redirect target.
     allowed_hosts: tuple[str, ...] = ()
