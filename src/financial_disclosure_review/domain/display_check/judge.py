@@ -373,6 +373,13 @@ def judge_display(page: Mapping[str, Any], classification: Mapping[str, Any], ct
                 f" {measures[code]['visual_unresolved']}; a pass would be unproven."
                 f" Model reason: {reason}"
             )
+        if verdict == "적합" and code == "E02" and measures[code]["size_unmeasured"]:
+            verdict = "판정 불가"
+            reason = (
+                f"text of {measures[code]['size_unmeasured']} is not drawn as text (font-size"
+                " below 1px, usually a picture of the words), so its size cannot be measured"
+                f" and a pass would be unproven. Model reason: {reason}"
+            )
         if verdict == "적합" and flagged_images and code != "E07":
             verdict = "판정 불가"
             reason = (

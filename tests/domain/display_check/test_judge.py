@@ -201,3 +201,17 @@ def test_the_model_call_cap_is_enforced(monkeypatch, db_path):
         judge.judge_display(
             page, REVOLVING, Context(model="fake", db_path=db_path, display_max_model_calls=0)
         )
+
+
+@pytest.mark.parametrize("verdict", ["적합", "부적합"])
+def test_undrawn_text_can_neither_pass_nor_fail_the_size_rule(monkeypatch, ctx, verdict):
+    page = make_render_page(notice_px=0.0)
+    by_text = ids_of(page)
+    ask = fake_model(
+        labels_for(by_text),
+        [{"code": "E02", "verdict": verdict, "block_ids": [by_text[NOTICE]], "reason": "모델"}],
+    )
+    monkeypatch.setattr(judge, "ask", ask)
+    row = judge.judge_display(page, REVOLVING, ctx)["items"][0]
+    assert row["code"] == "E02"
+    assert row["verdict"] == "판정 불가", row

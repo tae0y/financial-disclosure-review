@@ -116,3 +116,12 @@ def test_item_blocks_for_e07_leads_with_the_labeled_hidden_blocks():
     ids = [block["id"] for block in item_blocks("E07", blocks, labels, hidden)]
     assert ids[0] == by_text[FEE]
     assert TITLE not in ids
+
+
+def test_undrawn_text_is_named_as_unmeasured_and_kept_out_of_the_size_threshold():
+    blocks, _ = display_blocks(make_render_page(notice_px=0.0))
+    notice = next(block for block in blocks if block["text"] == NOTICE)
+    stats = group_measures(blocks, [notice["id"]], 8.0)
+    assert stats["below_min_pt"] == []
+    assert stats["size_unmeasured"] == [notice["id"]]
+    assert stats["min_pt"] is None

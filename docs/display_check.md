@@ -38,8 +38,10 @@ that line.
 
 Both are stated in `judgments["assumptions"]` on every run, so a reader sees what was applied.
 
-- **E02, px to pt.** The rubric says 9pt on A4. A web page has no paper size, so the node uses
-  computed CSS px × 0.75 ≥ 9pt at the captured viewport.
+- **E02, px to pt.** The rubric says 8pt on A4 (여신금융협회 광고규정 세부지침, "A4용지 기준
+  8포인트 이상"). A web page has no paper size, so the node uses computed CSS px × 0.75 ≥ 8pt at
+  the captured viewport. The threshold is read from the rubric criterion at run time, not
+  hard-coded.
 - **Contrast threshold.** The rubric names no ratio. The node uses WCAG 2.1 SC 1.4.3 AA: 4.5:1
   for normal text, 3.0:1 for large text (≥ 24px, or ≥ 18.66px and weight ≥ 700).
 
@@ -58,6 +60,12 @@ into a false `적합`:
   mandatory items' criteria — otherwise it is dropped and recorded in `dropped_image_flags`.
 - A snapshot taken before rendered crops existed is `legacy_capture`: E04 and E05 are
   `판정 불가` and the page has to be preprocessed again.
+
+- Text set below 1px is not drawn at all — the image-replacement pattern, where the words stay
+  in the DOM for screen readers and the reader sees a picture of them. Such a block is flagged
+  `undrawn_text`, gets no pt value, and is listed in `size_unmeasured`: E02 cannot cite it for a
+  `부적합`, and while it stands an E02 `적합` becomes `판정 불가`. Found on 2026-09-28, when a
+  LOCA CLASSIC review measured the image-replaced product name as 0pt and failed E02 on it.
 
 `H` blocks prove nothing either. An E07 `부적합` must cite a block revealed by a user action,
 because a block that was never visible in any capture says nothing about what a reader could see.
