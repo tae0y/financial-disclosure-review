@@ -153,14 +153,19 @@ def visit(sess: PageSession, url: str, ctx: Context, rules_dir: Path, chat_facto
         sess.viewport_key(),
     )
     rule["saved_at"] = datetime.now().isoformat(timespec="seconds")
-    save_rule(path, rule)
-    sess.log(
-        "rule_saved",
-        path=str(path),
-        validation="passed",
-        includes=len(rule["include"]),
-        states=content["states"],
-    )
+    # The collected content is already valid; a rule that cannot be written (disk, path length)
+    # only costs the next visit a rediscovery, so it must not fail this review.
+    try:
+        save_rule(path, rule)
+        sess.log(
+            "rule_saved",
+            path=str(path),
+            validation="passed",
+            includes=len(rule["include"]),
+            states=content["states"],
+        )
+    except OSError as error:
+        sess.log("rule_not_saved", path=str(path), error=str(error)[:200])
     final = sess.final_coverage or {"status": "완료", "stop_reason": "full_coverage"}
     return finish(
         sess,

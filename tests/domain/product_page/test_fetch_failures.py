@@ -234,3 +234,22 @@ def test_budget_exhausted_comes_back_as_an_incomplete_review(monkeypatch, tmp_pa
     page = fetch_product_page(URL, Context(data_dir=str(tmp_path)))
     assert page["status"] == "조사 불충분"
     assert page["stop_reason"] == "budget_exhausted"
+
+
+def test_a_rule_that_cannot_be_written_does_not_fail_the_review(monkeypatch, tmp_path):
+    """2026-09-29 실측: 긴 경로 때문에 규칙 파일 저장이 실패하자 수집한 본문까지 버리고 그래프가
+    멈췄습니다. 규칙은 다음 방문의 재사용용일 뿐이므로 저장 실패는 기록만 남깁니다."""
+    rule = {"include": ["main"], "product_name": "카드", "summary": "", "evidence": []}
+    monkeypatch.setattr(fetch_module, "discover", lambda sess, ctx, chat=None: dict(rule))
+    content = {"pieces": [{"text": "본문"}], "states": 1, "html": "<main>본문</main>"}
+    monkeypatch.setattr(fetch_module, "finalize_rule", lambda sess, proposal: (proposal, content))
+    monkeypatch.setattr(fetch_module, "validate_output", lambda rule, content: [])
+
+    def unwritable(path, rule):
+        raise FileNotFoundError(2, "No such file or directory", str(path))
+
+    monkeypatch.setattr(fetch_module, "save_rule", unwritable)
+    sess = FakeSession()
+    result = visit(sess, URL, Context(data_dir=str(tmp_path)), tmp_path / "rules")  # type: ignore[arg-type]
+    assert result["html"] == "<main>본문</main>"
+    assert any(kind == "rule_not_saved" for kind, _ in sess.logged)
