@@ -14,7 +14,7 @@ def route_after_preprocess(state: State) -> str:
 def route_after_classify(state: State) -> str:
     if state["classification"].get("product_type") in NON_REVIEW:
         return "end_report"
-    return "search_cases"
+    return "extract_evidence_cards"
 
 
 def route_after_verify(state: State) -> str:

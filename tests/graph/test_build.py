@@ -23,6 +23,8 @@ def test_the_graph_compiles_with_every_node_and_edge():
     assert {
         "preprocess_product_page",
         "classify_type",
+        "extract_evidence_cards",
+        "retrieve_reference_cases",
         "judge_display_method",
         "generate_plain_lang",
         "judge_explanation_duty",
@@ -36,6 +38,19 @@ def initial(url: str = "https://example.test/product") -> State:
     state = empty_state()
     state["product_page"] = {"url": url}
     return state
+
+
+def fake_cards(page, classification, ctx) -> dict:
+    """No cards: the reference-case node then skips without touching any DB or corpus."""
+    return {
+        "status": "카드 없음",
+        "reason": "테스트",
+        "sources": [],
+        "cards": [],
+        "rejected": [],
+        "coverage_gaps": [],
+        "model_calls": 0,
+    }
 
 
 def fake_plain(page, classification, feedback, ctx) -> dict:
@@ -89,12 +104,15 @@ def test_a_reviewable_page_runs_through_to_the_report(monkeypatch, revolving):
         "judge_display",
         lambda page, classification, ctx: {"items": [], "judgments": {"status": "완료"}},
     )
+    monkeypatch.setattr(nodes, "extract_cards", fake_cards)
     monkeypatch.setattr(nodes, "generate_plain", fake_plain)
     monkeypatch.setattr(nodes, "judge_explanation", fake_duty)
     final = build_review_graph().invoke(initial(), context=Context(model="fake"))
 
     assert final["classification"] == REVOLVING_CLASSIFICATION
     assert final["display_check"]["judgments"]["status"] == "완료"
+    assert final["evidence_cards"]["status"] == "카드 없음"
+    assert final["reference_cases"]["status"] == "건너뜀"
     assert final["plain_language"]["accepted_blocks"]
     assert final["explanation_duty_check"]["original"]
     assert final["verification"]["passed"] is True, final["verification"]

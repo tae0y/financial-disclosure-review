@@ -275,6 +275,9 @@ def build_report(
     stop: Mapping[str, Any] | None = None,
     bindings: Mapping[str, str] | None = None,
     previous_cost: Mapping[str, Any] | None = None,
+    *,
+    cards: Mapping[str, Any] | None = None,
+    references: Mapping[str, Any] | None = None,
 ) -> dict:
     """The Report fields; `stop` is why the run ended, `previous_cost` carries cost on rebuild."""
     stop = stop or {}
@@ -315,7 +318,11 @@ def build_report(
         "violations": sum(1 for row in findings if row.get("severity") == SEVERITY_VIOLATION),
         "shortfalls": sum(1 for row in findings if row.get("severity") == SEVERITY_SHORTFALL),
     }
+    cards, references = cards or {}, references or {}
+    summary["evidence_cards"] = len(cards.get("cards") or [])
+    summary["reference_links"] = len(references.get("links") or [])
     limits = _limits(display, plain, duty)
+    limits += _card_limits(cards, duty)
     return {
         "status": status,
         "decision": decision,
@@ -339,6 +346,8 @@ def build_report(
             findings,
             limits,
             cost,
+            cards,
+            references,
         ),
     }
 
@@ -389,6 +398,127 @@ def _collection_section(page: Mapping[str, Any]) -> list[str]:
     return lines
 
 
+def _card_limits(cards: Mapping[str, Any], duty: Mapping[str, Any]) -> list[str]:
+    """Limits the evidence cards reveal: open gaps, and passes that rest only on unseen text."""
+    limits = []
+    gaps = [
+        g for g in cards.get("coverage_gaps") or [] if g.get("status") in ("open", "unresolved")
+    ]
+    if gaps:
+        kinds = sorted({str(g.get("kind")) for g in gaps})
+        limits.append(
+            f"조사 공백 {len(gaps)}건({', '.join(kinds)})은 누락의 증거가 아니라 확인하지 못한"
+            " 범위입니다."
+        )
+    sources = cards.get("sources") or []
+    unseen = [s["text"] for s in sources if s.get("visibility") in ("hidden", "unresolved")]
+    seen = [s["text"] for s in sources if s.get("visibility") not in ("hidden", "unresolved")]
+    shaky = sorted(
+        {
+            row.get("code", "")
+            for row in duty.get("original") or []
+            if row.get("verdict") == "적합"
+            and row.get("quote")
+            and any(_squash(row["quote"]) in _squash(text) for text in unseen)
+            and not any(_squash(row["quote"]) in _squash(text) for text in seen)
+        }
+    )
+    if shaky:
+        limits.append(
+            f"원문 적합 {len(shaky)}건({_codes(shaky)})의 인용은 화면에 보이지 않았거나 가시성을"
+            " 확인하지 못한 문장에만 있습니다. 사람이 화면에서 노출 여부를 확인해야 합니다."
+        )
+    return limits
+
+
+def _squash(text: str) -> str:
+    return "".join((text or "").split())
+
+
+def _cards_section(cards: Mapping[str, Any]) -> list[str]:
+    if not cards:
+        return []
+    reason = f" ({_clip(str(cards['reason']), 120)})" if cards.get("reason") else ""
+    lines = [
+        "## 11. 증거 카드와 조사 공백",
+        "",
+        f"- 상태: {cards.get('status', '-')}{reason}, 카드 {len(cards.get('cards') or [])}건,"
+        f" 검증 탈락 {len(cards.get('rejected') or [])}건",
+        "- 카드는 원문 인용과 출처(`dom-N`)가 코드로 재확인된 사실 단위이며, 법률 판단이 아닙니다.",
+        "",
+    ]
+    lines += _table(
+        [
+            [
+                card.get("id", ""),
+                card.get("kind", ""),
+                _clip(card.get("quote", ""), 70),
+                _clip(", ".join(card.get("qualifiers") or []), 40),
+                _clip(", ".join(card.get("exceptions") or []), 40),
+                card.get("source_id", ""),
+                card.get("visibility", ""),
+            ]
+            for card in cards.get("cards") or []
+        ],
+        ["카드", "종류", "인용", "조건", "예외", "출처", "가시성"],
+    )
+    lines += _table(
+        [
+            [
+                str(gap.get("id") or "-"),
+                str(gap.get("kind", "")),
+                str(gap.get("status", "")),
+                ", ".join(gap.get("card_ids") or []),
+            ]
+            for gap in cards.get("coverage_gaps") or []
+        ],
+        ["공백", "종류", "상태", "관련 카드"],
+    )
+    return lines
+
+
+def _references_section(references: Mapping[str, Any]) -> list[str]:
+    if not references:
+        return []
+    method = references.get("method") or {}
+    reason = f" ({_clip(str(references['reason']), 120)})" if references.get("reason") else ""
+    lines = [
+        "## 12. 참고 사례 (판정에 사용하지 않음)",
+        "",
+        "- 아래 사례는 비슷한 표시 유형을 찾아 참고로만 연결한 것입니다. 이 검토의 적합·부적합"
+        " 판정은 사례와 무관하게 루브릭과 페이지 인용으로만 정해졌습니다.",
+        f"- 상태: {references.get('status', '-')}{reason},"
+        f" 후보 {len(references.get('candidates') or [])}건,"
+        f" 임계값 {method.get('threshold', '-')}, 사례 출처 {method.get('cases_from', '-')}",
+        "",
+    ]
+    lines += _table(
+        [
+            [
+                link.get("case_id", ""),
+                ", ".join(link.get("card_ids") or []),
+                _clip(link.get("page_quote", ""), 60),
+                _clip(link.get("case_quote") or link.get("case_quote_note", ""), 60),
+                _clip("; ".join(link.get("material_difference") or []), 80),
+                (link.get("page_only_detectability") or "")
+                + (f" — {link['page_only_note']}" if link.get("page_only_note") else ""),
+                link.get("official_url", ""),
+            ]
+            for link in references.get("links") or []
+        ],
+        [
+            "사례",
+            "카드",
+            "페이지 인용",
+            "사례 인용",
+            "중요한 차이",
+            "페이지 단독 판단",
+            "공식 출처",
+        ],
+    )
+    return lines
+
+
 def _limits(
     display: Mapping[str, Any], plain: Mapping[str, Any], duty: Mapping[str, Any]
 ) -> list[str]:
@@ -435,6 +565,8 @@ def _markdown(
     findings: list[dict],
     limits: list[str],
     cost: Mapping[str, Any],
+    cards: Mapping[str, Any] | None = None,
+    references: Mapping[str, Any] | None = None,
 ) -> str:
     product = page.get("product") or {}
     lines: list[str] = [
@@ -619,6 +751,8 @@ def _markdown(
     ]
     lines += [f"- {limit}" for limit in limits]
     lines += ["", *_collection_section(page)]
+    lines += _cards_section(cards or {})
+    lines += _references_section(references or {})
     lines += [
         "---",
         "",

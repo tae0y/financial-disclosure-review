@@ -26,6 +26,8 @@ class Context:
     model: str = "gpt-5-mini"
     data_dir: str = field(default_factory=default_data_dir)
     db_path: str = field(default_factory=default_db_path)
+    # Checked-in yaml assets read at review time: case corpus, case risk kinds, reader profiles.
+    rubric_dir: str = field(default_factory=default_rubric_dir)
     display_max_model_calls: int = 5
     display_max_visual_crops: int = 12
     rules_subdir: str = "site_rules"

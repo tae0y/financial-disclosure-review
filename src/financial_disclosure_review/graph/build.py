@@ -7,12 +7,13 @@ from ..core.state import State
 from .nodes import (
     classify_type,
     end_report,
+    extract_evidence_cards,
     generate_plain_lang,
     judge_display_method,
     judge_explanation_duty,
     preprocess_product_page,
+    retrieve_reference_cases,
     retry_dispatch,
-    search_cases,
     verify_answer,
 )
 from .routes import (
@@ -27,7 +28,8 @@ def build_review_graph(checkpointer=None):
     builder = StateGraph(State, context_schema=Context)
     builder.add_node("preprocess_product_page", preprocess_product_page)
     builder.add_node("classify_type", classify_type)
-    builder.add_node("search_cases", search_cases)
+    builder.add_node("extract_evidence_cards", extract_evidence_cards)
+    builder.add_node("retrieve_reference_cases", retrieve_reference_cases)
     builder.add_node("judge_display_method", judge_display_method)
     builder.add_node("generate_plain_lang", generate_plain_lang)
     builder.add_node("judge_explanation_duty", judge_explanation_duty)
@@ -44,9 +46,10 @@ def build_review_graph(checkpointer=None):
     builder.add_conditional_edges(
         "classify_type",
         route_after_classify,
-        {"search_cases": "search_cases", "end_report": "end_report"},
+        {"extract_evidence_cards": "extract_evidence_cards", "end_report": "end_report"},
     )
-    builder.add_edge("search_cases", "judge_display_method")
+    builder.add_edge("extract_evidence_cards", "retrieve_reference_cases")
+    builder.add_edge("retrieve_reference_cases", "judge_display_method")
     builder.add_edge("judge_display_method", "generate_plain_lang")
     builder.add_edge("generate_plain_lang", "judge_explanation_duty")
     builder.add_edge("judge_explanation_duty", "verify_answer")

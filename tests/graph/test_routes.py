@@ -17,11 +17,11 @@ def test_a_non_review_result_still_gets_a_report(product_type):
 
 
 @pytest.mark.parametrize("product_type", sorted(PAGE_TYPE_BY_PRODUCT))
-def test_a_reviewable_product_goes_on_to_the_case_search(product_type):
-    """`search_cases` sits between the classification and the display check, so a reviewable
-    product goes there first and reaches `judge_display_method` by a fixed edge."""
+def test_a_reviewable_product_goes_on_to_the_evidence_cards(product_type):
+    """Evidence cards and reference cases sit between the classification and the display check,
+    so a reviewable product goes there first and reaches `judge_display_method` by fixed edges."""
     state = state_with(classification={"product_type": product_type})
-    assert route_after_classify(state) == "search_cases"
+    assert route_after_classify(state) == "extract_evidence_cards"
 
 
 def test_verify_goes_to_the_report_until_retries_are_built():

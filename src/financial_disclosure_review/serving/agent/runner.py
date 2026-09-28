@@ -26,6 +26,7 @@ def _context(settings: AgentSettings, model: str | None) -> Context:
         model=model or settings.model,
         data_dir=settings.data_dir,
         db_path=settings.resolved_db_path(),
+        rubric_dir=settings.rubric_dir,
         allowed_hosts=settings.allowed_hosts,
     )
 
@@ -38,6 +39,8 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
     duty = state.get("explanation_duty_check") or {}
     verification = state.get("verification") or {}
     classification = state.get("classification") or {}
+    cards = state.get("evidence_cards") or {}
+    references = state.get("reference_cases") or {}
 
     applied = [row for row in duty.get("items") or [] if row.get("applied")]
     view: dict[str, Any] = {
@@ -57,6 +60,20 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
             "agent_steps": len(page.get("agent_trace") or []),
         },
         "classification": dict(classification),
+        "evidence_cards": {
+            "status": cards.get("status"),
+            "cards": len(cards.get("cards") or []),
+            "rejected": len(cards.get("rejected") or []),
+            "open_gaps": sum(
+                1
+                for gap in cards.get("coverage_gaps") or []
+                if gap.get("status") in ("open", "unresolved")
+            ),
+        },
+        "reference_cases": {
+            "status": references.get("status"),
+            "links": len(references.get("links") or []),
+        },
         "display_check": {
             "status": (display.get("judgments") or {}).get("status"),
             "reason": (display.get("judgments") or {}).get("reason"),
@@ -91,6 +108,8 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
         view["product_page"]["coverage"] = page.get("coverage") or {}
         view["product_page"]["agent_trace"] = page.get("agent_trace") or []
         view["display_check"]["items"] = display.get("items") or []
+        view["evidence_cards"]["rows"] = cards.get("cards") or []
+        view["reference_cases"]["rows"] = references.get("links") or []
         view["plain_language"]["html"] = plain.get("html")
         view["plain_language"]["items"] = plain.get("items") or []
         view["plain_language"]["contract_error_rows"] = plain.get("contract_errors") or []

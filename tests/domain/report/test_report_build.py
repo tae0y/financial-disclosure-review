@@ -403,3 +403,63 @@ def test_a_completed_collection_adds_no_action():
     result = report(page=page)
     assert result["status"] == "검토 완료"
     assert not any(action.startswith("페이지 수집") for action in result["actions"])
+
+
+CARDS = {
+    "status": "완료",
+    "reason": "",
+    "sources": [
+        {"source_id": "dom-0", "text": "연회비 1만원", "visibility": "hidden"},
+        {"source_id": "dom-1", "text": "커피 10% 할인", "visibility": "default_visible"},
+    ],
+    "cards": [
+        {
+            "id": "c1",
+            "kind": "fee_claim",
+            "quote": "연회비 1만원",
+            "qualifiers": [],
+            "exceptions": [],
+            "numbers": ["1만원"],
+            "source_id": "dom-0",
+            "visibility": "hidden",
+        }
+    ],
+    "rejected": [],
+    "coverage_gaps": [{"kind": "hidden_text", "card_ids": ["c1"], "status": "unresolved"}],
+}
+REFERENCES = {
+    "status": "완료",
+    "method": {"threshold": 10.0, "cases_from": "db"},
+    "candidates": [{"case_id": "case.x"}],
+    "links": [
+        {
+            "case_id": "case.x",
+            "card_ids": ["c1"],
+            "page_quote": "연회비 1만원",
+            "case_quote": "",
+            "case_quote_note": "원문 재확인 필요",
+            "material_difference": ["record_type 지적사례"],
+            "page_only_detectability": "partial",
+            "page_only_note": "페이지 단독 판단 불가",
+            "official_url": "https://example.test/case",
+        }
+    ],
+}
+
+
+def test_cards_and_reference_cases_get_their_own_report_only_sections():
+    result = report(cards=CARDS, references=REFERENCES)
+    markdown = result["markdown"]
+    assert "## 11. 증거 카드와 조사 공백" in markdown
+    assert "## 12. 참고 사례 (판정에 사용하지 않음)" in markdown
+    assert "페이지 단독 판단 불가" in markdown and "원문 재확인 필요" in markdown
+    assert result["summary"]["evidence_cards"] == 1
+    assert result["summary"]["reference_links"] == 1
+    # A reference link never changes the verdict: the clean run still reads as done.
+    assert result["status"] == "검토 완료"
+
+
+def test_a_pass_that_rests_only_on_hidden_text_is_named_as_a_limit():
+    """원문 적합의 인용이 화면에 보이지 않은 문장에만 있으면, 사람이 노출 여부를 확인해야 합니다."""
+    result = report(cards=CARDS)
+    assert any("설명01" in limit and "보이지 않았거나" in limit for limit in result["limits"])

@@ -29,11 +29,24 @@ class Classification(TypedDict, total=False):
     reason: Any
 
 
-class CaseSearch(TypedDict, total=False):
-    queries: Any
-    hits: Any
+class EvidenceCards(TypedDict, total=False):
     status: Any
     reason: Any
+    sources: Any
+    cards: Any
+    rejected: Any
+    coverage_gaps: Any
+    model_calls: Any
+
+
+class ReferenceCases(TypedDict, total=False):
+    """Report-only references: never read by a judging node."""
+
+    status: Any
+    reason: Any
+    method: Any
+    candidates: Any
+    links: Any
 
 
 class DisplayCheck(TypedDict, total=False):
@@ -82,7 +95,8 @@ class Report(TypedDict, total=False):
 class State(TypedDict):
     product_page: ProductPage
     classification: Classification
-    case_search: CaseSearch
+    evidence_cards: EvidenceCards
+    reference_cases: ReferenceCases
     display_check: DisplayCheck
     plain_language: PlainLanguage
     explanation_duty_check: ExplanationDutyCheck

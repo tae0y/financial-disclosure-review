@@ -1,21 +1,26 @@
 """The graph nodes. Each pulls what it needs from State and calls one domain entry point."""
 
+from pathlib import Path
 from typing import Any
 
 from langgraph.runtime import Runtime
 
 from ..core.context import Context
 from ..core.state import State
+from ..core.text import norm
 from ..core.threads import run_in_thread
 from ..domain.classification import classify_page
 from ..domain.display_check import judge_display
+from ..domain.evidence_cards import extract_evidence_cards as extract_cards
 from ..domain.explanation_duty_check import judge_explanation
 from ..domain.plain_language import generate_plain, unjudged_plain
 from ..domain.product_page import fetch_product_page
 from ..domain.report import build_report
 from ..domain.verification import verify
+from ..knowledge.build_cases import CASE_CORPUS_FILE
+from ..knowledge.reference import RISK_KINDS_FILE
+from ..knowledge.reference import retrieve_reference_cases as retrieve_cases
 from ..knowledge.rubrics import rubric_bindings
-from ..knowledge.search import search_cases_for
 from .retry import MAX_LOOPS, RETRY_KEYS, escalation, plan_retry
 
 
@@ -33,22 +38,44 @@ def classify_type(state: State, runtime: Runtime[Context]) -> dict:
     return {"classification": classification}
 
 
-def search_cases(state: State, runtime: Runtime[Context]) -> dict:
-    """Related sanction/dispute cases for the classified product; reference data, unread so far."""
-    print("[search_cases]")
-    cases: dict[str, Any] = dict(state.get("case_search") or {})
-    classification = state.get("classification") or {}
-    if not classification.get("product_type"):
-        cases.update(
-            queries=[],
-            hits=[],
-            status="판정 불가",
-            reason="classification is empty; run classify_type first",
+def extract_evidence_cards(state: State, runtime: Runtime[Context]) -> dict:
+    """Claims, conditions, exceptions and warnings as quoted cards; coverage gaps stay gaps."""
+    print("[extract_evidence_cards]")
+    cards: dict[str, Any] = dict(state.get("evidence_cards") or {})
+    cards.update(
+        extract_cards(state["product_page"], state.get("classification") or {}, runtime.context)
+    )
+    return {"evidence_cards": cards}
+
+
+def retrieve_reference_cases(state: State, runtime: Runtime[Context]) -> dict:
+    """Report-only case references for the page's cards; no judging node reads the result."""
+    print("[retrieve_reference_cases]")
+    ctx = runtime.context
+    refs: dict[str, Any] = dict(state.get("reference_cases") or {})
+    rubric_dir = Path(ctx.rubric_dir)
+    refs.update(
+        retrieve_cases(
+            (state.get("evidence_cards") or {}).get("cards") or [],
+            state.get("classification") or {},
+            ctx.db_path,
+            risk_kinds_path=rubric_dir / RISK_KINDS_FILE,
+            corpus_path=rubric_dir / CASE_CORPUS_FILE,
+            rerank=ctx.case_rerank,
         )
-    else:
-        product = (state.get("product_page") or {}).get("product") or {}
-        cases.update(search_cases_for(product, classification, runtime.context.db_path))
-    return {"case_search": cases}
+    )
+    return {"reference_cases": refs}
+
+
+def card_ids_for(quotes: list[str], cards: list[dict]) -> list[str]:
+    """Evidence cards whose quote overlaps one of a verdict's quotes, either way round."""
+    wanted = [norm(q) for q in quotes if norm(q)]
+    ids = []
+    for card in cards:
+        quote = norm(card.get("quote", ""))
+        if quote and any(quote in q or q in quote for q in wanted):
+            ids.append(card["id"])
+    return ids
 
 
 def judge_display_method(state: State, runtime: Runtime[Context]) -> dict:
@@ -73,6 +100,11 @@ def judge_display_method(state: State, runtime: Runtime[Context]) -> dict:
         )
     else:
         check.update(judge_display(page, classification, runtime.context))
+        cards = (state.get("evidence_cards") or {}).get("cards") or []
+        check["items"] = [
+            {**item, "card_ids": card_ids_for(item.get("quotes") or [], cards)}
+            for item in check.get("items") or []
+        ]
     return {"display_check": check}
 
 
@@ -151,7 +183,7 @@ def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
 
 def verify_answer(state: State, runtime: Runtime[Context]) -> dict:
     print("[verify_answer]")
-    previous = state.get("verification") or {}
+    previous: dict[str, Any] = dict(state.get("verification") or {})
     # verify() answers for this round only; the retry bookkeeping `retry_dispatch` wrote on
     # earlier rounds is kept so the report can show how many rounds were spent and why.
     kept = {key: previous[key] for key in RETRY_KEYS if key in previous}
@@ -190,6 +222,8 @@ def end_report(state: State, runtime: Runtime[Context]) -> dict:
             {**escalation(state.get("verification") or {}), "max_loops": MAX_LOOPS},
             bindings=rubric_bindings(runtime.context.db_path),
             previous_cost=report.get("cost"),
+            cards=state.get("evidence_cards") or {},
+            references=state.get("reference_cases") or {},
         )
     )
     return {"report": report}
