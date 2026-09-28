@@ -57,10 +57,72 @@ The guards live in the tools, never in the prompt.
 - Caps: `max_turns` model turns, `max_visits` page loads, 30 clicks per expand call.
 
 `submit_rule` never writes the rule file. It validates the proposal against the live page and,
-on the first clean proposal, nudges the agent twice — once if `inspect_page` reported expandable
-controls that were never tried, and once with a sample of the text blocks left outside the
+on the first clean proposal, nudges the agent twice — once if an open `unexpanded_control` gap
+exists and no expand was ever tried, and once with a sample of the text blocks left outside the
 selection. Only code saves the rule, after `finalize_rule` reloads the page and replays the
 proposal exactly as a reuse visit would.
+
+## Stage 1: coverage gaps and the bounded interaction loop
+
+`domain/product_page/coverage.py` measures the live page (`observe`) and turns that measurement
+into a persistent, per-visit list of gaps (`derive_gaps`, stored on `PageSession.gaps`). Gaps are
+lexical signals that steer exploration -- they never become a verdict.
+
+- `unexpanded_control`: a control the safety rules would actually let the agent click
+  (`reject_reason` on a live `GUARD_JS` read), outside chrome, not yet targeted by a successful
+  `interact expand`.
+- `hidden_text`: a DOM text block hidden by default. Closes once it is no longer hidden in a
+  later `observe()`; starts `unresolved` when no actionable control exists anywhere on the page.
+- `benefit_without_condition`: a visible benefit/rate signal with no visible condition/limit
+  signal anywhere on the page. Reported only -- never closes the exploration and never changes
+  `product_page.status`.
+- `image_only`: an `img` whose `alt` reads like disclosure wording. Always `unresolved` -- text
+  in an image cannot be measured.
+
+`interact` (`tools.tool_interact`) now requires `gap_id` and `expected_evidence` on
+scroll/expand/open_link (`go_back` needs neither); a missing rationale, a repeated
+`(action, selector)` on expand/open_link, or an element `reject_reason` would refuse are all
+returned as `{"blocked": true, "blocked_reason": "..."}` and logged as such in `agent_trace`. A
+repeat immediately closes exploration (`repeated_action`); scroll is exempt from the repeat
+check. `expand` may only click an element with `aria-expanded`/`aria-controls`, `<summary>`,
+`role=tab`, an `EXPANDER_CLASS` match, or an in-page anchor -- a plain `<button>` with none of
+those is refused as "not an expander". `open_link` compares the full origin (scheme, host, port),
+not just the hostname. While a click, `open_link` or `go_back` is running
+(`PageSession.interacting_window`), every non-GET/HEAD sub-request is aborted and logged as
+`blocked_request`; the initial page load is unaffected.
+
+Exploration closes (further `interact` calls are refused with `"exploration closed: <reason>;
+submit_rule now"`, while `inspect_page`/`probe_selector`/`submit_rule` keep working) on the first
+of: a repeated action (`repeated_action`), `Context.max_interactions` interactions reached
+(`interaction_budget`, default 8), `Context.max_no_progress` consecutive interactions with no new
+visible text (`no_new_evidence`, default 2), the last 4 model turns starting (`turn_budget`), or
+no actionable open gap remaining (`full_coverage`). `Context` does not yet declare
+`max_interactions`/`max_no_progress`; `coverage.max_interactions`/`max_no_progress` read them via
+`getattr` with the Stage 1 defaults, so adding the fields later needs no code change here.
+
+On an accepted `submit_rule`, `coverage.finalize_coverage` evaluates every `unexpanded_control`/
+`hidden_text` gap that falls inside the submitted include/exclude regions. None left ->
+`product_page.status = "완료"`, `stop_reason = "full_coverage"`. Some left -> `"조사 불충분"`,
+with `stop_reason` = the reason exploration closed, else `"no_viable_control"` (no untried
+control among what remains) or `"submitted_with_gaps"`. `benefit_without_condition` and
+`image_only` gaps are reported but never change `status`.
+
+`fetch_product_page` never raises for a page or agent failure. It always returns `{url, product,
+actions, snapshots, html, status, stop_reason, error, coverage, agent_trace}`. `status` is one of
+`완료`, `조사 불충분`, `수집 실패`; `stop_reason` is one of `rule_reused`, `full_coverage`,
+`submitted_with_gaps`, `no_viable_control`, `no_new_evidence`, `repeated_action`, `turn_budget`,
+`interaction_budget`, `max_turns`, `budget_exhausted`, `fetch_error`, `visit_cap`, `invalid_url`,
+`replay_failed`. `coverage` is `{before, after, gaps}` (count dicts plus the gap list); `html` is
+`""` whenever `status != "완료"`. `discover(sess, ctx, chat=None)` and
+`fetch_product_page(url, ctx, chat_factory=None)` accept an injected chat (matching
+`llm.client.ToolChat`'s `system`/`user`/`tool_result`/`turn` interface) so tests can script the
+model offline; see `tests/domain/product_page/fake_chat.py` and `test_coverage.py`.
+
+Each `agent_trace` entry is `{turn, tool, args, rationale: {gap_id, expected_evidence}, result,
+blocked, blocked_reason, new_evidence, coverage_before, coverage_after}`. `result` is exactly the
+(now 12,000-character, up from 300) string the model was shown for that call, with `html_path`
+and `visual_samples` removed and any base64-looking run over 200 characters replaced by
+`<omitted>`, so two runs of the same script produce an identical trace.
 
 ## Snapshots
 

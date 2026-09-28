@@ -3,6 +3,7 @@
 import base64
 import re
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -169,6 +170,7 @@ class VisitCapReached(RuntimeError):  # noqa: N818 - moved from the notebook unr
 
 RISKY_TEXT = re.compile(
     r"신청|발급|로그인|가입|제출|다운로드|결제|주문"
+    r"|찜|좋아요|담기|비교|공유|상담|알림|전화|쿠폰|응모|참여|동의"
     r"|apply|log ?in|sign ?(in|up)|submit|download|order|pay",
     re.I,
 )
@@ -210,9 +212,11 @@ def reject_reason(info: dict) -> str:
         return "apply/login/submit/download wording"
     if info["tag"] == "a" and not in_page_link:
         return "navigation link (use open_link)"
+    # aria-expanded/aria-controls/role=tab/<summary> are already covered by `expandable`
+    # (see GUARD_JS below). A plain <button> or <div> with none of those markers is not an
+    # expander: clicking it could trigger an unrelated action (wishlist, compare, share, ...).
     if not (
         info["expandable"]
-        or info["tag"] in ("button", "summary")
         or (info["tag"] == "a" and in_page_link)
         or EXPANDER_CLASS.search(info["cls"])
     ):
@@ -251,6 +255,19 @@ class PageSession:
         self.controls_seen, self.expand_tried, self.nudged = 0, False, False
         self.outside_reviewed = False
         self.run_id = datetime.now().strftime("%y%m%d-%H%M%S")
+        # Coverage-gap bookkeeping (Stage 1): gaps persist for the life of one visit.
+        self.gaps: list[dict] = []
+        self.exploration_closed = ""
+        self.interactions_count = 0
+        self.no_progress_count = 0
+        self.tried_actions: set[tuple[str, str]] = set()
+        self.tried_expand: set[str] = set()
+        self.agent_trace: list[dict] = []
+        self.last_action_note = ""
+        self.coverage_before: dict = {}
+        self.coverage_after: dict = {}
+        self.final_coverage: dict | None = None
+        self.interacting = False
 
     def close(self):
         self.browser.close()
@@ -265,7 +282,17 @@ class PageSession:
         except PlaywrightError:
             main_frame = False
         if not main_frame:
-            route.continue_()
+            # While a click or open_link/go_back is in progress, only GET/HEAD sub-requests may
+            # leave the browser -- a click must never fire a POST (wishlist, like, apply, ...).
+            # The initial page render is unaffected because `interacting` starts False.
+            if self.interacting and request.method not in ("GET", "HEAD"):
+                self.blocked.append(request.url)
+                self.log("blocked_request", url=request.url, method=request.method)
+                route.abort()
+                return
+            # fallback() (not continue_()) so a route registered on the browser context by a
+            # test can still fulfil the request with local content.
+            route.fallback()
             return
 
         # A redirect is another main-frame request. Validate it before it leaves the browser,
@@ -282,7 +309,16 @@ class PageSession:
             self.log("blocked_navigation", url=request.url, reason="not requested by the reviewer")
             route.abort()
             return
-        route.continue_()
+        route.fallback()
+
+    @contextmanager
+    def interacting_window(self):
+        """Non-GET/HEAD sub-requests are aborted while a guarded click or navigation runs."""
+        self.interacting = True
+        try:
+            yield
+        finally:
+            self.interacting = False
 
     def viewport(self) -> dict:
         return dict(self.page.viewport_size)
@@ -430,29 +466,34 @@ class PageSession:
         locator = self.page.locator("css=" + selector)
         total, _ = self.match_count(selector)
         report = {"matched": total, "clicked": 0, "new_states": 0, "skipped": []}
-        for i in range(min(total, MAX_CLICKS)):
-            element = locator.nth(i)
-            try:
-                info = element.evaluate(GUARD_JS)
-            except PlaywrightError as error:
-                report["skipped"].append({"index": i, "reason": str(error).splitlines()[0][:60]})
-                continue
-            reason = reject_reason(info)
-            if reason:
-                report["skipped"].append({"index": i, "reason": reason, "text": info["text"][:30]})
-                continue
-            try:
-                element.scroll_into_view_if_needed(timeout=2_000)
-                element.click(timeout=3_000)
-                self.page.wait_for_timeout(300)
-            except PlaywrightError as error:
-                report["skipped"].append(
-                    {"index": i, "reason": "click failed: " + str(error).splitlines()[0][:60]}
-                )
-                continue
-            report["clicked"] += 1
-            if self.snapshot_if_changed(kind, f"expand {selector}[{i}] {info['text'][:20]!r}"):
-                report["new_states"] += 1
+        with self.interacting_window():
+            for i in range(min(total, MAX_CLICKS)):
+                element = locator.nth(i)
+                try:
+                    info = element.evaluate(GUARD_JS)
+                except PlaywrightError as error:
+                    report["skipped"].append(
+                        {"index": i, "reason": str(error).splitlines()[0][:60]}
+                    )
+                    continue
+                reason = reject_reason(info)
+                if reason:
+                    report["skipped"].append(
+                        {"index": i, "reason": reason, "text": info["text"][:30]}
+                    )
+                    continue
+                try:
+                    element.scroll_into_view_if_needed(timeout=2_000)
+                    element.click(timeout=3_000)
+                    self.page.wait_for_timeout(300)
+                except PlaywrightError as error:
+                    report["skipped"].append(
+                        {"index": i, "reason": "click failed: " + str(error).splitlines()[0][:60]}
+                    )
+                    continue
+                report["clicked"] += 1
+                if self.snapshot_if_changed(kind, f"expand {selector}[{i}] {info['text'][:20]!r}"):
+                    report["new_states"] += 1
         report["skipped"] = report["skipped"][:6]
         if self.blocked:
             report["blocked_navigation"] = self.blocked[-3:]

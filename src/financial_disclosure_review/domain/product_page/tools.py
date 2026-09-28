@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from ...core.text import norm, short
 from ...llm.client import tool_spec
+from . import coverage
 from .html import CHROME_TAGS, extract_pieces, outline_page, outside_blocks
 from .session import (
     DOWNLOAD_EXT,
@@ -20,7 +21,9 @@ from .session import (
 
 
 class InspectPage(BaseModel):
-    """Capped outline of the page: headings, regions, links, tabs, controls, CSS selectors."""
+    """Capped outline of the page: headings, regions, links, tabs, controls, CSS selectors,
+    hidden/visible text counts, candidate controls, benefit/warning/footnote samples and open
+    coverage gaps."""
 
 
 class ProbeSelector(BaseModel):
@@ -30,10 +33,14 @@ class ProbeSelector(BaseModel):
 
 
 class Interact(BaseModel):
-    """Act on the live page: scroll, expand (click tabs/accordions), open_link, or go_back."""
+    """Act on the live page: scroll, expand (click tabs/accordions), open_link, or go_back.
+    scroll/expand/open_link require gap_id and expected_evidence naming the coverage gap this
+    action investigates; go_back needs neither."""
 
     action: Literal["scroll", "expand", "open_link", "go_back"]
     selector: str = ""
+    gap_id: str = ""
+    expected_evidence: str = ""
 
 
 class Step(BaseModel):
@@ -64,6 +71,8 @@ def tool_inspect(sess: PageSession) -> dict:
     out = outline_page(sess.page.content())
     y, total = sess.page.evaluate("[window.scrollY, document.documentElement.scrollHeight]")
     sess.controls_seen = sum(not c["chrome"] for c in out["controls"])
+    obs = coverage.observe(sess)
+    coverage.derive_gaps(sess, obs)
     return {
         "url": sess.page.url,
         "on_linked_page": sess.on_linked,
@@ -71,6 +80,13 @@ def tool_inspect(sess: PageSession) -> dict:
         "page_height": total,
         "visits_used": sess.visits,
         "states_captured": len(sess.snapshots),
+        "hidden_text_blocks": obs["hidden_text_blocks"],
+        "visible_text_blocks": obs["visible_text_blocks"],
+        "candidate_controls": obs["candidate_controls"],
+        "benefit_samples": obs["benefit_samples"],
+        "warning_samples": obs["warning_samples"],
+        "footnote_samples": obs["footnote_samples"],
+        "open_gaps": coverage.public_gaps(sess),
         **out,
     }
 
@@ -113,46 +129,114 @@ def tool_probe(sess: PageSession, selectors: list[str]) -> dict:
     return {"viewport": sess.viewport(), "document": index.size, "results": results}
 
 
-def tool_interact(sess: PageSession, action: str, selector: str) -> dict:
-    if action == "scroll":
-        out = sess.scroll_step()
-        changed = sess.snapshot_if_changed("explore", "scroll")
-        return {**out, "new_state": bool(changed)}
-    if action == "expand":
-        sess.expand_tried = True
-        return sess.click_matches(selector, "explore")
-    if action == "open_link":
-        return open_link(sess, selector)
-    if action == "go_back":
-        sess.goto(sess.url)
-        sess.on_linked = False
-        return {"url": sess.page.url, "visits_used": sess.visits}
-    return {"error": f"unknown action {action!r}"}
+def _origin(url: str) -> tuple[str, str | None, int | None]:
+    parts = urlparse(url)
+    default_port = 443 if parts.scheme == "https" else 80 if parts.scheme == "http" else None
+    return parts.scheme, parts.hostname, parts.port or default_port
+
+
+def expand_action(sess: PageSession, selector: str) -> dict:
+    """Click every safe match; blocked only when nothing could be clicked for a safety reason."""
+    total, problem = sess.match_count(selector)
+    if problem:
+        return {"blocked": True, "blocked_reason": problem}
+    if total == 0:
+        return {"blocked": True, "blocked_reason": "no match"}
+    report = sess.click_matches(selector, "explore")
+    if report["clicked"] == 0 and report["matched"] > 0:
+        reasons = {
+            s["reason"] for s in report["skipped"] if not s["reason"].startswith("click failed")
+        }
+        if reasons:
+            return {"blocked": True, "blocked_reason": "; ".join(sorted(reasons)), **report}
+    return report
 
 
 def open_link(sess: PageSession, selector: str) -> dict:
-    """Open one same-site informational GET link. The current state is snapshotted first."""
-    locator = sess.page.locator("css=" + selector)
+    """Open one same-origin informational GET link. The current state is snapshotted first."""
     if sess.match_count(selector)[0] == 0:
-        return {"error": "no match"}
+        return {"blocked": True, "blocked_reason": "no match"}
+    locator = sess.page.locator("css=" + selector)
     element = locator.first
     info = element.evaluate(GUARD_JS)
     href = urljoin(sess.page.url, info["href"])
     target = urlparse(href)
     if info["tag"] != "a" or info["in_form"]:
-        return {"error": "only plain a[href] links outside forms may be opened"}
-    if target.scheme not in ("http", "https") or target.hostname != urlparse(sess.url).hostname:
-        return {"error": f"rejected: {href} is not an http(s) link on the same site"}
+        return {
+            "blocked": True,
+            "blocked_reason": "only plain a[href] links outside forms may be opened",
+        }
+    if target.scheme not in ("http", "https") or _origin(href) != _origin(sess.url):
+        return {"blocked": True, "blocked_reason": f"rejected: {href} is not the same origin"}
     if target.path.lower().endswith(DOWNLOAD_EXT) or RISKY_TEXT.search(info["text"]):
-        return {"error": f"rejected: {href} looks like a download or an apply/login action"}
+        return {
+            "blocked": True,
+            "blocked_reason": f"rejected: {href} looks like a download or an apply/login action",
+        }
     sess.snapshot_if_changed("explore", f"before leaving for {href}")
-    sess.goto(href)
+    with sess.interacting_window():
+        sess.goto(href)
     sess.on_linked = True
     return {
         "url": sess.page.url,
         "title": sess.page.title(),
         "text_head": sess.page.inner_text("body")[:600],
     }
+
+
+def tool_interact(sess: PageSession, args: dict) -> dict:
+    action = args.get("action", "")
+    selector = args.get("selector", "")
+    gap_id = args.get("gap_id", "")
+    expected_evidence = args.get("expected_evidence", "")
+
+    # go_back stays open after exploration closes: submit_rule needs the product page, so an
+    # agent left on a linked page must still be able to return and submit.
+    if sess.exploration_closed and action != "go_back":
+        return {
+            "blocked": True,
+            "blocked_reason": f"exploration closed: {sess.exploration_closed}; submit_rule now",
+        }
+    if action != "go_back" and not (gap_id and expected_evidence):
+        return {
+            "blocked": True,
+            "blocked_reason": (
+                "gap_id and expected_evidence are required for scroll/expand/open_link"
+            ),
+        }
+    if action in ("expand", "open_link") and (action, selector) in sess.tried_actions:
+        sess.exploration_closed = "repeated_action"
+        return {
+            "blocked": True,
+            "blocked_reason": f"repeated {action} {selector!r} gives no new information; "
+            "exploration is closed",
+        }
+
+    if action == "scroll":
+        out = sess.scroll_step()
+        changed = sess.snapshot_if_changed("explore", "scroll")
+        sess.last_action_note = "scroll"
+        return {**out, "new_state": bool(changed)}
+    if action == "expand":
+        result = expand_action(sess, selector)
+        if not result.get("blocked"):
+            sess.tried_actions.add((action, selector))
+            sess.tried_expand.add(selector)
+            sess.expand_tried = True
+            sess.last_action_note = f"interact expand {selector} (gap {gap_id})"
+        return result
+    if action == "open_link":
+        result = open_link(sess, selector)
+        if not result.get("blocked"):
+            sess.tried_actions.add((action, selector))
+            sess.last_action_note = f"interact open_link {selector} (gap {gap_id})"
+        return result
+    if action == "go_back":
+        sess.goto(sess.url)
+        sess.on_linked = False
+        sess.last_action_note = "go_back"
+        return {"url": sess.page.url, "visits_used": sess.visits}
+    return {"error": f"unknown action {action!r}"}
 
 
 def tool_submit(sess: PageSession, args: dict) -> dict:
@@ -212,12 +296,15 @@ def tool_submit(sess: PageSession, args: dict) -> dict:
         errors.append(
             f"probe_selector these include selectors first to see what they select: {unprobed}"
         )
-    if sess.controls_seen and not sess.expand_tried and not sess.nudged:
+    open_controls = [
+        g for g in sess.gaps if g["kind"] == "unexpanded_control" and g["status"] != "closed"
+    ]
+    if open_controls and not sess.tried_expand and not sess.nudged:
         sess.nudged = True
+        ids = [g["id"] for g in open_controls]
         errors.append(
-            f"inspect_page showed {sess.controls_seen} tab/expandable controls outside page"
-            " chrome and none was tried. Expand them and check for hidden product content,"
-            " or resubmit if none holds any."
+            f"open gaps {ids} name expandable controls that were never tried. Expand them and"
+            " check for hidden product content, or resubmit if none holds any."
         )
     if not errors and not sess.outside_reviewed:
         left = list(
@@ -236,24 +323,70 @@ def tool_submit(sess: PageSession, args: dict) -> dict:
     if errors:
         return {"accepted": False, "errors": errors}
     sess.pending = {"version": 1, **proposal.model_dump()}
+    sess.final_coverage = coverage.finalize_coverage(sess, proposal.include, proposal.exclude)
+    sess.last_action_note = "submit_rule accepted"
     return {"accepted": True, "regions": len(pieces), "chars": chars}
 
 
 def call_tool(sess: PageSession, name: str, args: dict) -> dict:
+    if name == "interact" and sess.exploration_closed and args.get("action") != "go_back":
+        return {
+            "blocked": True,
+            "blocked_reason": f"exploration closed: {sess.exploration_closed}; submit_rule now",
+            "new_evidence": False,
+            "coverage_before": {},
+            "coverage_after": {},
+        }
+    obs_before = coverage.observe(sess)
+    coverage.derive_gaps(sess, obs_before)
+    before = coverage.summarize(obs_before, sess)
+    result: dict
     try:
         if name == "inspect_page":
-            return tool_inspect(sess)
-        if name == "probe_selector":
-            return tool_probe(sess, list(args.get("selectors", [])))
-        if name == "interact":
-            return tool_interact(sess, args.get("action", ""), args.get("selector", ""))
-        if name == "submit_rule":
-            return tool_submit(sess, args)
-        return {"error": f"unknown tool {name!r}"}
+            result = tool_inspect(sess)
+        elif name == "probe_selector":
+            result = tool_probe(sess, list(args.get("selectors", [])))
+        elif name == "interact":
+            result = tool_interact(sess, args)
+        elif name == "submit_rule":
+            result = tool_submit(sess, args)
+        else:
+            result = {"error": f"unknown tool {name!r}"}
     except VisitCapReached as error:
-        return {"error": str(error)}
+        result = {"error": str(error)}
     except PlaywrightError as error:
-        return {"error": str(error).splitlines()[0][:200]}
+        result = {"error": str(error).splitlines()[0][:200]}
+    obs_after = coverage.observe(sess)
+    coverage.derive_gaps(sess, obs_after)
+    after = coverage.summarize(obs_after, sess)
+    new_evidence = obs_before["signature"] != obs_after["signature"]
+
+    if name == "interact" and args.get("action") != "go_back" and not result.get("blocked"):
+        sess.interactions_count += 1
+        if new_evidence:
+            sess.no_progress_count = 0
+        else:
+            sess.no_progress_count += 1
+    _maybe_close_exploration(sess)
+
+    result.setdefault("blocked", False)
+    result["new_evidence"] = new_evidence
+    result["coverage_before"] = before
+    result["coverage_after"] = after
+    return result
+
+
+def _maybe_close_exploration(sess: PageSession) -> None:
+    if sess.exploration_closed:
+        return
+    if sess.interactions_count >= coverage.max_interactions(sess.ctx):
+        sess.exploration_closed = "interaction_budget"
+    elif sess.no_progress_count >= coverage.max_no_progress(sess.ctx):
+        sess.exploration_closed = "no_new_evidence"
+    elif not any(
+        g["kind"] in coverage.ACTIONABLE_KINDS and g["status"] != "closed" for g in sess.gaps
+    ):
+        sess.exploration_closed = "full_coverage"
 
 
 TOOLS = [
