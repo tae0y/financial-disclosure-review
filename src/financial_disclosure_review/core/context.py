@@ -37,6 +37,10 @@ class Context:
     # consecutive interactions that revealed nothing new before exploration is closed.
     max_interactions: int = 8
     max_no_progress: int = 2
+    # Reference cases rank by BM25 slot overlap; the paid query-embedding rerank is opt-in.
+    case_rerank: bool = False
+    # Reader profile id from assets/persona_profiles.yaml; empty picks the file's default.
+    persona_profile: str = ""
     # A deployment can narrow the public sites a review may reach. This setting travels with the
     # graph so the browser checks the same allow-list again for every redirect target.
     allowed_hosts: tuple[str, ...] = ()
