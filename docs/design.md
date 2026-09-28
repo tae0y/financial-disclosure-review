@@ -188,7 +188,9 @@ product type.
 - `applies_condition` is judged per item by the LLM inside each module node, not by
   `classify_type`.
 
-Rubric source, checked into this repo: `../05 법령·지침 원문 검증/카드사 가드레일 루브릭/`.
+Rubric source, checked into this repo: `../assets/`. The rubric's own authoring trail (human
+review notes, source snapshots, verification tooling) lives in the vault at
+`05 법령·지침 원문 검증/카드사 가드레일 루브릭/`, one level up from this repo.
 
 ## Checkpoints
 

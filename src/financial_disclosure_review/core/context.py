@@ -12,12 +12,9 @@ def default_data_dir() -> str:
 
 
 def default_rubric_dir() -> str:
-    """Folder of the rubric yaml files, found by walking up from the working directory."""
-    relative = Path("05 법령·지침 원문 검증/카드사 가드레일 루브릭")
-    for parent in [Path.cwd(), *Path.cwd().parents]:
-        if (parent / relative).is_dir():
-            return str(parent / relative)
-    return str(relative)
+    """Folder of the rubric yaml files, checked into the repo."""
+    env = find_dotenv(usecwd=True)
+    return str((Path(env).parent if env else Path.cwd()) / "assets")
 
 
 def default_db_path() -> str:
