@@ -50,7 +50,8 @@ a reader given by uuid, attributes or the product-type default skips selection. 
   The original side of explanation duty reads only the page, so `judge_explanation_original` runs
   in the same step as the reader explanation; reference cases likewise run beside the display
   check. LangGraph waits for every node of a step, which is why each independent node is paired
-  with the step it fits.
+  with the step it fits. With the partial re-ask of rejected codes, one live page went from 662 s
+  to 468 s (2026-09-29, 디지로카 Las Vegas, saved site rule).
 - Agents choose tools; code validates every quote, selector and filter they propose, and each
   agent has a turn budget and a machine-readable stop reason.
 - Verification routes to the earliest actionable failure. At most two rounds run; display checks
