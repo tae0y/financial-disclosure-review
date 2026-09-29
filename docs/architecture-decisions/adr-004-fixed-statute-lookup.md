@@ -6,7 +6,8 @@ created: 2026-09-28
 
 # ADR-004 — Look statutes up through a fixed mapping; search only sanction cases by similarity
 
-- **Status:** Accepted 2026-09-17
+- **Status:** Accepted 2026-09-17; the case-search half removed 2026-09-30 (see
+  [Update 2026-09-30](#update-2026-09-30)).
 - **Recorded here:** 2026-09-28, from the case-search implementation notes and
   [Rubrics and scope](../README.md#rubrics-and-scope) (since superseded by this ADR) and the study
   `관련자료/260917 법률 조회 로직 Graph(GraphRAG) 적용 가능성 조사.md` (종합 의견).
@@ -26,7 +27,7 @@ The questions asked of it are point lookups — which items apply to this produc
 - Statutes and rubric items are never retrieved by a model or by similarity. Code selects them
   from the SQLite reference DB by product type and page type (`knowledge/rubrics.py`).
 - Only sanction and dispute cases (19, `case_corpus.yaml`) are embedded and searched with
-  sqlite-vec, because "a case like this one" is a similarity question.
+  sqlite-vec, because "a case like this one" is a similarity question. *(Removed 2026-09-30.)*
 
 ## Alternatives considered
 
@@ -42,4 +43,14 @@ The questions asked of it are point lookups — which items apply to this produc
   that the rubric check scripts matched against the snapshots (184/184 and 146/146 quotes).
 - Changing the rubric means rebuilding the DB (`build-db`) and re-recording evaluations whose
   prompts change.
-- Retrieved cases are shown to the reviewer as context; they do not decide a verdict.
+- Retrieved cases were shown to the reviewer as context and never decided a verdict (until the
+  removal below).
+
+## Update 2026-09-30
+
+Case search and case linking were removed from the workflow by the user's decision. The
+reference-case node never fed a judgment (it was report-only), and after the 2026-09-30 short
+report the report no longer showed cases either, so the node only spent model calls. The case
+corpus, the vector search and the case-linking agent are gone. The statute lookup above is
+unchanged: rubric items still come from a fixed SQLite lookup in `data/reference.sqlite`, built by
+`build-db`.

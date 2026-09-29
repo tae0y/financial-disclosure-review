@@ -1,7 +1,7 @@
 """What an eval result measured: implementation, code revision, prompts and gold (audit R3).
 
 A result file written without this cannot be told apart from one of an earlier generation of
-the same component (e.g. the lexical reference threshold vs. the linking agent).
+the same component (e.g. two prompts of the same judging node).
 """
 
 import hashlib

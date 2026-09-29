@@ -14,7 +14,7 @@ a human reviewer. It does not determine legal compliance or publish rewritten co
 |---|---|
 | `core/` | Shared types, context, text, usage metering, threads, and display helpers. |
 | `llm/` | Structured model calls, retry helpers, tool-call turn, and image input. |
-| `knowledge/` | Rubrics, statutes, cases, SQLite/`sqlite-vec` access, and retrieval. |
+| `knowledge/` | Rubrics with their statute sources, and the SQLite rubric DB build and lookup. |
 | `domain/<name>/` | Domain prompts, schemas, rules, and decisions. |
 | `graph/` | Nodes, routing, retry policy, and graph assembly. |
 | `evaluation/` | Cassettes, suites, fixtures, and metrics; never called by a review. |
@@ -26,32 +26,29 @@ not import each other; they exchange data only through State.
 ### Workflow
 
 ```text
-START → preprocess* ─┬→ classify ─┬→ evidence cards ─┬→ reference cases* ─┬→ reader explanation ─────┬→ explanation duty → verify → report
-                     │            │                  └→ display ───────────┴→ explanation duty (original side) ┘
+START → preprocess* ─┬→ classify ─┬→ evidence cards → display ─┬→ reader explanation* ──────────────┬→ explanation duty → verify → report
+                     │            │                            └→ explanation duty (original side) ┘
                      │            └→ report (out of scope / uncertain)
                      └→ report (collection failed / insufficient)
 
-* bounded tool-calling agents: the page-evidence agent (preprocess) and the case-linking agent.
-  The reader explanation also runs a small selection agent when the reader is given in free text.
+* bounded tool-calling agents: the page-discovery agent (preprocess) and a small reader-selection
+  agent that the reader explanation runs when the reader is given in free text.
 ```
 
 The system is a deterministic review workflow with bounded agentic subflows, not an autonomous
 agent. The graph, its routing and its retry policy are fixed in code; classification, card
 extraction, display judgment, explanation and explanation-duty checks are single structured model
-calls. Only the three subflows above choose their own tool calls, and each can be bypassed: a
-saved site rule replays without the page agent, a page without cards or cases skips linking, and
-a reader given by uuid, attributes or the product-type default skips selection. The report's
-`에이전트 실행` line and `summary.agent_runs` state which loops ran in each review (see the
-[2026-09-29 audit](../data/agentic-behavior-audit.md)).
+calls. Only the two subflows above choose their own tool calls, and each can be bypassed: a
+saved site rule replays without the page agent, and a reader given by uuid, attributes or the
+product-type default skips selection. The report's `에이전트 실행` line and `summary.agent_runs`
+state which loops ran in each review (see the [2026-09-29 audit](../data/agentic-behavior-audit.md)).
 
 - Classification ends normally for `범위 밖` and `판정 불가`; the report explains why.
-- Reference cases are report-only: no judging prompt reads them, and they are not a retry target.
 - The reader explanation precedes explanation duty because the latter compares the source with it.
   The original side of explanation duty reads only the page, so `judge_explanation_original` runs
-  in the same step as the reader explanation; reference cases likewise run beside the display
-  check. LangGraph waits for every node of a step, which is why each independent node is paired
-  with the step it fits. With the partial re-ask of rejected codes, one live page went from 662 s
-  to 468 s (2026-09-29, 디지로카 Las Vegas, saved site rule).
+  in the same step as the reader explanation. LangGraph waits for every node of a step, which is
+  why each independent node is paired with the step it fits. With the partial re-ask of rejected
+  codes, one live page went from 662 s to 468 s (2026-09-29, 디지로카 Las Vegas, saved site rule).
 - Agents choose tools; code validates every quote, selector and filter they propose, and each
   agent has a turn budget and a machine-readable stop reason.
 - Verification routes to the earliest actionable failure. At most two rounds run; display checks
@@ -60,7 +57,7 @@ a reader given by uuid, attributes or the product-type default skips selection. 
 ### State and persistence
 
 Each top-level State key belongs to one module: `product_page`, `classification`,
-`evidence_cards`, `reference_cases`, `display_check`, `persona_explanation`,
+`evidence_cards`, `display_check`, `persona_explanation`,
 `explanation_duty_check`, `verification`, and `report`. A node
 writes only its own key. Settings such as model, paths, and limits belong to `Context`, passed at
 invoke time rather than stored in State.
@@ -93,7 +90,7 @@ recorded answers by default. See [evaluation](evaluation.md) for suites and resu
 
 - [Agent node specs](agent-node-specs/) — per-node behavior: [product-page discovery](agent-node-specs/product_page.md),
   [classification](agent-node-specs/classification.md), [display checks](agent-node-specs/display_check.md),
-  [evidence cards](agent-node-specs/evidence_cards.md), [reference cases](agent-node-specs/reference_cases.md),
+  [evidence cards](agent-node-specs/evidence_cards.md),
   [reader explanation](agent-node-specs/persona_explanation.md), [explanation duty](agent-node-specs/explanation_duty_check.md),
   and [reporting](agent-node-specs/report.md). The legacy [plain language](agent-node-specs/plain_language.md)
   module is kept only for the plain-contract evaluation suite.

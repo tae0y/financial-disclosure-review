@@ -2,7 +2,7 @@
 ai-generated: true
 human-review: false
 created: 2026-09-27
-updated: 2026-09-29
+updated: 2026-09-30
 ---
 
 # Evaluation
@@ -203,11 +203,16 @@ explanation-duty items. Source: `eval/results/260929-190829-all-record.json`.
 > eleven unstable items, eight of them between 판정 불가 and 적합
 > (`260928-184936-stability-record`, `260928-201825-stability-record`).
 
-### 6. Evidence agent, cards, reference cases and reader explanation (2026-09-29)
+> **Case linking removed (2026-09-30).** Case search and case linking were removed from the
+> workflow by the user's decision: the reference-case node never fed a judgment, and after the
+> 2026-09-30 short report the report did not show cases either. Its measurements are dropped from
+> §6–§8 with the feature. The judging suites (§1–§5) never read cases and are unaffected.
 
-Added with the bounded evidence agent, evidence cards, report-only reference cases and the persona
-explanation (branch `agentic-evidence-persona`). The five suites above replay unchanged after this
-work (80 hits, 0 misses, same numbers): none of their prompts or inputs changed.
+### 6. Evidence agent, cards and reader explanation (2026-09-29)
+
+Added with the bounded evidence agent, evidence cards and the persona explanation (branch
+`agentic-evidence-persona`). The five suites above replay unchanged after this work (80 hits,
+0 misses, same numbers): none of their prompts or inputs changed.
 
 `uv run python eval/agentic_eval.py [--record]` (renamed `eval/cards_persona_eval.py` on
 2026-09-29, see §8) runs on the two real lottecard pages in
@@ -219,7 +224,6 @@ local only: `eval/fixtures/` is gitignored). Recording cost $0.0981 (13 calls); 
 | Cards kept / rejected by code | 45 / 0 | 28 / 0 |
 | Card quote resolves in its source | 45/45 | 28/28 |
 | Gold quotes covered (risk-only) | 11/12 (10/11) | 10/13 (9/12) |
-| Reference links at threshold 10 | 0 | 2 (1 plausible, 1 weak; 0 of the 3 gold links) |
 | Explanation units accepted / reverted | 35 / 0 | 17 / 0 |
 | Analogies kept on rate/fee/warning cards | 0 (2 dropped by code) | 0 |
 | Fact-ledger values preserved, decided by code | 40/40 | 25/25 |
@@ -230,11 +234,6 @@ The generation layer (`review_unit`) is the gate that matters in a run: a unit t
 ledger value or invents a number never reaches the page. The ledger layer is a second net over
 the assembled page text; it misses a change when the same value or wording still appears
 elsewhere on the page (for example `최대` dropped from one line while other lines keep it).
-
-Reference links are the weakest part. On the gold cards, lexical overlap with 19 short case
-summaries does not separate true links from shared vocabulary (threshold 4: 3/3 found with 18
-false links; 10: 0/3 with 0), so the default threshold favours no link
-(`docs/agent-node-specs/reference_cases.md`).
 
 **Live run of the page agent** (디지로카 Las Vegas, the page the 2026-09-28 audit found with 85
 collapsed blocks). The first run ended `완료/full_coverage` because `observe()` read visibility
@@ -247,8 +246,8 @@ lists the 29 gaps as the reviewer's first action instead of passing the page.
 
 ### 7. Follow-up on the agentic design (2026-09-29, branch `agentic-followup`)
 
-Paid total for this follow-up: about $1.52 (embedding $0.0005, re-recordings $0.123, stability
-$0.160, reader pair $0.059, live reviews $1.04, linking gold runs $0.123).
+Paid total for this follow-up: about $1.52; the measurements kept below cost $1.38 (re-recordings
+$0.123, stability $0.160, reader pair $0.059, live reviews $1.04).
 
 **Re-recorded suites.** display-flip, with E02/E04/E05 now decided by code: 4/4 injected defects
 caught, 0/2 controls blamed, base verdicts 적합/적합 — the same as §3, at $0.0834 instead of
@@ -288,48 +287,34 @@ closure metric counted header/menu/footer gaps (gaps now carry `in_region`). Sti
 that reaches its cost cap after collection raises instead of ending in a report; pages where the
 agent submits with an untried in-region control.
 
-**Reference-case linking agent against a gold set** (`eval/linking_eval.py`; gold
-`eval/fixtures/gold/reference_links.json`, AI-drafted, 4 pages, 14 expected links, 20 negatives).
-
-| Round | Recall | False links | Stop reasons | $ |
-|---|---|---|---|---|
-| 1 (as built) | 3/14 | 3/6 | finished 3, max_turns 1 | 0.051 |
-| 2 (finish sent back once while concrete cards are unsearched) | **5/14** | **2/7** | finished 1, max_turns 3 | 0.072 |
-
-The lexical threshold it replaced found 0 of 3 gold links at its default (§6). The agent now runs
-out of its 8 turns on most pages; raising `case_link_max_turns` is the next lever, at a cost.
-
 **Human comprehension and harmful analogies** are not measured by code. `eval/review_sheet.py`
 writes a blank sheet from live runs for a person to score; no score was filled by a model.
 
 ### 8. Audit remediation (2026-09-29, branch `agentic-followup`)
 
 The [agentic behavior audit](../data/agentic-behavior-audit.md) confirmed three bounded agents
-inside a fixed workflow and found the evaluation too generous in three places. Changes, all
-without a paid call:
+(two since 2026-09-30) inside a fixed workflow and found the evaluation too generous in three
+places. Changes, all without a paid call:
 
 - **Failures are results.** A run whose budget runs out after collection now ends in a `판정
   불가` report naming the interrupted node, instead of no report. `eval/agent_loop_eval.py` gives
   each requested thread one outcome (`complete`, `insufficient`, `collection_failed`,
-  `interrupted`, `no_report`, `no_checkpoint`) and a success rate over all of them. The linking
-  agent's links from a run cut short are `부분 완료`, and a run cut short with no link is `판정
-  불가`, not `해당 사례 없음`; `eval/linking_eval.py` adds the completion rate.
-- **One generation per result.** `eval/agentic_eval.py` is now `eval/cards_persona_eval.py` and
-  no longer measures the retired lexical reference threshold. Every result file carries a `meta`
-  block: implementation, commit, dirty flag, prompt hashes and the gold file's hash and version
-  (`evaluation/run_meta.py`). Results written before this date have no `meta`.
+  `interrupted`, `no_report`, `no_checkpoint`) and a success rate over all of them.
+- **One generation per result.** `eval/agentic_eval.py` is now `eval/cards_persona_eval.py`.
+  Every result file carries a `meta` block: implementation, commit, dirty flag, prompt hashes and
+  the gold file's hash and version (`evaluation/run_meta.py`). Results written before this date
+  have no `meta`.
 - **Avoidable agent failures.** Root causes read from the stored traces: the KB 카드론 page became
   `chrome-error://` and the agent guessed selectors for 20 turns (now `수집 실패/page_unavailable`
-  before the next model turn); the linking agent made one tool call per turn (search and read now
-  take batches); 롯데 카드론 was accepted with untried controls inside its regions (now sent back
-  once).
+  before the next model turn); 롯데 카드론 was accepted with untried controls inside its regions
+  (now sent back once).
 
 Re-aggregating the same seven live threads with the new outcome rule
 (`eval/results/260929-115950-agent-loop.md`, $0): success 2/7 (0.286), report produced 6/7. The
 earlier "완료 3/7" counted 신한 Hi-Point, which ended without a report.
 
-**Re-measurement after the fixes** (paid $1.13: linking gold $0.091, live pages $1.034; fresh
-data dirs `data/live4` and `data/live5` so the page agent ran on every page; $0.15 per page).
+**Re-measurement after the fixes** (live pages, paid $1.034; fresh data dirs `data/live4` and
+`data/live5` so the page agent ran on every page; $0.15 per page).
 
 | Measure | Before (live3) | After |
 |---|---|---|
@@ -339,9 +324,6 @@ data dirs `data/live4` and `data/live5` so the page agent ran on every page; $0.
 | KB 카드론 (error page) | 20 turns, $0.036 | 0 turns, $0, `page_unavailable` |
 | 롯데 카드론 gaps closed | 0/26 | 22/26 |
 | Collection and judgment both finished | 2/7 | 1/7 |
-| Linking gold recall | 5/14 | 9/14 |
-| Linking gold false links | 2/7 | 4/9 |
-| Linking runs ending by finish | 1/4 | 2/4 |
 
 The first live round exposed a defect in the new in-region nudge: it named controls the agent
 had already expanded under another selector (신한 Hi-Point) or whose gap a popup kept open (현대
@@ -351,10 +333,8 @@ and `조사 불충분/submitted_with_gaps` (the live3 outcomes).
 
 Four pages ran out of the $0.15 cap during judgment and now end in a `판정 불가` report instead of
 none; pages that finished judgment spent $0.18–0.22, so the cap, not the agents, set the last
-row (live3's first round ran at $0.8). More false links come from links that cite many cards,
-including ones the gold says must not link. Per-page reports:
-`data/audit-remeasure-260929/`. Results: `eval/results/260929-140148-agent-loop.md`,
-`260929-141601-agent-loop.md`, `260929-132236-linking.json`.
+row (live3's first round ran at $0.8). Per-page reports: `data/audit-remeasure-260929/`.
+Results: `eval/results/260929-140148-agent-loop.md`, `260929-141601-agent-loop.md`.
 
 ## Model comparison
 
@@ -447,7 +427,7 @@ F13·설명13·F14·설명14는 1회차에 판정 불가였다가 다른 회차�
 - 인용 유효율 100%는 "인용문이 본문에 있다"는 뜻이고 "그 인용이 기준을 충족한다"는 뜻이 아닙니다.
 - 설명의무 판정은 같은 입력에서도 23%가 흔들립니다(축소 구성 21%). 한 번의 실행 결과를 확정 판정으로
   읽으면 안 됩니다.
-- 사례 연결·증거 카드 정답셋과 사례 40건 중 21건은 AI 초안이고, 독자 맞춤 설명의 사람 평가는 0건입니다.
+- 증거 카드 정답셋은 AI 초안이고, 독자 맞춤 설명의 사람 평가는 0건입니다.
 
 ## Adding a case
 

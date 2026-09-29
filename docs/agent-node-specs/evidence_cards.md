@@ -89,7 +89,7 @@ construction on a freshly run extraction, but is useful once cards get carried i
 cassette) and `gold_recall` / `risk_gold_recall` (share of a curated gold set's quotes matched by
 some card's quote, either direction, normalized) against `eval/fixtures/gold/evidence_cards.json` (local only).
 Deliberately not vector similarity, per the design record's rejection of embedding rerank as a
-quality metric (§8 item 13 discusses this for `reference_cases`; the same reasoning applies here).
+quality metric (§8 item 13).
 
 ## Known gaps (for a human to confirm)
 

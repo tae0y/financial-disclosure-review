@@ -445,31 +445,11 @@ CARDS = {
     "rejected": [],
     "coverage_gaps": [{"kind": "hidden_text", "card_ids": ["c1"], "status": "unresolved"}],
 }
-REFERENCES = {
-    "status": "완료",
-    "method": {"threshold": 10.0, "cases_from": "db"},
-    "candidates": [{"case_id": "case.x"}],
-    "links": [
-        {
-            "case_id": "case.x",
-            "card_ids": ["c1"],
-            "page_quote": "연회비 1만원",
-            "case_quote": "",
-            "case_quote_note": "원문 재확인 필요",
-            "material_difference": ["record_type 지적사례"],
-            "page_only_detectability": "partial",
-            "page_only_note": "페이지 단독 판단 불가",
-            "official_url": "https://example.test/case",
-        }
-    ],
-}
 
 
-def test_cards_and_reference_cases_are_counted_but_never_change_the_verdict():
-    result = report(cards=CARDS, references=REFERENCES)
+def test_cards_are_counted_but_never_change_the_verdict():
+    result = report(cards=CARDS)
     assert result["summary"]["evidence_cards"] == 1
-    assert result["summary"]["reference_links"] == 1
-    # A reference link never changes the verdict: the clean run still reads as done.
     assert result["status"] == "검토 완료"
 
 
@@ -581,18 +561,6 @@ def test_the_report_names_the_reader():
     assert "독자: 74세 남성" in markdown
 
 
-def test_agent_links_report_their_search_and_stop():
-    references = {
-        "status": "완료",
-        "method": {"linking": "agent", "searches": 3, "reads": 2, "cases_from": "db"},
-        "stop_reason": "finished",
-        "candidates": [{"case_id": "case.x"}],
-        "links": [],
-    }
-    runs = report(references=references)["summary"]["agent_runs"]
-    assert runs["case_link"]["stop_reason"] == "finished"
-
-
 # Audit 2026-09-29 R2: which agent loops actually ran in this request, and how far.
 AGENT_PAGE = {
     **PAGE,
@@ -618,30 +586,15 @@ AGENT_SELECTION = {
         ],
     },
 }
-AGENT_REFERENCES = {
-    "status": "부분 완료",
-    "method": {"linking": "agent"},
-    "stop_reason": "max_turns",
-    "agent_trace": [{"turn": t, "tool": "search_cases"} for t in range(1, 9)],
-    "links": [],
-}
 
 
 def test_each_agent_loop_that_ran_is_summarized_with_turns_and_stop():
-    runs = report(page=AGENT_PAGE, plain=AGENT_SELECTION, references=AGENT_REFERENCES)["summary"][
-        "agent_runs"
-    ]
+    runs = report(page=AGENT_PAGE, plain=AGENT_SELECTION)["summary"]["agent_runs"]
     assert runs["discovery"] == {
         "ran": "agent",
         "turns": 3,
         "tool_calls": 4,
         "stop_reason": "full_coverage",
-    }
-    assert runs["case_link"] == {
-        "ran": "agent",
-        "turns": 8,
-        "tool_calls": 8,
-        "stop_reason": "max_turns",
     }
     assert runs["reader_selection"] == {
         "ran": "agent",
@@ -654,13 +607,11 @@ def test_each_agent_loop_that_ran_is_summarized_with_turns_and_stop():
 def test_loops_that_did_not_run_say_so():
     page = {**PAGE, "status": "완료", "stop_reason": "rule_reused", "html": "<p>x</p>"}
     plain = {**PLAIN_OK, "selection": {"decided_by": "default", "trace": []}}
-    references = {"status": "건너뜀", "method": {"linking": "agent"}, "links": []}
-    runs = report(page=page, plain=plain, references=references)["summary"]["agent_runs"]
+    runs = report(page=page, plain=plain)["summary"]["agent_runs"]
     assert runs["discovery"]["ran"] == "reuse"
-    assert runs["case_link"]["ran"] == "skipped"
     assert runs["reader_selection"]["ran"] == "default"
     assert all(run["turns"] == 0 for run in runs.values())
-    assert report()["summary"]["agent_runs"]["case_link"]["ran"] == "not_run"
+    assert set(report()["summary"]["agent_runs"]) == {"discovery", "reader_selection"}
 
 
 DRAFT = {

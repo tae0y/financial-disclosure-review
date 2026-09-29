@@ -106,7 +106,6 @@ def test_the_summary_says_which_agent_loops_ran() -> None:
     """Audit 2026-09-29 R2: a caller sees per request which agent loops actually ran."""
     view = summarize({key: {} for key in STATE})
     assert view["agent_runs"]["discovery"]["ran"] == "none"
-    assert view["agent_runs"]["case_link"]["ran"] == "not_run"
     assert view["agent_runs"]["reader_selection"]["ran"] == "not_run"
 
 

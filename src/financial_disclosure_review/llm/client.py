@@ -163,24 +163,3 @@ class ToolChat:
             "tool_calls": [dict(call) for call in reply.tool_calls],
             "tokens": usage.get("total_tokens"),
         }
-
-
-EMBED_MODEL = "text-embedding-3-small"
-EMBED_DIMENSIONS = 1536  # the model's native size; the vec0 column is declared to match
-EMBED_BATCH = 64
-
-
-def embed_texts(texts: list[str], model: str = EMBED_MODEL, timeout: int = 60) -> list[list[float]]:
-    """Embeddings for texts, in order, batched, metered; free callers pass their own function."""
-    meter = current()
-    vectors: list[list[float]] = []
-    for start in range(0, len(texts), EMBED_BATCH):
-        batch = texts[start : start + EMBED_BATCH]
-        meter.check("embed")
-        response = OpenAI(max_retries=2, timeout=timeout).embeddings.create(
-            model=model, input=batch
-        )
-        vectors += [item.embedding for item in sorted(response.data, key=lambda d: d.index)]
-        entry = meter.record(model, "embed", response.usage.prompt_tokens, 0)
-        print(f"    embed: {len(batch)} texts in={entry['input_tokens']} ${entry['usd']:.5f}")
-    return vectors

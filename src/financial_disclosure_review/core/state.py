@@ -39,19 +39,6 @@ class EvidenceCards(TypedDict, total=False):
     model_calls: Any
 
 
-class ReferenceCases(TypedDict, total=False):
-    """Report-only references: never read by a judging node."""
-
-    status: Any
-    reason: Any
-    method: Any
-    candidates: Any
-    links: Any
-    # The linking agent's tool calls and why it stopped (finished, max_turns, link_cap, ...).
-    agent_trace: Any
-    stop_reason: Any
-
-
 class DisplayCheck(TypedDict, total=False):
     items: Any
     judgments: Any
@@ -106,7 +93,6 @@ class State(TypedDict):
     product_page: ProductPage
     classification: Classification
     evidence_cards: EvidenceCards
-    reference_cases: ReferenceCases
     display_check: DisplayCheck
     persona_explanation: PersonaExplanation
     explanation_duty_check: ExplanationDutyCheck

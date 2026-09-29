@@ -168,25 +168,18 @@ def _loop(ran: str, trace: Any, stop_reason: Any) -> dict:
     }
 
 
-def agent_runs(
-    page: Mapping[str, Any], references: Mapping[str, Any], selection: Mapping[str, Any]
-) -> dict:
-    """Which of the three agent loops ran in this review, with turns, tool calls and stop.
+def agent_runs(page: Mapping[str, Any], selection: Mapping[str, Any]) -> dict:
+    """Which of the two agent loops ran in this review, with turns, tool calls and stop.
 
     `ran` is `agent` when the model loop ran; otherwise how the step was settled without one:
-    discovery `reuse` (a saved site rule) or `none`; case_link `skipped` (no cards or cases) or
-    `not_run`; reader_selection `default`, `uuid`, `attributes`, `fallback` or `not_run`.
+    discovery `reuse` (a saved site rule) or `none`; reader_selection `default`, `uuid`,
+    `attributes`, `fallback` or `not_run`.
     """
     trace = page.get("agent_trace") or []
     if trace:
         discovery = "agent"
     else:
         discovery = "reuse" if page.get("stop_reason") == "rule_reused" else "none"
-    link_trace = references.get("agent_trace") or []
-    if link_trace:
-        case_link = "agent"
-    else:
-        case_link = "skipped" if references.get("status") else "not_run"
     pick_trace = selection.get("trace") or []
     if any(t.get("turn") for t in pick_trace):
         reader = "agent"
@@ -194,14 +187,12 @@ def agent_runs(
         reader = str(selection.get("decided_by") or "not_run")
     return {
         "discovery": _loop(discovery, trace, page.get("stop_reason")),
-        "case_link": _loop(case_link, link_trace, references.get("stop_reason")),
         "reader_selection": _loop(reader, pick_trace, selection.get("stop_reason")),
     }
 
 
 RUN_LABELS = {
     "discovery": ("페이지 탐색", {"reuse": "저장 규칙 재사용", "none": "실행 안 됨"}),
-    "case_link": ("사례 연결", {"skipped": "건너뜀", "not_run": "실행 안 됨"}),
     "reader_selection": (
         "독자 선택",
         {
@@ -371,7 +362,6 @@ def build_report(
     previous_cost: Mapping[str, Any] | None = None,
     *,
     cards: Mapping[str, Any] | None = None,
-    references: Mapping[str, Any] | None = None,
     labels: Mapping[str, Mapping[str, str]] | None = None,
 ) -> dict:
     """The Report fields; `stop` is why the run ended, `previous_cost` carries cost on rebuild.
@@ -422,11 +412,10 @@ def build_report(
         "violations": sum(1 for row in findings if row.get("severity") == SEVERITY_VIOLATION),
         "shortfalls": sum(1 for row in findings if row.get("severity") == SEVERITY_SHORTFALL),
     }
-    cards, references = cards or {}, references or {}
+    cards = cards or {}
     summary["evidence_cards"] = len(cards.get("cards") or [])
-    summary["reference_links"] = len(references.get("links") or [])
     summary["interrupted_at"] = stop.get("interrupted_at") or ""
-    summary["agent_runs"] = agent_runs(page, references, plain.get("selection") or {})
+    summary["agent_runs"] = agent_runs(page, plain.get("selection") or {})
     limits = _limits(display, plain, duty)
     limits += _card_limits(cards, duty)
     unreachable = _unreachable_limit(page)

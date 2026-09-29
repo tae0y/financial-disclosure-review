@@ -23,7 +23,6 @@ from .domain.persona_explanation.dataset import (
 from .evaluation import SUITES, default_eval_dir, render, run_evaluation
 from .graph.build import build_review_graph, invoke_to_report
 from .knowledge.build import build_rubric_db
-from .knowledge.build_cases import build_case_db, case_db_counts
 
 
 def default_checkpoint_path(data_dir: str) -> str:
@@ -193,27 +192,6 @@ def build_db(args: argparse.Namespace) -> int:
     return 0
 
 
-def build_cases(args: argparse.Namespace) -> int:
-    """Embed the case corpus; costs money, unlike build-db (--dry-run previews)."""
-    from .knowledge.build_cases import CASE_CORPUS_FILE, embed_text_of
-
-    path = Path(args.corpus_dir) / CASE_CORPUS_FILE
-    if args.dry_run:
-        import yaml
-
-        items = yaml.safe_load(path.read_text())["items"]
-        texts = [embed_text_of(item) for item in items]
-        chars = sum(len(t) for t in texts)
-        print(f"case corpus {path}: {len(items)} cases, {chars} characters to embed")
-        print(f"  longest case: {max(len(t) for t in texts)} characters")
-        print("  no embedding call was made (--dry-run)")
-        return 0
-    counts = build_case_db(path, args.db_path)
-    print(f"case tables in {args.db_path}: {counts}")
-    print(f"row counts: {case_db_counts(args.db_path)}")
-    return 0
-
-
 def fetch_personas(args: argparse.Namespace) -> int:
     """Download and verify the pinned persona dataset; exit 1 when any shard failed."""
     folder = dataset_dir(args.data_dir)
@@ -295,17 +273,6 @@ def parser() -> argparse.ArgumentParser:
     )
     build.add_argument("--rubric-dir", default=default_rubric_dir())
     build.set_defaults(run=build_db)
-
-    cases = commands.add_parser(
-        "build-cases",
-        help="embed the case corpus into the reference DB (costs money)",
-        parents=[common],
-    )
-    cases.add_argument("--corpus-dir", default=default_rubric_dir())
-    cases.add_argument(
-        "--dry-run", action="store_true", help="print what would be embedded and spend nothing"
-    )
-    cases.set_defaults(run=build_cases)
 
     personas = commands.add_parser(
         "fetch-personas",

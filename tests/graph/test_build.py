@@ -24,7 +24,6 @@ def test_the_graph_compiles_with_every_node_and_edge():
         "preprocess_product_page",
         "classify_type",
         "extract_evidence_cards",
-        "retrieve_reference_cases",
         "judge_display_method",
         "generate_persona_explanation",
         "judge_explanation_original",
@@ -152,7 +151,7 @@ def test_independent_judgments_share_a_step_with_the_explanation(monkeypatch, re
         final = graph.invoke(initial(), config, context=Context(model="fake"))
         steps = [set(state.next) for state in graph.get_state_history(config)]
 
-    assert {"judge_display_method", "retrieve_reference_cases"} in steps
+    assert {"judge_display_method"} in steps
     assert {"generate_persona_explanation", "judge_explanation_original"} in steps
     assert calls == ["persona", "original", "duty(original reused)"] or calls == [
         "original",
@@ -213,7 +212,6 @@ def test_a_reviewable_page_runs_through_to_the_report(monkeypatch, revolving):
     assert final["classification"] == REVOLVING_CLASSIFICATION
     assert final["display_check"]["judgments"]["status"] == "완료"
     assert final["evidence_cards"]["status"] == "카드 없음"
-    assert final["reference_cases"]["status"] == "건너뜀"
     assert final["persona_explanation"]["status"] == "원문 대체"
     assert final["explanation_duty_check"]["original"]
     assert final["verification"]["passed"] is True, final["verification"]

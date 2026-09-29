@@ -66,18 +66,18 @@ The question is the asking sentence of the rubric `criterion`; the basis names e
 document once (`rubric_sources.doc` through `knowledge.rubrics.DOC_NAMES`) with its first article
 and a count of the rest. Both come from `rubric_labels(db_path)`; with no DB the code stands in.
 
-Cost, limits and assumptions, the action list, findings, agent runs, evidence cards and reference
-links are not in the markdown. They stay in `report.cost`, `report.limits`, `report.actions`,
+Cost, limits and assumptions, the action list, findings, agent runs and evidence cards are not in
+the markdown. They stay in `report.cost`, `report.limits`, `report.actions`,
 `report.findings` and `report.summary` (the API returns them), and the markdown's last line says
 so. Unreachable hidden text is both a header note and a `limits` entry.
 
 A `BudgetError` raised after collection no longer ends the thread without a report:
 `graph.build.invoke_to_report` (used by the CLI and the API worker) builds the report from the
 last checkpoint, with `summary.interrupted_at` naming the node that did not finish, and writes it
-back as `end_report`. `summary.agent_runs` records, for the page agent, the case-linking agent
-and the reader selection, whether the model loop ran (`agent`) or how the step was settled
-without it (`reuse`, `skipped`, `default`, ...), with turns, tool calls and stop reason (audit
-2026-09-29, R2, R5).
+back as `end_report`. `summary.agent_runs` records, for the page agent (`discovery`) and the
+reader selection (`reader_selection`), whether the model loop ran (`agent`) or how the step was
+settled without it (`reuse`, `none`, `default`, ...), with turns, tool calls and stop reason
+(audit 2026-09-29, R2, R5).
 
 Collection comes first in the status: a page with no collected html reads `수집 실패` or `조사
 불충분`, never a classification problem, and an open evidence gap keeps a clean run from reading

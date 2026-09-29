@@ -102,7 +102,7 @@ class RerunRequest(BaseModel):
         max_length=80,
         description=(
             "A graph node name: preprocess_product_page, classify_type, extract_evidence_cards, "
-            "retrieve_reference_cases, judge_display_method, generate_persona_explanation, "
+            "judge_display_method, generate_persona_explanation, "
             "judge_explanation_duty, verify_answer, end_report."
         ),
     )

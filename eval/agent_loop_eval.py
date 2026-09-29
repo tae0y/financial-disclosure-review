@@ -1,7 +1,7 @@
 """Stage 4 agent-loop metrics over finished live reviews (backlog F1). No model call.
 
-Reads the final State of each thread from a checkpoint DB and measures the page agent, the
-reference-case linking agent and the reader selection, per page and overall:
+Reads the final State of each thread from a checkpoint DB and measures the page agent and the
+reader selection, per page and overall:
 
 - evidence-gap closure: of the gaps an action could close (`unexpanded_control`, `hidden_text`),
   how many were closed; hidden text set aside as unreachable is counted separately;
@@ -39,9 +39,6 @@ from financial_disclosure_review.evaluation.agent_outcomes import (  # noqa: E40
     page_outcome,
 )
 from financial_disclosure_review.evaluation.run_meta import run_meta  # noqa: E402
-from financial_disclosure_review.knowledge.linking import (  # noqa: E402
-    SYSTEM_PROMPT as LINK_PROMPT,
-)
 
 ACTIONABLE = ("unexpanded_control", "hidden_text")
 
@@ -63,7 +60,6 @@ def page_metrics(thread_id: str, state: dict[str, Any] | None) -> dict[str, Any]
     trace = page.get("agent_trace") or []
     interactions = [t for t in trace if t.get("tool") == "interact"]
     allowed = [t for t in interactions if not t.get("blocked")]
-    refs = state.get("reference_cases") or {}
     persona = state.get("persona_explanation") or {}
     cost = (state.get("report") or {}).get("cost") or {}
     return {
@@ -86,11 +82,6 @@ def page_metrics(thread_id: str, state: dict[str, Any] | None) -> dict[str, Any]
         "blocked_reasons": [
             t.get("blocked_reason", "")[:80] for t in interactions if t.get("blocked")
         ],
-        "case_links": len(refs.get("links") or []),
-        "case_link_stop": refs.get("stop_reason"),
-        "case_link_turns": max(
-            (t.get("turn", 0) for t in refs.get("agent_trace") or []), default=0
-        ),
         "reader_chosen_by": (persona.get("selection") or {}).get("decided_by"),
         "reader": (persona.get("profile") or {}).get("id"),
         "usd": cost.get("usd"),
@@ -132,7 +123,6 @@ def markdown(rows: list[dict[str, Any]], total: dict[str, Any]) -> str:
         "gaps closed",
         "unreachable",
         "interact (unneeded/blocked)",
-        "links",
         "reader",
         "$",
         "s",
@@ -146,7 +136,6 @@ def markdown(rows: list[dict[str, Any]], total: dict[str, Any]) -> str:
             f"{r['closed_gaps']}/{r['actionable_gaps']}",
             str(r["unreachable_hidden"]),
             f"{r['interactions']} ({r['unnecessary_actions']}/{r['blocked_actions']})",
-            f"{r['case_links']} ({r['case_link_stop']})",
             str(r["reader_chosen_by"]),
             str(r["usd"]),
             str(r["seconds"]),
@@ -165,8 +154,8 @@ def main() -> None:
         rows = [page_metrics(t, final_state(saver, t)) for t in args.thread]
     total = overall(rows)
     meta = run_meta(
-        "page_agent+linking_agent+reader_selection (live checkpoints)",
-        prompts={"page_agent": PAGE_PROMPT, "linking_agent": LINK_PROMPT},
+        "page_agent+reader_selection (live checkpoints)",
+        prompts={"page_agent": PAGE_PROMPT},
     )
     stamp = datetime.now().strftime("%y%m%d-%H%M%S")
     out = ROOT / "eval" / "results"

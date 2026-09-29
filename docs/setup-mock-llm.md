@@ -10,16 +10,16 @@ is not a model.
 
 ## What the mock answers
 
-`financial_disclosure_review.llm.mock_server` answers the three shapes `llm/client.py` sends:
+`financial_disclosure_review.llm.mock_server` answers the two shapes `llm/client.py` sends,
+Responses structured output and Chat Completions tool calls:
 
 | Call | Answer |
 |---|---|
 | Structured output (`/v1/responses` with a JSON schema) | The smallest schema-valid instance. Quote fields are copied from the page text, `items` carry the codes the caller asked about, and a verdict enum answers `판정 불가`. |
 | Classification (`ClassifyAnswer`) | A single `신용카드` product, so every later node runs. |
 | Persona selection tool loop (`choose`) | Filters read from the free-text reader by rules: age decade (`70대`), `사회초년생`, a province name, and `처음`/`금융권` for the familiarity hint. |
-| Case-linking tool loop (`finish`) | Finishes at once with no link. |
 | Page agent tool loop | No tool call. The page agent is not mocked. |
-| Image call, embeddings | `{}`; zero vectors. |
+| Image call | `{}`. |
 
 Every call is appended to `data/mock/mock-calls.jsonl`.
 
@@ -76,6 +76,6 @@ real run; the reported dollar figure is not a charge.
 
 ## In tests
 
-`tests/llm/test_mock_server.py` starts the same server in-process and drives the real `ask`,
-`ToolChat` and `embed_texts` against it. A test that uses its `mock_api` fixture is exempt from the
+`tests/llm/test_mock_server.py` starts the same server in-process and drives the real `ask` and
+`ToolChat` against it. A test that uses its `mock_api` fixture is exempt from the
 guards in `tests/conftest.py` that stop free tests from reaching a paid model.

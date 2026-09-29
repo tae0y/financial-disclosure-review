@@ -154,51 +154,6 @@ def make_render_page(notice_px: float = 16.0, *, html: str = RENDER_HTML, images
         "html": html + images,
     }
 
-
-# A stand-in for llm.client.embed_texts: a bag-of-words vector over a fixed vocabulary, so
-# "글자 크기" really does land nearer the legibility case than the interest-rate one. Deterministic
-# and free, which is what the offline case tests need.
-EMBED_VOCAB = (
-    "이자율",
-    "최소",
-    "평균",
-    "글자",
-    "색상",
-    "크기",
-    "포인트",
-    "무이자",
-    "할부",
-    "대출",
-    "누구나",
-    "자격",
-    "리볼빙",
-    "신용카드",
-    "경고",
-    "혜택",
-    "조건",
-    "표시",
-    "설명",
-)
-
-
-class FakeEmbed:
-    """Counts EMBED_VOCAB terms, normalises, and records every batch it was asked for."""
-
-    def __init__(self, vocab: tuple[str, ...] = EMBED_VOCAB):
-        self.vocab = vocab
-        self.batches: list[list[str]] = []
-
-    def __call__(self, texts: list[str]) -> list[list[float]]:
-        self.batches.append(list(texts))
-        vectors = []
-        for text in texts:
-            counts = [float(text.count(term)) for term in self.vocab]
-            total = sum(v * v for v in counts) ** 0.5
-            # An all-zero vector has no direction, so it gets one constant component instead.
-            blank = [1.0] + [0.0] * (len(self.vocab) - 1)
-            vectors.append([v / total for v in counts] if total else blank)
-        return vectors
-
     @property
     def texts(self) -> list[str]:
         return [text for batch in self.batches for text in batch]

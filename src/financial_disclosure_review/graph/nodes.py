@@ -21,9 +21,6 @@ from ..domain.persona_explanation.profiles import PROFILES_FILE
 from ..domain.product_page import fetch_product_page
 from ..domain.report import build_report
 from ..domain.verification import verify
-from ..knowledge.build_cases import CASE_CORPUS_FILE
-from ..knowledge.linking import link_reference_cases
-from ..knowledge.reference import RISK_KINDS_FILE
 from ..knowledge.rubrics import rubric_bindings, rubric_labels
 from ..llm.client import ask
 from .retry import MAX_LOOPS, RETRY_KEYS, escalation, plan_retry
@@ -51,26 +48,6 @@ def extract_evidence_cards(state: State, runtime: Runtime[Context]) -> dict:
         extract_cards(state["product_page"], state.get("classification") or {}, runtime.context)
     )
     return {"evidence_cards": cards}
-
-
-def retrieve_reference_cases(state: State, runtime: Runtime[Context]) -> dict:
-    """Report-only case references for the page's cards; no judging node reads the result."""
-    print("[retrieve_reference_cases]")
-    ctx = runtime.context
-    refs: dict[str, Any] = dict(state.get("reference_cases") or {})
-    rubric_dir = Path(ctx.rubric_dir)
-    # A bounded agent searches, reads and proposes links; code validates every quote.
-    refs.update(
-        link_reference_cases(
-            (state.get("evidence_cards") or {}).get("cards") or [],
-            state.get("classification") or {},
-            ctx.db_path,
-            ctx=ctx,
-            risk_kinds_path=rubric_dir / RISK_KINDS_FILE,
-            corpus_path=rubric_dir / CASE_CORPUS_FILE,
-        )
-    )
-    return {"reference_cases": refs}
 
 
 def card_ids_for(quotes: list[str], cards: list[dict]) -> list[str]:
@@ -311,7 +288,6 @@ def report_for(state: Mapping[str, Any], ctx: Context, stop: Mapping[str, Any]) 
             bindings=rubric_bindings(ctx.db_path),
             previous_cost=report.get("cost"),
             cards=state.get("evidence_cards") or {},
-            references=state.get("reference_cases") or {},
             labels=rubric_labels(ctx.db_path),
         )
     )

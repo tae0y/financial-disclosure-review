@@ -49,11 +49,10 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
     verification = state.get("verification") or {}
     classification = state.get("classification") or {}
     cards = state.get("evidence_cards") or {}
-    references = state.get("reference_cases") or {}
 
     applied = [row for row in duty.get("items") or [] if row.get("applied")]
     view: dict[str, Any] = {
-        "agent_runs": agent_runs(page, references, persona.get("selection") or {}),
+        "agent_runs": agent_runs(page, persona.get("selection") or {}),
         "product_page": {
             "url": page.get("url"),
             "product": page.get("product"),
@@ -79,10 +78,6 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
                 for gap in cards.get("coverage_gaps") or []
                 if gap.get("status") in ("open", "unresolved")
             ),
-        },
-        "reference_cases": {
-            "status": references.get("status"),
-            "links": len(references.get("links") or []),
         },
         "display_check": {
             "status": (display.get("judgments") or {}).get("status"),
@@ -126,7 +121,6 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
         view["product_page"]["agent_trace"] = page.get("agent_trace") or []
         view["display_check"]["items"] = display.get("items") or []
         view["evidence_cards"]["rows"] = cards.get("cards") or []
-        view["reference_cases"]["rows"] = references.get("links") or []
         view["persona_explanation"]["html"] = persona.get("html")
         view["persona_explanation"]["units"] = persona.get("units") or []
         view["persona_explanation"]["fact_ledger"] = persona.get("fact_ledger") or []

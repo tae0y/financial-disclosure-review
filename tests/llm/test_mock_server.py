@@ -16,7 +16,7 @@ from financial_disclosure_review.domain.classification.stages import check_answe
 from financial_disclosure_review.domain.persona_explanation import selection
 from financial_disclosure_review.domain.product_page.tools import TOOLS as PAGE_TOOLS
 from financial_disclosure_review.llm import mock_server
-from financial_disclosure_review.llm.client import ToolChat, ask, embed_texts
+from financial_disclosure_review.llm.client import ToolChat, ask
 
 HTML = "<html><body><h1>라스베가스 카드</h1><p>연회비 국내전용 10,000원 안내</p></body></html>"
 
@@ -102,8 +102,3 @@ def test_the_page_agent_gets_no_tool_call(mock_api) -> None:
     chat = ToolChat("gpt-5-mini", PAGE_TOOLS)
     chat.user("Product page: https://example.test")
     assert chat.turn()["tool_calls"] == []
-
-
-def test_embeddings_have_the_native_width(mock_api) -> None:
-    vectors = embed_texts(["가", "나"])
-    assert len(vectors) == 2 and len(vectors[0]) == 1536

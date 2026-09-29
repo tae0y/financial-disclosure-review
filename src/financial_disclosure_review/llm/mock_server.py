@@ -1,8 +1,8 @@
 """A zero-cost stand-in for the OpenAI API, for end-to-end runs of the review service.
 
 Point the worker at it with `OPENAI_BASE_URL=http://<host>:9000/v1` and any fake key. It answers
-the three shapes `llm.client` sends — Responses structured output, Chat Completions tool calls,
-and embeddings — with schema-valid content, and never reaches the real API.
+the two shapes `llm.client` sends — Responses structured output and Chat Completions tool
+calls — with schema-valid content, and never reaches the real API.
 
 It is a plumbing check, not a model: answers are the smallest valid instance of each schema, with
 quote fields copied from the page text, one item per code the caller asked about, and "판정 불가"
@@ -27,7 +27,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-EMBED_DIMENSIONS = 1536
 UNDECIDED = "판정 불가"
 
 
@@ -328,18 +327,6 @@ def make_handler(log_path: Path | None) -> type[BaseHTTPRequestHandler]:
                     }
                 )
                 self._send(_completion(body, calls))
-            elif self.path.endswith("/embeddings"):
-                inputs = body.get("input") or []
-                inputs = [inputs] if isinstance(inputs, str) else inputs
-                log({"api": "embeddings", "n": len(inputs)})
-                data = [
-                    {"object": "embedding", "index": i, "embedding": [0.0] * EMBED_DIMENSIONS}
-                    for i in range(len(inputs))
-                ]
-                usage = {"prompt_tokens": 1, "total_tokens": 1}
-                self._send(
-                    {"object": "list", "data": data, "model": body.get("model"), "usage": usage}
-                )
             else:
                 self._send({"error": {"message": f"mock has no route {self.path}"}}, 404)
 

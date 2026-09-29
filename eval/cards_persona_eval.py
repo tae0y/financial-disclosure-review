@@ -1,9 +1,9 @@
 """Evidence cards and the persona explanation on real pages (single structured calls, no agent).
 
 Named `agentic_eval.py` until 2026-09-29. The audit of that date (A-05) found the name implied
-it measured the agents while its reference-case part still called the retired lexical
-`retrieve_reference_cases`; that part is removed. The linking agent is measured by
-`eval/linking_eval.py`, the page agent and reader selection by `eval/agent_loop_eval.py`.
+it measured the agents while it also had a reference-case part; that part is removed along
+with the case-linking node itself. The page agent and reader selection are measured by
+`eval/agent_loop_eval.py`.
 
 Runs on the two real lottecard pages kept in `eval/fixtures/` (gitignored in the public repo),
 with the gold set in `eval/fixtures/gold/evidence_cards.json`. Every model call goes through a

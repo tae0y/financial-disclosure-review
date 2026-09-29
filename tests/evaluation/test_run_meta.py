@@ -10,9 +10,11 @@ from financial_disclosure_review.evaluation.run_meta import run_meta
 def test_the_metadata_names_the_implementation_prompts_and_gold(tmp_path):
     gold = tmp_path / "gold.json"
     gold.write_text(json.dumps({"version": "ai-draft-260929", "pages": []}), encoding="utf-8")
-    meta = run_meta("linking_agent", prompts={"system": "You link cases."}, gold=gold)
-    assert meta["implementation"] == "linking_agent"
-    assert meta["prompt_sha256"] == {"system": hashlib.sha256(b"You link cases.").hexdigest()[:12]}
+    meta = run_meta("page_agent", prompts={"system": "You inspect pages."}, gold=gold)
+    assert meta["implementation"] == "page_agent"
+    assert meta["prompt_sha256"] == {
+        "system": hashlib.sha256(b"You inspect pages.").hexdigest()[:12]
+    }
     assert meta["gold"]["version"] == "ai-draft-260929"
     assert meta["gold"]["sha256"] == hashlib.sha256(gold.read_bytes()).hexdigest()[:12]
     assert set(meta) >= {"commit", "dirty", "recorded_at"}

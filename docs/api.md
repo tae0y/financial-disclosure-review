@@ -127,8 +127,8 @@ selection trace, and fallback reason.
 
 Successful results contain the checkpoint `thread_id`, reviewer status and decision, summary,
 report, cost, and elapsed time. `detail=full` additionally includes per-item judgments, evidence cards,
-reference-case links, the page agent's trace, and the reader-tailored explanation HTML with its
-units, fact ledger and reader selection. Raw source HTML and snapshots never leave the API.
+the page agent's trace, and the reader-tailored explanation HTML with its units, fact ledger and
+reader selection. Raw source HTML and snapshots never leave the API.
 
 The worker runs up to `FDR_AGENT_CONCURRENCY` reviews at once (2 in the compose file); each run
 meters its own budget. Extra submissions stay `queued` until a slot frees, and a run takes about
