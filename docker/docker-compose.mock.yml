@@ -46,6 +46,7 @@ services:
       FDR_MODEL: gpt-5-mini
       FDR_MAX_CALLS: 60
       FDR_MAX_USD: 1.0
+      FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-2}
       TZ: Asia/Seoul
     expose:
       - "8100"
@@ -78,6 +79,7 @@ services:
       FDR_JOBS_DB: /app/data/jobs.sqlite
       FDR_API_TOKEN: ${FDR_MOCK_API_TOKEN:-fdr_mock_local_test}
       FDR_RUN_TIMEOUT: 900
+      FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-2}
       TZ: Asia/Seoul
     ports:
       - "18000:8000"
