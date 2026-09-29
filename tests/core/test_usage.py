@@ -71,3 +71,61 @@ def test_start_run_replaces_the_current_meter_so_a_run_starts_from_zero():
     assert current() is second
     assert second.calls == []
     assert second.max_calls == 60
+
+
+def test_runs_on_separate_threads_keep_separate_meters():
+    import threading
+
+    seen: dict[str, float] = {}
+    both_started = threading.Barrier(2)
+
+    def run(name: str, tokens: int) -> None:
+        meter = start_run(max_calls=0, max_usd=0)
+        both_started.wait()
+        current().record("gpt-5-mini", name, tokens, 0)
+        seen[name] = meter.usd
+        assert current() is meter
+
+    threads = [threading.Thread(target=run, args=(n, t)) for n, t in (("a", 1_000_000), ("b", 0))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert seen == {"a": 0.25, "b": 0.0}
+
+
+def test_parallel_graph_branches_record_to_the_meter_of_their_run():
+    from typing import TypedDict
+
+    from langgraph.graph import END, START, StateGraph
+
+    class S(TypedDict, total=False):
+        a: int
+        b: int
+
+    def branch(key: str):
+        def node(state: S) -> dict:
+            current().record("gpt-5-mini", key, 10, 0)
+            return {key: 1}
+
+        return node
+
+    builder = StateGraph(S)
+    builder.add_node("a", branch("a"))
+    builder.add_node("b", branch("b"))
+    builder.add_edge(START, "a")
+    builder.add_edge(START, "b")
+    builder.add_edge("a", END)
+    builder.add_edge("b", END)
+    meter = start_run(max_calls=0, max_usd=0)
+    builder.compile().invoke({})
+    assert sorted(call["step"] for call in meter.calls) == ["a", "b"]
+
+
+def test_work_moved_off_the_thread_records_to_the_callers_meter():
+    """The page agent runs its model turns through run_in_thread (sync Playwright)."""
+    from financial_disclosure_review.core.threads import run_in_thread
+
+    meter = start_run(max_calls=0, max_usd=0)
+    run_in_thread(lambda: current().record("gpt-5-mini", "page_agent", 10, 0))
+    assert [call["step"] for call in meter.calls] == ["page_agent"]

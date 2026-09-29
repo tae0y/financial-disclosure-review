@@ -23,8 +23,8 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         logging.basicConfig(level=os.environ.get("FDR_LOG_LEVEL", "INFO"))
         app.state.settings = settings
-        # `core.usage` keeps the run meter in a module-level global, so two runs in one process
-        # would share one budget. Serialized unless FDR_AGENT_CONCURRENCY says otherwise.
+        # Each run meters its own budget (a context-local meter in `core.usage`); the slots bound
+        # how many Chromium-backed runs share this process.
         app.state.slots = anyio.Semaphore(max(1, settings.concurrency))
         log.info(
             "agent up: model=%s data_dir=%s db=%s checkpoints=%s concurrency=%s",

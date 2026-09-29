@@ -129,3 +129,26 @@ def test_product_from_carries_only_the_product_identity():
         "summary": "테스트용 신용카드입니다.",
         "evidence": ["페이지 제목"],
     }
+
+
+def test_a_saved_rule_replaces_the_file_whole(tmp_path, monkeypatch):
+    """Two concurrent runs on one site may save and read the same rule: a reader sees the old or
+    the new file, never a half-written one."""
+    import os
+
+    from financial_disclosure_review.domain.product_page import rules
+
+    path = tmp_path / "rules" / "site.json"
+    rules.save_rule(path, {"include": ["#a"]})
+    replaced: list[tuple[str, str]] = []
+    real_replace = os.replace
+
+    def spy(src, dst):
+        replaced.append((str(src), str(dst)))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(rules.os, "replace", spy)
+    rules.save_rule(path, {"include": ["#b"]})
+    assert replaced and replaced[0][1] == str(path)
+    assert rules.load_rule(path) == {"include": ["#b"]}
+    assert [p.name for p in path.parent.iterdir()] == ["site.json"]

@@ -77,6 +77,8 @@ report, cost, and elapsed time. `detail=full` additionally includes per-item jud
 reference-case links, the page agent's trace, and the reader-tailored explanation HTML with its
 units, fact ledger and reader selection. Raw source HTML and snapshots never leave the API.
 
-The current worker processes one run at a time because its usage meter is process-global. Extra
-submissions remain queued. Scale through worker replicas, not a higher in-process concurrency
-setting. See [operations](operations.md) for budgets and service safeguards.
+The worker runs up to `FDR_AGENT_CONCURRENCY` reviews at once (2 in the compose file); each run
+meters its own budget. Extra submissions stay `queued` until a slot frees, and a run takes about
+8–11 minutes, so a queued job can wait that long before `started_at` is set. Each run starts its
+own Chromium, so raise the setting only with memory to spare. See [operations](operations.md) for
+budgets and service safeguards.

@@ -1,7 +1,9 @@
 """The reusable site rule: where it is stored, whether it still fits, and what it reaches."""
 
 import json
+import os
 import re
+import threading
 from pathlib import Path
 from urllib.parse import parse_qsl, urlparse
 
@@ -33,8 +35,12 @@ def load_rule(path: Path) -> dict | None:
 
 
 def save_rule(path: Path, rule: dict) -> None:
+    """Written beside the target and swapped in, so a run reading the rule while another saves
+    it sees one whole file."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(rule, ensure_ascii=False, indent=1))
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(json.dumps(rule, ensure_ascii=False, indent=1))
+    os.replace(tmp, path)
 
 
 def check_rule(html: str, rule: dict) -> list[str]:
