@@ -236,6 +236,8 @@ data/personas/
 data/live*/
 # Local backups of the reference DB taken before a rebuild.
 data/*.sqlite.bak*
+# Local handoff notes for teammates (spec-change announcements); shared outside the repo.
+data/persona-api-change-*.md
 
 # PyPI configuration file
 .pypirc
