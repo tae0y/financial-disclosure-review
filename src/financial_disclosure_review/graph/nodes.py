@@ -112,6 +112,24 @@ def judge_display_method(state: State, runtime: Runtime[Context]) -> dict:
     return {"display_check": check}
 
 
+def mark_mandatory(sources: list[dict[str, Any]], display: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flag the source lines display_check labelled as 의무표시, so the explanation keeps them
+    emphasised (audit P2-12). Matching is by normalised text containment either way."""
+    judgments = display.get("judgments") or {}
+    wanted = set((judgments.get("labels") or {}).get("mandatory") or [])
+    texts = [
+        norm(b.get("text") or "")
+        for b in judgments.get("blocks") or []
+        if b.get("id") in wanted and len(norm(b.get("text") or "")) >= 6
+    ]
+
+    def hit(text: str) -> bool:
+        line = norm(text)
+        return any(t in line or (len(line) >= 6 and line in t) for t in texts)
+
+    return [{**s, "mandatory": True} if texts and hit(s.get("text", "")) else s for s in sources]
+
+
 def generate_persona_explanation(state: State, runtime: Runtime[Context]) -> dict:
     """A supplementary explanation for one reviewed reader profile; never a verdict."""
     print("[generate_persona_explanation]")
@@ -131,9 +149,10 @@ def generate_persona_explanation(state: State, runtime: Runtime[Context]) -> dic
                 rubric_dir=ctx.rubric_dir,
             )
         )
+    sources = mark_mandatory(list(cards.get("sources") or []), state.get("display_check") or {})
     persona.update(
         generate_persona(
-            cards.get("sources") or [],
+            sources,
             cards.get("cards") or [],
             classification,
             ctx,

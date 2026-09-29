@@ -45,15 +45,27 @@ CONTROLS = {
 }
 
 
+MANDATORY_ATTR = ' data-mandatory="true"'
+
+
 def _source_html(source: Mapping[str, Any]) -> str:
-    return f'<p data-source-id="{escape(source["source_id"])}">{escape(source["text"])}</p>'
+    """One original line; a mandatory disclosure (감사 P2-12) is marked and set in bold."""
+    text = escape(source["text"])
+    if source.get("mandatory"):
+        return (
+            f'<p data-source-id="{escape(source["source_id"])}"{MANDATORY_ATTR}>'
+            f"<strong>{text}</strong></p>"
+        )
+    return f'<p data-source-id="{escape(source["source_id"])}">{text}</p>'
 
 
-def _unit_html(unit: Mapping[str, Any]) -> str:
+def _unit_html(unit: Mapping[str, Any], mandatory: bool = False) -> str:
+    fact = escape(unit["exact_fact"])
     parts = [
         f'<section data-unit-id="{escape(unit["unit_id"])}"'
-        f' data-source-ids="{escape(" ".join(unit["source_ids"]))}">',
-        f'<p data-role="exact-fact">{escape(unit["exact_fact"])}</p>',
+        f' data-source-ids="{escape(" ".join(unit["source_ids"]))}"'
+        f"{MANDATORY_ATTR if mandatory else ''}>",
+        f'<p data-role="exact-fact">{f"<strong>{fact}</strong>" if mandatory else fact}</p>',
         f'<p data-role="explanation">{escape(unit["explanation"])}</p>',
     ]
     if unit["analogy"]:
@@ -62,10 +74,18 @@ def _unit_html(unit: Mapping[str, Any]) -> str:
 
 
 def assemble_html(sources: Sequence[Mapping[str, Any]], units: Sequence[Mapping[str, Any]]) -> str:
-    """Every source in page order; an accepted unit replaces only its first source line."""
+    """Every source in page order; an accepted unit replaces only its first source line.
+
+    A source flagged `mandatory` (a 의무표시 block, labelled by display_check) stays emphasised,
+    and so does a unit that stands in for any mandatory line it covers."""
     by_first = {u["replaces"]: u for u in units if u["status"] == "accepted"}
+    mandatory = {s["source_id"] for s in sources if s.get("mandatory")}
     return "".join(
-        _unit_html(by_first[s["source_id"]]) if s["source_id"] in by_first else _source_html(s)
+        _unit_html(
+            by_first[s["source_id"]], bool(mandatory & set(by_first[s["source_id"]]["source_ids"]))
+        )
+        if s["source_id"] in by_first
+        else _source_html(s)
         for s in sources
     )
 

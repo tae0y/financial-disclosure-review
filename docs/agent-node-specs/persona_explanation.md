@@ -216,6 +216,13 @@ is replaced by `<section data-unit-id data-source-ids><p data-role="exact-fact">
 <p data-role="explanation">…</p>[<p data-role="analogy">…</p>]</section>`; every other source,
 including the unit's other sources, stays `<p data-source-id>original</p>`. All text is escaped.
 
+Mandatory disclosures stay emphasised (audit P2-12). The graph node flags a source `mandatory`
+when its text contains, or is contained in, a block `display_check` labelled `mandatory` (at least
+6 normalised characters). Such a line renders as `<p data-source-id data-mandatory="true">
+<strong>…</strong></p>`, and a unit covering a mandatory line carries `data-mandatory="true"` with
+its `exact_fact` in `<strong>`. The emphasis is markup only; it adds no text, so the ledger and
+fidelity checks read the same words.
+
 ## check_ledger
 
 `check_ledger(fact_ledger, units, original_text, explanation_text, model, ask)` returns

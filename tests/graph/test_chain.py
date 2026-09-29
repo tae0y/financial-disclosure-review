@@ -400,3 +400,38 @@ def test_the_reader_is_chosen_from_the_dataset_once_and_kept_on_retry(
     retry_runtime = cast(Runtime[Context], SimpleNamespace(context=retry_ctx))
     again = generate_persona_explanation(cast(State, first), retry_runtime)
     assert again["persona_explanation"]["profile"]["id"] == persona["profile"]["id"]
+
+
+def test_mandatory_disclosure_lines_stay_emphasised_in_the_explanation():
+    """감사 P2-12: 의무표시로 라벨된 줄은 설명 html에서도 강조됩니다."""
+    from financial_disclosure_review.domain.persona_explanation.generate import assemble_html
+    from financial_disclosure_review.graph.nodes import mark_mandatory
+
+    sources = [
+        {"source_id": "dom-1", "text": "커피 10% 할인"},
+        {"source_id": "dom-2", "text": "연체이자율은 약정금리 + 연 3%p입니다."},
+    ]
+    display = {
+        "judgments": {
+            "labels": {"mandatory": ["b7"]},
+            "blocks": [{"id": "b7", "text": "연체이자율은 약정금리 + 연 3%p입니다."}],
+        }
+    }
+    marked = mark_mandatory(sources, display)
+    assert [s.get("mandatory", False) for s in marked] == [False, True]
+    html = assemble_html(marked, [])
+    assert 'data-source-id="dom-2" data-mandatory="true"><strong>' in html
+    assert 'data-source-id="dom-1">커피' in html
+    unit = {
+        "unit_id": "u1",
+        "replaces": "dom-2",
+        "status": "accepted",
+        "source_ids": ["dom-2"],
+        "exact_fact": "연체이자율은 약정금리 + 연 3%p",
+        "explanation": "늦게 내면 이자가 더 붙습니다.",
+        "analogy": "",
+    }
+    assert 'data-mandatory="true"><p data-role="exact-fact"><strong>' in assemble_html(
+        marked, [unit]
+    )
+    assert mark_mandatory(sources, {}) == sources
