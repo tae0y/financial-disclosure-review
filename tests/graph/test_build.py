@@ -207,3 +207,46 @@ def test_a_collection_failure_reaches_a_report_without_any_model_call(monkeypatc
     assert final["classification"] == {}
     assert final["report"]["status"] == "수집 실패"
     assert "navigation failed" in final["report"]["markdown"]
+
+
+def test_a_budget_stop_after_collection_still_ends_in_a_report(monkeypatch, revolving):
+    """Audit 2026-09-29 R5: a spent budget is a result, not a crash without a report."""
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from financial_disclosure_review.core.usage import BudgetError
+    from financial_disclosure_review.graph.build import invoke_to_report
+
+    monkeypatch.setattr(nodes, "fetch_product_page", lambda url, ctx: page_of(revolving))
+    monkeypatch.setattr(nodes, "classify_page", lambda page, model: dict(REVOLVING_CLASSIFICATION))
+
+    def spent(*args, **kwargs):
+        raise BudgetError("run budget $0.15 reached ($0.151) before cards")
+
+    monkeypatch.setattr(nodes, "extract_cards", spent)
+    config: RunnableConfig = {"configurable": {"thread_id": "budget"}}
+    graph = build_review_graph(InMemorySaver())
+    final = invoke_to_report(graph, initial(), config, Context(model="fake"))
+
+    report = final["report"]
+    assert report["status"] == "판정 불가"
+    assert "extract_evidence_cards" in report["decision"]
+    assert "$0.15" in report["actions"][0]
+    assert report["summary"]["interrupted_at"] == "extract_evidence_cards"
+    # The checkpoint ends with the report, so the thread reads as finished.
+    snapshot = graph.get_state(config)
+    assert snapshot.next == ()
+    assert snapshot.values["report"]["status"] == "판정 불가"
+
+
+def test_a_budget_stop_without_a_checkpointer_still_raises(monkeypatch, revolving):
+    from financial_disclosure_review.core.usage import BudgetError
+    from financial_disclosure_review.graph.build import invoke_to_report
+
+    monkeypatch.setattr(nodes, "fetch_product_page", lambda url, ctx: page_of(revolving))
+
+    def spent(*args, **kwargs):
+        raise BudgetError("cap")
+
+    monkeypatch.setattr(nodes, "classify_page", spent)
+    with pytest.raises(BudgetError):
+        invoke_to_report(build_review_graph(), initial(), {}, Context(model="fake"))

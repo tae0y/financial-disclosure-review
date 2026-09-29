@@ -181,6 +181,74 @@ def _findings(
     return found
 
 
+def _loop(ran: str, trace: Any, stop_reason: Any) -> dict:
+    steps = [t for t in trace or [] if isinstance(t, Mapping) and t.get("turn")]
+    return {
+        "ran": ran,
+        "turns": max((int(t["turn"]) for t in steps), default=0),
+        "tool_calls": sum(1 for t in steps if t.get("tool")),
+        "stop_reason": str(stop_reason or ""),
+    }
+
+
+def agent_runs(
+    page: Mapping[str, Any], references: Mapping[str, Any], selection: Mapping[str, Any]
+) -> dict:
+    """Which of the three agent loops ran in this review, with turns, tool calls and stop.
+
+    `ran` is `agent` when the model loop ran; otherwise how the step was settled without one:
+    discovery `reuse` (a saved site rule) or `none`; case_link `skipped` (no cards or cases) or
+    `not_run`; reader_selection `default`, `uuid`, `attributes`, `fallback` or `not_run`.
+    """
+    trace = page.get("agent_trace") or []
+    if trace:
+        discovery = "agent"
+    else:
+        discovery = "reuse" if page.get("stop_reason") == "rule_reused" else "none"
+    link_trace = references.get("agent_trace") or []
+    if link_trace:
+        case_link = "agent"
+    else:
+        case_link = "skipped" if references.get("status") else "not_run"
+    pick_trace = selection.get("trace") or []
+    if any(t.get("turn") for t in pick_trace):
+        reader = "agent"
+    else:
+        reader = str(selection.get("decided_by") or "not_run")
+    return {
+        "discovery": _loop(discovery, trace, page.get("stop_reason")),
+        "case_link": _loop(case_link, link_trace, references.get("stop_reason")),
+        "reader_selection": _loop(reader, pick_trace, selection.get("stop_reason")),
+    }
+
+
+RUN_LABELS = {
+    "discovery": ("페이지 탐색", {"reuse": "저장 규칙 재사용", "none": "실행 안 됨"}),
+    "case_link": ("사례 연결", {"skipped": "건너뜀", "not_run": "실행 안 됨"}),
+    "reader_selection": (
+        "독자 선택",
+        {
+            "default": "상품유형 기본 조건",
+            "uuid": "지정 uuid",
+            "attributes": "지정 속성",
+            "fallback": "대체",
+            "not_run": "실행 안 됨",
+        },
+    ),
+}
+
+
+def _agent_runs_line(runs: Mapping[str, Mapping[str, Any]]) -> str:
+    parts = []
+    for key, (label, settled) in RUN_LABELS.items():
+        run = runs[key]
+        if run["ran"] == "agent":
+            parts.append(f"{label} agent {run['turns']}턴({run['stop_reason'] or '-'})")
+        else:
+            parts.append(f"{label} {settled.get(run['ran'], run['ran'])}")
+    return "- 에이전트 실행: " + " · ".join(parts)
+
+
 def _collection_action(page: Mapping[str, Any]) -> str:
     """One reviewer line naming why collection stopped; empty when the agent finished cleanly."""
     status = page.get("status")
@@ -221,10 +289,23 @@ def _status(
                 "사람이 페이지를 직접 확인하거나 원인을 해소한 뒤 재실행",
             ],
         )
+    collection = _collection_action(page)
+    if stop.get("interrupted_at"):
+        # A run cut short by its budget judged only part of the page: no verdict is earned,
+        # whatever the finished steps found.
+        return (
+            STATUS_UNJUDGED,
+            f"{stop['interrupted_at']} 단계에서 실행이 중단되어"
+            f"({stop.get('reason') or '사유 미기재'}) 자동 판정을 내리지 않았습니다.",
+            [
+                f"검토 중단({stop.get('reason') or '사유 미기재'}): {stop.get('detail') or '-'}",
+                *([collection] if collection else []),
+                "한도를 조정해 재실행하거나 사람이 페이지 전체를 직접 검토",
+            ],
+        )
     status, decision, actions = _judged_status(
         classification, display, verification, findings, stop
     )
-    collection = _collection_action(page)
     if collection:
         actions = [collection, *actions]
         # An open evidence gap means the page was not fully seen; a clean pass is not earned.
@@ -375,6 +456,8 @@ def build_report(
     cards, references = cards or {}, references or {}
     summary["evidence_cards"] = len(cards.get("cards") or [])
     summary["reference_links"] = len(references.get("links") or [])
+    summary["interrupted_at"] = stop.get("interrupted_at") or ""
+    summary["agent_runs"] = agent_runs(page, references, plain.get("selection") or {})
     limits = _limits(display, plain, duty)
     limits += _card_limits(cards, duty)
     return {
@@ -705,6 +788,7 @@ def _markdown(
         f" / {classification.get('page_type') or '(해당 없음)'}",
         f"- 분류 근거: {_clip(str(classification.get('reason', '')), 300)}",
         f"- 페이지 수집: {page.get('status') or '(기록 없음)'} ({page.get('stop_reason') or '-'})",
+        _agent_runs_line(summary["agent_runs"]),
         "",
         "## 1. 담당자 조치 목록",
         "",

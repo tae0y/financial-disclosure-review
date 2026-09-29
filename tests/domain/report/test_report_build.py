@@ -604,3 +604,83 @@ def test_agent_links_report_their_search_and_stop():
     }
     markdown = report(references=references)["markdown"]
     assert "연결 agent(검색 3회, 읽기 2회, 중단 사유 finished)" in markdown
+
+
+# Audit 2026-09-29 R2: which agent loops actually ran in this request, and how far.
+AGENT_PAGE = {
+    **PAGE,
+    "status": "완료",
+    "stop_reason": "full_coverage",
+    "html": "<p>x</p>",
+    "agent_trace": [
+        {"turn": 1, "tool": "inspect_page"},
+        {"turn": 2, "tool": "interact"},
+        {"turn": 2, "tool": "probe_selector"},
+        {"turn": 3, "tool": "submit_rule"},
+    ],
+}
+AGENT_SELECTION = {
+    **PLAIN_OK,
+    "selection": {
+        "decided_by": "agent",
+        "stop_reason": "chosen",
+        "trace": [
+            {"turn": 1, "tool": "list_values"},
+            {"turn": 1, "tool": "list_values"},
+            {"turn": 2, "tool": "choose"},
+        ],
+    },
+}
+AGENT_REFERENCES = {
+    "status": "부분 완료",
+    "method": {"linking": "agent"},
+    "stop_reason": "max_turns",
+    "agent_trace": [{"turn": t, "tool": "search_cases"} for t in range(1, 9)],
+    "links": [],
+}
+
+
+def test_each_agent_loop_that_ran_is_summarized_with_turns_and_stop():
+    runs = report(page=AGENT_PAGE, plain=AGENT_SELECTION, references=AGENT_REFERENCES)["summary"][
+        "agent_runs"
+    ]
+    assert runs["discovery"] == {
+        "ran": "agent",
+        "turns": 3,
+        "tool_calls": 4,
+        "stop_reason": "full_coverage",
+    }
+    assert runs["case_link"] == {
+        "ran": "agent",
+        "turns": 8,
+        "tool_calls": 8,
+        "stop_reason": "max_turns",
+    }
+    assert runs["reader_selection"] == {
+        "ran": "agent",
+        "turns": 2,
+        "tool_calls": 3,
+        "stop_reason": "chosen",
+    }
+
+
+def test_loops_that_did_not_run_say_so():
+    page = {**PAGE, "status": "완료", "stop_reason": "rule_reused", "html": "<p>x</p>"}
+    plain = {**PLAIN_OK, "selection": {"decided_by": "default", "trace": []}}
+    references = {"status": "건너뜀", "method": {"linking": "agent"}, "links": []}
+    runs = report(page=page, plain=plain, references=references)["summary"]["agent_runs"]
+    assert runs["discovery"]["ran"] == "reuse"
+    assert runs["case_link"]["ran"] == "skipped"
+    assert runs["reader_selection"]["ran"] == "default"
+    assert all(run["turns"] == 0 for run in runs.values())
+    assert report()["summary"]["agent_runs"]["case_link"]["ran"] == "not_run"
+
+
+def test_the_markdown_header_lists_the_agent_loops():
+    markdown = report(page=AGENT_PAGE, plain=AGENT_SELECTION, references=AGENT_REFERENCES)[
+        "markdown"
+    ]
+    assert (
+        "- 에이전트 실행: 페이지 탐색 agent 3턴(full_coverage) · 사례 연결 agent 8턴(max_turns)"
+        " · 독자 선택 agent 2턴(chosen)"
+    ) in markdown

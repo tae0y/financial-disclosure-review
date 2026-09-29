@@ -1,9 +1,11 @@
 """Assembling the review graph."""
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from ..core.context import Context
 from ..core.state import State
+from ..core.usage import BudgetError
 from .nodes import (
     classify_type,
     end_report,
@@ -12,10 +14,12 @@ from .nodes import (
     judge_display_method,
     judge_explanation_duty,
     preprocess_product_page,
+    report_for,
     retrieve_reference_cases,
     retry_dispatch,
     verify_answer,
 )
+from .retry import MAX_LOOPS
 from .routes import (
     route_after_classify,
     route_after_preprocess,
@@ -69,3 +73,33 @@ def build_review_graph(checkpointer=None):
     )
     builder.add_edge("end_report", END)
     return builder.compile(checkpointer=checkpointer)
+
+
+def invoke_to_report(graph, graph_input, config: RunnableConfig, context: Context) -> dict:
+    """Run the graph; a budget spent after collection still ends in a 판정 불가 report.
+
+    The failing node's writes are lost, so the report is built from the last checkpoint and
+    written back as `end_report`, leaving the thread finished. Without a checkpointer there is
+    no state to report from, and the BudgetError propagates.
+    """
+    try:
+        return dict(graph.invoke(graph_input, config, context=context))
+    except BudgetError as error:
+        if graph.checkpointer is None:
+            raise
+        # A rerun's config pins an old checkpoint; the state to report is the thread's latest.
+        thread: RunnableConfig = {
+            "configurable": {"thread_id": (config.get("configurable") or {}).get("thread_id")}
+        }
+        snapshot = graph.get_state(thread)
+        state = dict(snapshot.values)
+        at = snapshot.next[0] if snapshot.next else "end_report"
+        stop = {
+            "reason": "비용 한도 도달",
+            "detail": str(error),
+            "interrupted_at": at,
+            "max_loops": MAX_LOOPS,
+        }
+        report = report_for(state, context, stop)
+        graph.update_state(thread, {"report": report}, as_node="end_report")
+        return {**state, "report": report}

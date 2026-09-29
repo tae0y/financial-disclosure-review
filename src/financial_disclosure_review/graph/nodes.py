@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from langgraph.runtime import Runtime
 
@@ -276,8 +276,8 @@ def _explanation_of(state: State) -> dict[str, Any]:
     return dict(state.get("persona_explanation") or legacy)
 
 
-def end_report(state: State, runtime: Runtime[Context]) -> dict:
-    print("[end_report]")
+def report_for(state: Mapping[str, Any], ctx: Context, stop: Mapping[str, Any]) -> dict:
+    """The Report for whatever State holds; `stop` says why the run ended where it did."""
     report: dict[str, Any] = dict(state.get("report") or {})
     report.update(
         build_report(
@@ -285,14 +285,20 @@ def end_report(state: State, runtime: Runtime[Context]) -> dict:
             state.get("classification") or {},
             state.get("display_check") or {},
             # A checkpoint from before the persona explanation still has `plain_language`.
-            _explanation_of(state),
+            _explanation_of(cast(State, state)),
             state.get("explanation_duty_check") or {},
             state.get("verification") or {},
-            {**escalation(state.get("verification") or {}), "max_loops": MAX_LOOPS},
-            bindings=rubric_bindings(runtime.context.db_path),
+            stop,
+            bindings=rubric_bindings(ctx.db_path),
             previous_cost=report.get("cost"),
             cards=state.get("evidence_cards") or {},
             references=state.get("reference_cases") or {},
         )
     )
-    return {"report": report}
+    return report
+
+
+def end_report(state: State, runtime: Runtime[Context]) -> dict:
+    print("[end_report]")
+    stop = {**escalation(state.get("verification") or {}), "max_loops": MAX_LOOPS}
+    return {"report": report_for(state, runtime.context, stop)}

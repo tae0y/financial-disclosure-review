@@ -21,7 +21,7 @@ from .domain.persona_explanation.dataset import (
     missing_shards,
 )
 from .evaluation import SUITES, default_eval_dir, render, run_evaluation
-from .graph.build import build_review_graph
+from .graph.build import build_review_graph, invoke_to_report
 from .knowledge.build import build_rubric_db
 from .knowledge.build_cases import build_case_db, case_db_counts
 
@@ -129,7 +129,7 @@ def review(args: argparse.Namespace) -> int:
     print("thread:", thread_id)
     start_run(max_calls=args.max_calls, max_usd=args.max_usd)
     with SqliteSaver.from_conn_string(args.checkpoints) as saver:
-        final = build_review_graph(saver).invoke(state, config, context=context_from(args))
+        final = invoke_to_report(build_review_graph(saver), state, config, context_from(args))
     print_summary(final)
     saved = save_report(final, args.data_dir, thread_id)
     if saved:
@@ -148,7 +148,7 @@ def rerun(args: argparse.Namespace) -> int:
             print(f"thread {args.thread!r} has no checkpoint whose next node is {args.from_node!r}")
             return 1
         start_run(max_calls=args.max_calls, max_usd=args.max_usd)
-        final = graph.invoke(None, before.config, context=context_from(args))
+        final = invoke_to_report(graph, None, before.config, context_from(args))
     print_summary(final)
     saved = save_report(final, args.data_dir, args.thread)
     if saved:

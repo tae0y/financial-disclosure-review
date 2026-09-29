@@ -21,6 +21,7 @@ reviewer has to do about them, and the mapping is mechanical:
 | verification passed, no 부적합, no 판정 불가 | 검토 완료 | 담당자 확인 후 쉬운말 게시 가능 |
 | verification passed, but items are 부적합 | 사람 검토 필요 | 쉬운말 자동 게시 불가 — 원문 유지 |
 | verification failed after the retries | 사람 검토 필요 | 쉬운말 자동 게시 불가 — 원문 유지 |
+| the run budget ran out after collection | 판정 불가 | names the interrupted node |
 
 A `판정 불가` item is a task, never a pass. `findings` collects every row a person must look at:
 `부적합` and `판정 불가` from both checks, every fidelity difference, and every plain-language
@@ -51,6 +52,14 @@ be mistaken for a reviewed one. Then: 담당자 조치 목록, 검토 요약, �
 원장 대조, 판정 대상이 아닌 운영 통제), 자동 검증 결과, 비용과 소요시간, 한계와 가정, 페이지 수집
 agent 기록(상태·중단 사유·조사 공백·행동 로그), 증거 카드와 조사 공백, 참고 사례(판정에 사용하지
 않음). The last three are appended so earlier section numbers stay stable.
+
+A `BudgetError` raised after collection no longer ends the thread without a report:
+`graph.build.invoke_to_report` (used by the CLI and the API worker) builds the report from the
+last checkpoint, with `summary.interrupted_at` naming the node that did not finish, and writes it
+back as `end_report`. The header also carries one `에이전트 실행` line and `summary.agent_runs`
+(the same object in the API summary): for the page agent, the case-linking agent and the reader
+selection, whether the model loop ran (`agent`) or how the step was settled without it (`reuse`,
+`skipped`, `default`, ...), with turns, tool calls and stop reason (audit 2026-09-29, R2, R5).
 
 Collection comes first in the status: a page with no collected html reads `수집 실패` or `조사
 불충분`, never a classification problem, and an open evidence gap keeps a clean run from reading

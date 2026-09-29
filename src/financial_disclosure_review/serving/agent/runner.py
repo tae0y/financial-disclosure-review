@@ -11,7 +11,8 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from ...core.context import Context
 from ...core.state import empty_state
 from ...core.usage import start_run
-from ...graph.build import build_review_graph
+from ...domain.report.build import agent_runs
+from ...graph.build import build_review_graph, invoke_to_report
 from ..schemas import Detail, PersonaRequest, RunResult
 from ..settings import AgentSettings
 
@@ -52,6 +53,7 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
 
     applied = [row for row in duty.get("items") or [] if row.get("applied")]
     view: dict[str, Any] = {
+        "agent_runs": agent_runs(page, references, persona.get("selection") or {}),
         "product_page": {
             "url": page.get("url"),
             "product": page.get("product"),
@@ -182,8 +184,8 @@ def run_review(
     )
     started = time.time()
     with SqliteSaver.from_conn_string(settings.resolved_checkpoints()) as saver:
-        final = build_review_graph(saver).invoke(
-            state, config, context=_context(settings, model, persona)
+        final = invoke_to_report(
+            build_review_graph(saver), state, config, _context(settings, model, persona)
         )
     return _result(dict(final), thread, detail, time.time() - started, meter.summary())
 
@@ -212,5 +214,5 @@ def run_rerun(
             raise LookupError(
                 f"thread {thread_id!r} has no checkpoint whose next node is {from_node!r}"
             )
-        final = graph.invoke(None, before.config, context=_context(settings, model))
+        final = invoke_to_report(graph, None, before.config, _context(settings, model))
     return _result(dict(final), thread_id, detail, time.time() - started, meter.summary())
