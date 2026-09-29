@@ -41,9 +41,12 @@ Returns `{status, reason, method, candidates, links, agent_trace, stop_reason}`:
 report already reads, plus the trace and the stop reason.
 
 - `status`: `건너뜀` (no cards; no model call) | `판정 불가` (case source or risk-kind file
-  missing, or the run was interrupted by the budget or a model error before any link) |
-  `해당 사례 없음` (no case for the product type, with no model call, or the agent linked
-  nothing) | `완료` (at least one validated link).
+  missing, or the run stopped on its turn limit, budget or a model error before any link) |
+  `해당 사례 없음` (no case for the product type, with no model call, or the agent finished
+  without a link) | `부분 완료` (links kept from a run that stopped on its turn limit, budget or
+  a model error) | `완료` (the agent finished, or hit the link cap, with at least one link).
+  Only `finish` or the link cap make a run complete: a run cut short is never read as "no case"
+  or as complete (audit 2026-09-29, R5).
 - `method`: `{linking: "agent", model, max_turns, searches, reads, cases_from, rerank}`.
 - `candidates`: every case any `search_cases` call returned, as `{case_id, score, card_ids}`: its
   best score and the union of the card ids cited in those searches.
@@ -72,7 +75,13 @@ quotes must be exact.
 
 ### Tools
 
-- `search_cases(query, card_ids=[], risk_kind="", top_k=5)`: the deterministic search tool. The
+Both lookup tools take batches, because gpt-5-mini made one tool call per turn: search, read and
+propose then cost three of the eight turns per link, and three of four gold pages ran out of
+turns (2026-09-29). `search_cases` accepts up to 4 searches in `queries`, `read_case` up to 3
+`case_ids`; a single search or read answers in its old shape, a batch as `{searches: [...]}` or
+`{cases: [...]}`.
+
+- `search_cases(query, card_ids=[], risk_kind="", top_k=5, queries=[])`: the deterministic search tool. The
   query is the model's own words plus the cited cards' slot text (claim, qualifiers, exceptions,
   numbers). Scoring is BM25 over the product-type-filtered cases (`issue + mvp_signal + text`,
   Korean character bigrams plus whole number tokens like `"30만원"`/`"16.9%"`), built in memory
@@ -82,7 +91,7 @@ quotes must be exact.
   order stands and `method.rerank` records the fallback. Returns `case_id, record_type,
   product_basis, issue, mvp_signal, page_only_detectability, score` for at most `top_k` (capped
   at 10) cases, never the case text.
-- `read_case(case_id)`: the case's fields and its `text` split into numbered sentences. For a
+- `read_case(case_id="", case_ids=[])`: each case's fields and its `text` split into numbered sentences. For a
   `text_verified: false` case the result says the text may not be quoted.
 - `propose_link(case_id, card_ids, page_quote, case_quote, same_pattern, material_difference)`: a
   proposal, validated by code (below).

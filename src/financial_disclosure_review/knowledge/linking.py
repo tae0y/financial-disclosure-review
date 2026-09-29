@@ -50,6 +50,10 @@ CONCRETE_KINDS = {
 }
 MAX_LINKS = 5
 MAX_TOP_K = 10
+# Batches per call: gpt-5-mini made one tool call per turn, so search -> read -> propose took
+# three of the eight turns per link (2026-09-29 linking gold run).
+MAX_SEARCH_BATCH = 4
+MAX_READ_BATCH = 3
 RESULT_LIMIT = 12_000
 # A link names a shared pattern; it never says whether the page is compliant.
 VERDICT_WORDS = re.compile(r"적합|부적합|위반|합법|불법|문제\s*없")
@@ -62,13 +66,13 @@ A link is a reference, not a finding: it says "this page shows the same advertis
 
 Input: the page's product type and its evidence cards (id, kind, claim, qualifiers, exceptions, numbers, quote). The quote is the page's exact wording.
 
-Tools: search_cases (BM25 over this product type's cases; your own query words, optionally plus cited cards' text; returns case summaries, never full text), read_case (one case's fields and its text as numbered sentences), propose_link (one link, validated by code), finish (end).
+Tools: search_cases (BM25 over this product type's cases; your own query words, optionally plus cited cards' text; up to 4 searches in one call via queries; returns case summaries, never full text), read_case (cases' fields and text as numbered sentences; up to 3 case_ids in one call), propose_link (one link, validated by code), finish (end).
 
 Method:
-1. Pick the cards that make a concrete claim, condition, exception or warning. Skip generic text.
-2. search_cases with words describing the pattern (e.g. "최대 할인율만 강조, 조건 미표기"), citing the card ids.
-3. read_case on a promising hit. Link only when the case describes the same pattern the card shows, not merely the same topic or vocabulary.
-4. propose_link, then continue or finish.
+1. Pick the cards that make a concrete claim, condition, exception or warning. Skip generic text. Group them (rates/fees, benefits with their conditions and exceptions, warnings).
+2. One search_cases call with one entry in queries per group, words describing the pattern (e.g. "최대 할인율만 강조, 조건 미표기"), citing the card ids.
+3. One read_case call with the promising hits in case_ids. Link only when the case describes the same pattern the card shows, not merely the same topic or vocabulary.
+4. propose_link for each fitting case, then finish.
 
 Rules:
 - page_quote must be copied exactly from the quote of one of the cited cards. case_quote must be copied exactly from one sentence of the case text read with read_case.
@@ -83,21 +87,31 @@ Rules:
 - You have a limited number of model turns. Call several independent tools in one turn. Call finish when done."""  # noqa: E501
 
 
-class SearchCases(BaseModel):
-    """BM25 search over this product type's cases. query is your own description of the
-    pattern; card_ids adds those cards' text to it; risk_kind (rate_fee, benefit_condition or
-    warning_penalty) ranks cases curated with that kind higher. Returns case summaries only."""
+class SearchQuery(BaseModel):
+    """One search: query is your own description of the pattern; card_ids adds those cards'
+    text to it; risk_kind (rate_fee, benefit_condition or warning_penalty) ranks cases curated
+    with that kind higher."""
 
-    query: str
+    query: str = ""
     card_ids: list[str] = []
     risk_kind: str = ""
     top_k: int = 5
 
 
-class ReadCase(BaseModel):
-    """One case's fields and its text as numbered sentences, with whether it may be quoted."""
+class SearchCases(SearchQuery):
+    """BM25 search over this product type's cases; returns case summaries only. Give one
+    search in query/card_ids/risk_kind, or up to 4 independent searches (one per card group)
+    in queries, answered together in one call."""
 
-    case_id: str
+    queries: list[SearchQuery] = []
+
+
+class ReadCase(BaseModel):
+    """Cases' fields and text as numbered sentences, with whether each may be quoted. Give
+    case_id, or up to 3 case_ids to read several promising hits in one call."""
+
+    case_id: str = ""
+    case_ids: list[str] = []
 
 
 class ProposeLink(BaseModel):
@@ -169,9 +183,9 @@ class LinkRun:
             fields = sorted({".".join(str(p) for p in e["loc"]) for e in error.errors()})
             return _blocked(f"invalid arguments: {', '.join(fields)}")
         if isinstance(parsed, SearchCases):
-            return self.search_cases(parsed)
+            return self.search_batch(parsed)
         if isinstance(parsed, ReadCase):
-            return self.read_case(parsed.case_id)
+            return self.read_batch(parsed)
         if isinstance(parsed, ProposeLink):
             return self.propose_link(parsed)
         return self.finish()
@@ -219,7 +233,31 @@ class LinkRun:
             return None
         return {hit["case_id"]: hit["similarity"] for hit in hits}
 
-    def search_cases(self, args: SearchCases) -> dict:
+    def search_batch(self, args: SearchCases) -> dict:
+        """The single search keeps its old answer; a batch answers each search in order."""
+        single = SearchQuery.model_validate(args.model_dump(exclude={"queries"}))
+        searches = ([single] if single.query.strip() or single.card_ids else []) + args.queries
+        if not searches:
+            return _blocked("give a query (or queries) to search")
+        if len(searches) > MAX_SEARCH_BATCH:
+            return _blocked(f"at most {MAX_SEARCH_BATCH} searches per call")
+        if len(searches) == 1:
+            return self.search_cases(searches[0])
+        return {
+            "searches": [{"query": q.query, **self.search_cases(q)} for q in searches],
+        }
+
+    def read_batch(self, args: ReadCase) -> dict:
+        ids = list(dict.fromkeys(([args.case_id] if args.case_id else []) + args.case_ids))
+        if not ids:
+            return _blocked("give case_id or case_ids")
+        if len(ids) > MAX_READ_BATCH:
+            return _blocked(f"at most {MAX_READ_BATCH} cases per read_case call")
+        if len(ids) == 1:
+            return self.read_case(ids[0])
+        return {"cases": [self.read_case(case_id) for case_id in ids]}
+
+    def search_cases(self, args: SearchQuery) -> dict:
         unknown = [cid for cid in args.card_ids if cid not in self.cards]
         if unknown:
             return _blocked(f"unknown card ids {unknown}")
@@ -499,16 +537,16 @@ def link_reference_cases(
         "agent_trace": trace,
         "stop_reason": stop_reason,
     }
-    interrupted = stop_reason in ("budget_exhausted", "model_error")
+    # A run that never reached finish or the link cap saw only part of the cards: its links are
+    # partial and its silence is not "no case" (audit 2026-09-29 R5).
+    if stop_reason not in ("finished", "link_cap"):
+        cause = f"턴 한도 {max_turns}" if stop_reason == "max_turns" else stop_reason
+        note = f": {stop_note}" if stop_note else ""
+        if run.links:
+            reason = f"사례 연결이 {cause}로 중단되어 그때까지 검증된 연결만 보고함{note}"
+            return _result("부분 완료", reason, method, **rest)
+        reason = f"사례 연결이 {cause}로 중단되어 연결 여부를 확정하지 못함{note}"
+        return _result("판정 불가", reason, method, **rest)
     if run.links:
-        reason = ""
-        if interrupted or stop_reason == "max_turns":
-            reason = f"사례 연결이 {stop_reason}로 끝나 그때까지 검증된 연결만 보고함"
-        return _result("완료", reason, method, **rest)
-    if interrupted:
-        return _result("판정 불가", f"사례 연결 중단({stop_reason}): {stop_note}", method, **rest)
-    if stop_reason == "max_turns":
-        return _result(
-            "해당 사례 없음", f"턴 한도 {max_turns} 안에 검증된 사례 연결이 없음", method, **rest
-        )
+        return _result("완료", "", method, **rest)
     return _result("해당 사례 없음", "에이전트가 같은 패턴의 사례를 연결하지 않음", method, **rest)

@@ -301,8 +301,9 @@ def _propose(**changes) -> dict:
     ],
 )
 def test_an_invalid_proposal_is_refused_with_its_reason(paths, script, reason_part):
-    result, _ = _run(paths, script + [[FINISH]])
-    refused = result["agent_trace"][-2]
+    # The first finish is sent back (concrete cards unsearched); the second one ends the run.
+    result, _ = _run(paths, script + [[FINISH], [FINISH]])
+    refused = next(t for t in result["agent_trace"] if t["tool"] == "propose_link")
     assert refused["tool"] == "propose_link"
     assert refused["blocked"] is True
     assert reason_part in refused["blocked_reason"]
@@ -358,8 +359,17 @@ def test_max_turns_without_finish_keeps_the_links_accepted_so_far(paths):
     assert result["stop_reason"] == "max_turns"
     assert chat.step == 3
     assert [link["case_id"] for link in result["links"]] == ["case.link_analog"]
-    assert result["status"] == "완료"
+    # Audit 2026-09-29 R5: links from a run that never finished are partial, not complete.
+    assert result["status"] == "부분 완료"
     assert result["method"]["max_turns"] == 3
+
+
+def test_max_turns_without_any_link_is_not_read_as_no_case(paths):
+    result, _ = _run(paths, [[SEARCH_DISCOUNT], [READ_ANALOG]], ctx=_ctx(case_link_max_turns=2))
+    assert result["stop_reason"] == "max_turns"
+    assert result["links"] == []
+    assert result["status"] == "판정 불가"
+    assert "턴 한도" in result["reason"]
 
 
 def test_the_link_cap_ends_the_loop(paths, monkeypatch):
@@ -396,7 +406,7 @@ def test_a_budget_error_after_a_link_keeps_the_link(paths):
     chat = BudgetChat([[SEARCH_DISCOUNT], [READ_ANALOG], [PROPOSE_ANALOG]], fail_at=4)
     result, _ = _run(paths, [], chat=chat)
     assert result["stop_reason"] == "budget_exhausted"
-    assert result["status"] == "완료"
+    assert result["status"] == "부분 완료"
     assert len(result["links"]) == 1
 
 
@@ -424,3 +434,53 @@ def test_a_first_finish_with_unsearched_concrete_cards_is_sent_back_once(paths):
     assert nudge["cases_read"] == 0
     assert json.loads(second["result"])["finished"] is True
     assert result["stop_reason"] == "finished"
+
+
+# ---------------------------------------------------------------------------------------------
+# batched tools (audit 2026-09-29 R6: one tool call per turn ran 3 of 4 pages out of turns)
+# ---------------------------------------------------------------------------------------------
+
+
+def test_one_search_call_can_run_several_card_groups(paths):
+    batch = _call(
+        "search_cases",
+        queries=[
+            {"query": "최대 할인율만 강조", "card_ids": ["c1"], "risk_kind": "benefit_condition"},
+            {"query": "수수료율 범위만 표기", "card_ids": ["c3"], "risk_kind": "rate_fee"},
+        ],
+    )
+    result, chat = _run(paths, [[batch], [FINISH], [FINISH]])
+    first = json.loads(chat.results[0][1])
+    assert [s["query"] for s in first["searches"]] == ["최대 할인율만 강조", "수수료율 범위만 표기"]
+    assert all("results" in s for s in first["searches"])
+    assert result["method"]["searches"] == 2
+    assert not result["agent_trace"][0]["blocked"]
+
+
+def test_the_single_query_form_still_answers_as_before(paths):
+    _, chat = _run(paths, [[SEARCH_DISCOUNT], [FINISH], [FINISH]])
+    assert "results" in json.loads(chat.results[0][1])
+
+
+def test_one_read_call_can_read_several_cases_and_each_can_be_linked(paths):
+    both = _call("read_case", case_ids=["case.link_analog", "case.link_direct"])
+    result, chat = _run(paths, [[SEARCH_DISCOUNT], [both], [PROPOSE_ANALOG], [FINISH]])
+    read = json.loads(chat.results[1][1])
+    assert [c["case_id"] for c in read["cases"]] == ["case.link_analog", "case.link_direct"]
+    assert result["method"]["reads"] == 2
+    assert [link["case_id"] for link in result["links"]] == ["case.link_analog"]
+
+
+@pytest.mark.parametrize(
+    ("call", "reason_part"),
+    [
+        (_call("read_case", case_ids=["a", "b", "c", "d"]), "at most"),
+        (_call("read_case"), "case_id"),
+        (_call("search_cases", queries=[{"query": f"q{n}"} for n in range(5)]), "at most"),
+        (_call("search_cases"), "query"),
+    ],
+)
+def test_batches_have_a_size_limit_and_need_something_to_do(paths, call, reason_part):
+    result, _ = _run(paths, [[call], [FINISH], [FINISH]])
+    assert result["agent_trace"][0]["blocked"]
+    assert reason_part in result["agent_trace"][0]["blocked_reason"]
