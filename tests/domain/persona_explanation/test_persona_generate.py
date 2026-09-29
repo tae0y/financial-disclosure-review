@@ -130,6 +130,23 @@ def test_rate_and_penalty_analogies_are_dropped_for_every_reader():
             assert any(reason in p for p in unit["problems"] if p.startswith("analogy_dropped"))
 
 
+def test_list_numbering_is_not_an_invented_number():
+    """2026-09-29 C4: 금융 친숙 독자에게 모델이 '1) … 2) …' 목록으로 쓰자 번호가 원문에 없는 수치로
+    잡혀 단위가 모두 원문으로 되돌아갔습니다. 목록 번호는 사실이 아닙니다."""
+    fixture = load_persona_fixture("threshold_exclusion")
+    draft = copy.deepcopy(fixture["drafts"]["lowfin"])
+    draft[0]["explanation"] = (
+        "1) 전월 이용금액이 30만원 이상이어야 합니다. 2) 할인은 월 최대 2만원입니다."
+        " (3) 일부 가맹점 제외 조건이 있습니다."
+    )
+    draft[0]["analogy"] = ""
+    result, _ = run(fixture, draft)
+    assert result["units"][0]["status"] == "accepted", result["units"][0]["problems"]
+    draft[0]["explanation"] += " 1년이면 24만원입니다."
+    result, _ = run(fixture, draft)
+    assert any("근거 원문에 없는 수치: 24" in p for p in result["units"][0]["problems"])
+
+
 def test_an_invented_number_reverts_the_unit_to_the_original_line():
     fixture = load_persona_fixture("threshold_exclusion")
     result, _ = run(fixture, fixture["drafts"]["invented_number"])

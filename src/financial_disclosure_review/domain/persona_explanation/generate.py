@@ -23,6 +23,7 @@ from .schema import PersonaUnitDrafts
 
 RISK_CARD_KINDS = {"rate_claim", "fee_claim", "warning"}
 RISK_TERMS_RE = re.compile(r"리볼빙|금리|이자|연체|위약금|수수료|이월")
+ENUM_MARKER = re.compile(r"(?<!\S)\(?\d{1,2}[)）.](?=\s)")
 VERDICT_RE = re.compile(r"적합|부적합|위반|합법|불법|문제없")
 BENEFIT_KINDS = {"benefit_claim"}
 CARD_FIELDS = (
@@ -154,7 +155,8 @@ def review_unit(
             notes.append(f"analogy_dropped: {why}")
             analogy = ""
 
-    generated = f"{explanation} {analogy}"
+    # "1) …", "(2) …", "3. …" number a list; they state no fact, so they are not checked.
+    generated = ENUM_MARKER.sub(" ", f"{explanation} {analogy}")
     extra = sorted(number_set(generated) - number_set(source_text) - counter_ones(generated))
     if extra:
         problems.append(f"근거 원문에 없는 수치: {', '.join(extra)}")
