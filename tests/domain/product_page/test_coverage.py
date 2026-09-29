@@ -256,6 +256,18 @@ def test_f_invalid_url_and_blocked_fetch_never_raise(tmp_path, monkeypatch):
     assert page["stop_reason"] == "fetch_error"
     assert page["html"] == ""
 
+    # 2026-09-29 F1 (KB 카드론): the page navigated itself mid-scroll and a raw Playwright error
+    # escaped the node. Any browser error ends as a collection failure with its message.
+    from playwright.sync_api import Error as PlaywrightError
+
+    def crashing_visit(sess, url, ctx, rules_dir, chat_factory=None):
+        raise PlaywrightError("Page.evaluate: Execution context was destroyed")
+
+    monkeypatch.setattr(fetch_module, "visit", crashing_visit)
+    page = fetch_product_page("https://example.test/product", Context(data_dir=str(tmp_path)))
+    assert (page["status"], page["stop_reason"]) == ("수집 실패", "fetch_error")
+    assert "Execution context was destroyed" in page["error"]
+
 
 def test_f_max_turns_without_an_accepted_submit_is_incomplete(tmp_path):
     with sync_playwright() as playwright:

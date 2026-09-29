@@ -291,10 +291,16 @@ def tool_submit(sess: PageSession, args: dict) -> dict:
         head = BeautifulSoup(piece["html"], "html.parser").find(True)
         if head is not None and head.name in CHROME_TAGS:
             errors.append(f"include {piece['selector']!r} selects page chrome <{head.name}>")
+    # An include the agent never looked at is still refused, but the tool probes it now and
+    # returns what it selects, so the next submit needs no separate probe turn (2026-09-29 F1:
+    # a page spent all 20 turns alternating submit -> "probe first" -> probe -> submit).
     unprobed = [s for s in proposal.include if s not in sess.probed]
+    probed_now = None
     if unprobed:
+        probed_now = tool_probe(sess, unprobed)
         errors.append(
-            f"probe_selector these include selectors first to see what they select: {unprobed}"
+            f"these include selectors had not been probed: {unprobed}. Their probe results are"
+            " in `probe` below; check what they select and resubmit (no separate probe needed)."
         )
     open_controls = [
         g for g in sess.gaps if g["kind"] == "unexpanded_control" and g["status"] != "closed"
@@ -321,7 +327,11 @@ def tool_submit(sess: PageSession, args: dict) -> dict:
                 " again. Resubmit unchanged if none is product content."
             )
     if errors:
-        return {"accepted": False, "errors": errors}
+        return {
+            "accepted": False,
+            "errors": errors,
+            **({"probe": probed_now} if probed_now else {}),
+        }
     sess.pending = {"version": 1, **proposal.model_dump()}
     sess.final_coverage = coverage.finalize_coverage(sess, proposal.include, proposal.exclude)
     sess.last_action_note = "submit_rule accepted"

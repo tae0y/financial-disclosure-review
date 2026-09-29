@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 from ...core.context import Context
@@ -51,6 +52,10 @@ def fetch_product_page(url: str, ctx: Context, chat_factory=None) -> dict:
             return _empty(url, "조사 불충분", "max_turns", str(error), sess)
         except BudgetError as error:
             return _empty(url, "조사 불충분", "budget_exhausted", str(error), sess)
+        except PlaywrightError as error:
+            # Anything else the browser throws (the page navigating itself, a crashed tab, ...)
+            first = (str(error).splitlines() or [""])[0][:300]
+            return _empty(url, "수집 실패", "fetch_error", f"browser error: {first}", sess)
         finally:
             sess.log(
                 "summary",

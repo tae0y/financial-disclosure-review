@@ -399,6 +399,18 @@ class PageSession:
         self.snapshot("default", f"arrived {self.page.url}")
 
     def scroll_through(self):
+        """Scroll to the bottom and back so lazy content renders. A page that reloads itself
+        right after arriving destroys the script context; wait for it to settle and retry once."""
+        try:
+            self._scroll_through()
+        except PlaywrightError as error:
+            if "context was destroyed" not in str(error):
+                raise
+            self.log("self_navigation", url=self.page.url)
+            self.page.wait_for_load_state("load", timeout=15_000)
+            self._scroll_through()
+
+    def _scroll_through(self):
         step = self.ctx.viewport_height * 0.8
         for _ in range(60):
             bottom, total = self.page.evaluate(

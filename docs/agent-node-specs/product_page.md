@@ -65,7 +65,10 @@ The guards live in the tools, never in the prompt.
   path is not a document extension.
 - Caps: `max_turns` model turns, `max_visits` page loads, 30 clicks per expand call.
 
-`submit_rule` never writes the rule file. It validates the proposal against the live page and,
+`submit_rule` never writes the rule file. An include selector the agent never probed is still
+refused, but the submit probes it itself and returns the result under `probe`, so the next
+submit needs no separate probe turn (2026-09-29 F1: a page used all 20 turns alternating submit,
+"probe first" and probe). It validates the proposal against the live page and,
 on the first clean proposal, nudges the agent twice — once if an open `unexpanded_control` gap
 exists and no expand was ever tried, and once with a sample of the text blocks left outside the
 selection. Only code saves the rule, after `finalize_rule` reloads the page and replays the
@@ -129,7 +132,9 @@ accordion panel often matches every panel, so keying by selector alone merged do
 into one gap. One `expand` over many accordions closes each control gap whose element the click
 actually reached (`MARK_CLICKED_JS` marks clicked elements in a page-side `WeakSet`).
 
-`fetch_product_page` never raises for a page or agent failure. It always returns `{url, product,
+`fetch_product_page` never raises for a page or agent failure; any other Playwright error ends
+as `수집 실패`/`fetch_error` with the browser's message (2026-09-29 F1: a KB page reloaded itself
+while the arrival scroll ran). The arrival scroll retries once after such a self-reload. It always returns `{url, product,
 actions, snapshots, html, status, stop_reason, error, coverage, agent_trace}`. `status` is one of
 `완료`, `조사 불충분`, `수집 실패`; `stop_reason` is one of `rule_reused`, `full_coverage`,
 `submitted_with_gaps`, `no_viable_control`, `no_new_evidence`, `repeated_action`, `turn_budget`,

@@ -213,3 +213,20 @@ def test_reject_reason_for_accordion_toggles():
         )
         == ""
     )
+
+
+def test_an_unprobed_include_is_probed_by_the_submit_itself(tmp_path):
+    """2026-09-29 F1(신한카드): 제출 → 'probe 먼저' 거절 → probe → 제출을 반복하다 20턴을
+    다 썼습니다. 제출이 직접 probe해 결과를 돌려주므로 다음 제출에 별도 probe 턴이 필요 없습니다."""
+    with sync_playwright() as playwright:
+        sess = _session(NO_CONTROL_HTML, tmp_path, playwright)
+        try:
+            call_tool(sess, "inspect_page", {})
+            first = call_tool(sess, "submit_rule", dict(SUBMIT))
+            assert first["accepted"] is False
+            assert "had not been probed" in " ".join(first["errors"])
+            assert first["probe"]["results"][0]["selector"] == "article#product"
+            again = call_tool(sess, "submit_rule", dict(SUBMIT))
+            assert not any("probed" in e for e in again.get("errors", []))
+        finally:
+            sess.close()
