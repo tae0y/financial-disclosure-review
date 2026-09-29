@@ -85,7 +85,7 @@ recorded answers by default. See [evaluation](evaluation.md) for suites and resu
 
 ## Run and operate
 
-- [API](api.md) — job lifecycle, authentication, response detail, and limits.
+- [API](api.md) — job lifecycle, authentication, easy-language reader input, response detail, and limits.
 - [Docker setup](setup-docker.md) and [Cloudflare tunnel](setup-cloudflare.md) — local and deployed service setup.
 - [Operations](operations.md) — escalation, cost controls, data handling, and abuse controls.
 

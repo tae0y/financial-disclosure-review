@@ -33,6 +33,20 @@ The result is `{status, reason, profile, fact_ledger, units, html, controls}`.
 - `controls`: a static list of UI controls (AI 생성 고지, 원문 보기 전환, 오류 신고) and governance
   controls (사람 승인, 변경 관리, 프로필 검토). They are documented for the report, not judged.
 
+### HTTP API boundary
+
+`POST /v1/reviews` receives optional user information under `persona`. The normal screen input is
+one or two sentences in `persona.request`; `persona.uuid` and `persona.attributes` are advanced
+forms for selecting a dataset row or supplying filters directly. The gateway and worker share the
+same `PersonaRequest` model, so the value survives that hop without being reinterpreted.
+
+At the start of the run, `_context` maps the three fields to `Context.persona_request`,
+`Context.persona_uuid`, and `Context.persona_attributes`. It removes `null` values inside
+`attributes`; therefore an all-null object is treated as absent and cannot outrank a populated
+free-text request. The `persona` object and each of its fields may be omitted or `null`; empty
+input becomes the selection default described below. See [the HTTP API guide](../api.md#reader-information-for-the-easy-language-explanation)
+for the wire format, validation failures, and response paths.
+
 ## Profiles
 
 A profile is chosen once per review by `choose_profile(ctx, *, product_type, cards, data_dir,

@@ -38,20 +38,60 @@ it with `uv run python -m financial_disclosure_review.serving.openapi`.
 ## Submit and poll
 
 Only `url` is required. `detail` defaults to `summary`; `max_calls` and `max_usd` cap one run.
-`persona` chooses the reader of the reader-tailored explanation (독자 맞춤 설명) from the
-synthetic Nemotron-Personas-Korea dataset. The usual input is `{"request": "70대 은퇴자, 카드론을
-처음 알아보는 사람"}`: one or two sentences of free text (up to 300 characters) that a small
-bounded agent turns into dataset filters and a financial-familiarity hint. Two exact forms also
-exist: `{"uuid": "<32 hex>"}` for one dataset row, and `{"attributes": {"age_min": 70,
-"education_level": ["초등학교"]}}` for the filters themselves. The first one given wins; nothing
-given uses the product type's default reader.
 
-Every persona field is nullable, and so is `persona` itself. `null`, an omitted key, an empty
-string and an `attributes` object whose values are all `null` all mean "not given", so a form can
-send `{"request": "...", "uuid": null, "attributes": null}`. Only an over-long `request` or a
-`uuid` that is not 32 hex characters is rejected with `422`; any other invalid value never fails
-the run — the report states how the reader was chosen and what was used instead. The persona only
-shapes the explanation's wording; it never changes a compliance verdict.
+### Reader information for the easy-language explanation
+
+`persona` carries the user information used to choose the reader of the reader-tailored
+explanation (독자 맞춤 설명). It does not identify the API caller. A normal UI sends the text the
+user entered in `persona.request`:
+
+```json
+{
+  "url": "https://www.example-card.co.kr/product/credit/apply",
+  "persona": {
+    "request": "70대 은퇴자이고 카드론을 처음 알아보는 사람입니다.",
+    "uuid": null,
+    "attributes": null
+  }
+}
+```
+
+| Field | Type | Use |
+|---|---|---|
+| `persona` | object \| `null` | Optional user information. Omit it or send `null` when the UI collected none. |
+| `persona.request` | string \| `null` | The usual input: one or two sentences, up to 300 characters. State who the user is and how familiar they are with the product. |
+| `persona.uuid` | string \| `null` | Advanced use: one exact dataset row, as 32 lowercase hexadecimal characters. |
+| `persona.attributes` | object \| `null` | Advanced use: dataset filters supplied directly. |
+
+Free text is turned into dataset filters and a financial-familiarity hint by a small bounded
+agent. Useful details are age band, education, occupation, region, household type, and phrases
+such as "처음 알아보는" or "금융권 종사자". Income, credit standing, suitability, and other
+facts that the dataset does not contain are not inferred or used. The selected persona only
+changes the explanation's wording; it never changes a compliance verdict.
+
+Treat `persona.request` as model input. Collect only the demographic sketch and level of financial
+familiarity needed for the explanation; do not send a name, contact details, account or card
+numbers, resident-registration numbers, credentials, or other identifying or sensitive data.
+
+The advanced `attributes` form accepts the filters `age_min`, `age_max`, `sex`,
+`education_level`, `occupation_contains`, `province`, `family_type`, `housing_type`, and
+`marital_status`. When more than one form has a value, precedence is `uuid` → `attributes` →
+`request`. For ordinary screen integration, populate only `request` and leave the other two
+fields `null`.
+
+Every persona field is nullable, and so is `persona` itself. For `request` and `uuid`, an omitted
+key, `null`, or an empty string means "not given". For `attributes`, an omitted key, `null`, an
+empty object, or an object whose values are all `null` has the same meaning. If every form is
+empty, the run uses the product type's default reader. An unusable filter, unmatched value, or
+free-text request from which no supported condition can be obtained does not fail the job: the
+run falls back to a default reader and records the reason in the report.
+
+Request-shape validation still happens before a job is created. A `request` longer than 300
+characters, a non-string `request` or `uuid`, a non-object `persona` or `attributes`, or a nonempty
+`uuid` other than 32 lowercase hexadecimal characters returns FastAPI's standard `422` response.
+Invalid keys or values *inside* the free-form `attributes` object instead fall back during the
+run. A `422` response's `detail[].loc` identifies the field, for example
+`['body', 'persona', 'request']`.
 
 ```bash
 BASE=http://localhost:8000
@@ -59,7 +99,14 @@ TOKEN=fdr_...
 
 job=$(curl -sS -X POST "$BASE/v1/reviews" \
   -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
-  -d '{"url":"https://www.example-card.co.kr/product/credit/apply"}' \
+  -d '{
+    "url":"https://www.example-card.co.kr/product/credit/apply",
+    "persona":{
+      "request":"70대 은퇴자이고 카드론을 처음 알아보는 사람입니다.",
+      "uuid":null,
+      "attributes":null
+    }
+  }' \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["job_id"])')
 
 curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/v1/reviews/$job"
@@ -69,6 +116,12 @@ curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/v1/reviews/$job/report.md"
 Poll until the status leaves `queued` or `running`. A job ends as `succeeded`, `failed`, or
 `interrupted`. `interrupted` means the gateway stopped mid-run; its checkpoint remains available
 for `/v1/reruns`.
+
+With `detail=summary`, `result.summary.persona_explanation.reader_chosen_by` is `agent` for a
+free-text choice, `default` when nothing was supplied, `fallback` when the input could not be
+used, or `uuid`/`attributes` for either advanced form. With `detail=full`,
+`result.summary.persona_explanation.selection` also contains the applied filters, match count,
+selection trace, and fallback reason.
 
 ## Responses and limits
 

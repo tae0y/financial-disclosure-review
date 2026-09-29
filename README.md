@@ -78,7 +78,9 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.override.ym
 ```
 
 Submit with `POST /v1/reviews`, then poll the returned job URL. All `/v1` routes require a bearer
-token. Local setup, deployment, and the complete endpoint contract are in [the serving docs](docs/api.md).
+token. Optional user information for the easy-language explanation is sent as free text in
+`persona.request`. Its nullable fields, validation rules, examples, deployment, and the complete
+endpoint contract are in [the serving docs](docs/api.md).
 
 ## Documentation
 

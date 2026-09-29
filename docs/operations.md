@@ -33,6 +33,11 @@ running `use_llm` tests can incur cost.
   evaluate page scripts, or download files.
 - Treat `data/checkpoints.sqlite`, snapshots, site rules, and generated reports as internal:
   they contain the page content under review and model output.
+- Treat `persona.request` as model input. The reader-selection agent may send it to the configured
+  model provider, and checkpoints or reports retain the derived reader and selection metadata.
+  The calling UI should collect only a demographic sketch and financial-familiarity level, never
+  names, contact details, account or card numbers, resident-registration numbers, credentials, or
+  other identifying or sensitive data.
 - Keep API keys and tokens in ignored environment files. Generated reports retain
   `ai-generated: true` and `human-review: false` frontmatter.
 
