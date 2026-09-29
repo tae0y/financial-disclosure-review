@@ -235,6 +235,8 @@ def test_null_persona_fields_are_accepted_and_reach_the_worker(tmp_path) -> None
     """A form sends every persona field, null when the user left it blank."""
 
     class Recording(StubAgent):
+        requests: list
+
         async def run(self, request) -> RunResult:
             self.requests.append(request)
             return await super().run(request)

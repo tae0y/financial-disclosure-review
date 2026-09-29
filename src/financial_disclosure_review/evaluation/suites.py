@@ -65,12 +65,20 @@ def keyword_classify(page: dict) -> dict:
     return {"product_type": best, "page_type": PAGE_TYPE_BY_PRODUCT[best], "reason": reason}
 
 
+def case_files(fixtures_dir: str | Path) -> list[Path]:
+    """The suite's case files; none is an error, so a missing fixture never scores as a result."""
+    paths = sorted(Path(fixtures_dir).glob("*.json"))
+    if not paths:
+        raise FileNotFoundError(f"no evaluation cases in {fixtures_dir}")
+    return paths
+
+
 def run_classification(
     ctx: Context, cassette: Cassette, fixtures_dir: str | Path, arm: str = "pipeline"
 ) -> dict:
     """Six captured pages judged against 영태's labels; the keyword arm makes no model call."""
     rows = []
-    for path in sorted(Path(fixtures_dir).glob("*.json")):
+    for path in case_files(fixtures_dir):
         fixture = json.loads(path.read_text(encoding="utf-8"))
         page = {key: fixture[key] for key in ("url", "product", "html")}
         if arm == "keyword":
@@ -369,7 +377,7 @@ def run_stability(
     """Asks the same questions `repeats` times (salted after round 1); measures self-agreement."""
     salts = ["", *[f"repeat-{n}" for n in range(2, repeats + 1)]]
     classification = []
-    for path in sorted(Path(fixtures_dir).glob("*.json")):
+    for path in case_files(fixtures_dir):
         fixture = json.loads(path.read_text(encoding="utf-8"))
         page = {key: fixture[key] for key in ("url", "product", "html")}
         answers = [

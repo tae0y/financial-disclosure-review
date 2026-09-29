@@ -547,6 +547,9 @@ def test_the_stability_suite_repeats_the_ablation_arm_as_a_baseline(tmp_path, mo
     html_path.write_text(HTML, encoding="utf-8")
     fixtures = tmp_path / "classify"
     fixtures.mkdir()
+    (fixtures / "one.json").write_text(
+        json.dumps({"url": "u", "product": {}, "html": HTML, "expected": {}}), encoding="utf-8"
+    )
     config = {"base_html": str(html_path), "classification": {"product_type": "신용카드"}}
     cassette = Cassette(tmp_path / "c.json", mode="live", ask=SteadyPipelineDriftingAblation())
 
@@ -563,3 +566,23 @@ def test_the_stability_suite_repeats_the_ablation_arm_as_a_baseline(tmp_path, mo
     ]
     assert baseline["duty_unstable_kinds"] == {"부적합↔판정 불가": 1}
     assert metrics["duty_unstable_kinds"] == {}
+
+
+@pytest.mark.parametrize("arm", ["pipeline", "keyword"])
+def test_a_classification_suite_without_cases_fails_instead_of_scoring_none(tmp_path, arm):
+    from financial_disclosure_review.evaluation import suites
+
+    cassette = Cassette(tmp_path / "c.json", mode="replay")
+
+    with pytest.raises(FileNotFoundError, match="no evaluation cases"):
+        suites.run_classification(Context(model="fake"), cassette, tmp_path / "classify", arm=arm)
+
+
+def test_a_stability_suite_without_cases_fails_before_any_call(tmp_path):
+    from financial_disclosure_review.evaluation import suites
+
+    cassette = Cassette(tmp_path / "c.json", mode="replay")
+    config = {"base_html": str(tmp_path / "page.html"), "classification": {"product_type": "x"}}
+
+    with pytest.raises(FileNotFoundError, match="no evaluation cases"):
+        suites.run_stability(Context(model="fake"), cassette, tmp_path / "classify", config)

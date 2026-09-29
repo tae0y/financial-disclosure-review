@@ -282,6 +282,7 @@ def test_an_untried_control_inside_the_submitted_regions_is_sent_back_once(tmp_p
             # reading as fully covered.
             accepted = call_tool(sess, "submit_rule", dict(SUBMIT))
             assert accepted["accepted"] is True
+            assert sess.final_coverage is not None
             assert sess.final_coverage["status"] == "조사 불충분"
         finally:
             sess.close()

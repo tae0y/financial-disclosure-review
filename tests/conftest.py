@@ -3,7 +3,7 @@
 import pytest
 from dotenv import find_dotenv, load_dotenv
 
-from tests.helpers import load_classify_fixtures
+from tests.helpers import CLASSIFY_MISSING, load_classify_fixtures
 
 # The use_llm tests need the key the app reads at startup; the free ones never look at it.
 load_dotenv(find_dotenv(usecwd=True))
@@ -11,7 +11,10 @@ load_dotenv(find_dotenv(usecwd=True))
 
 @pytest.fixture(scope="session")
 def classify_fixtures() -> dict[str, dict]:
-    return load_classify_fixtures()
+    fixtures = load_classify_fixtures()
+    if not fixtures:
+        pytest.skip(CLASSIFY_MISSING)
+    return fixtures
 
 
 @pytest.fixture(scope="session")

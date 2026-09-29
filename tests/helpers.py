@@ -10,6 +10,8 @@ from financial_disclosure_review.domain.classification.schema import VerifyAnswe
 from financial_disclosure_review.domain.classification.stages import FIELDS_AFTER_STAGE, STAGES
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
+# Captured third-party pages are gitignored; a clone gets them from the submission zip.
+CLASSIFY_MISSING = "tests/fixtures/classify/ is gitignored and missing locally"
 
 
 def load_classify_fixtures() -> dict[str, dict]:

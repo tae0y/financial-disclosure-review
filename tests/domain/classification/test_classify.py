@@ -5,11 +5,12 @@ import pytest
 from financial_disclosure_review.core.text import visible_text
 from financial_disclosure_review.domain.classification import classify_page
 from financial_disclosure_review.domain.classification.schema import PAGE_TYPE_BY_PRODUCT
-from tests.helpers import load_classify_fixtures, make_fake_ask, page_of
+from tests.helpers import CLASSIFY_MISSING, load_classify_fixtures, make_fake_ask, page_of
 
 FIXTURES = load_classify_fixtures()
 
 
+@pytest.mark.skipif(not FIXTURES, reason=CLASSIFY_MISSING)
 def test_six_fixtures_are_loaded():
     assert len(FIXTURES) == 6
 
