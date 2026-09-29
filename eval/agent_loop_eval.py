@@ -41,7 +41,9 @@ def final_state(saver: SqliteSaver, thread_id: str) -> dict[str, Any]:
 def page_metrics(thread_id: str, state: dict[str, Any]) -> dict[str, Any]:
     page = state.get("product_page") or {}
     gaps = (page.get("coverage") or {}).get("gaps") or []
-    actionable = [g for g in gaps if g.get("kind") in ACTIONABLE]
+    # Gaps inside the submitted regions only (recorded since 2026-09-29); older runs have no
+    # flag, and then every gap counts.
+    actionable = [g for g in gaps if g.get("kind") in ACTIONABLE and g.get("in_region", True)]
     trace = page.get("agent_trace") or []
     interactions = [t for t in trace if t.get("tool") == "interact"]
     allowed = [t for t in interactions if not t.get("blocked")]

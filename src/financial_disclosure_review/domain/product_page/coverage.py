@@ -104,6 +104,15 @@ def _own_text(el) -> str:
     return " ".join("".join(s for s in el.find_all(string=True, recursive=False)).split())
 
 
+SKIP_LINK = re.compile(r"바로\s*가기|건너뛰기|skip", re.I)
+
+
+def _is_skip_link(el) -> bool:
+    """An accessibility skip link ("본문 바로가기" -> #contents) jumps, it reveals nothing."""
+    href = str(el.get("href") or "")
+    return el.name == "a" and href.startswith("#") and bool(SKIP_LINK.search(el.get_text(" ")))
+
+
 def _delegates_to_toggle(el) -> bool:
     """A `.collapse-title` whose accordion has its own toggle input: the input is the control
     (the title is clicked through it), so the title must not become a second gap."""
@@ -152,7 +161,13 @@ def observe(sess) -> dict:
 
     controls, seen = [], set()
     for el in body.select(CONTROL_QUERY):
-        if in_chrome(el) or in_layer(el) or id(el) in seen or _delegates_to_toggle(el):
+        if (
+            in_chrome(el)
+            or in_layer(el)
+            or id(el) in seen
+            or _delegates_to_toggle(el)
+            or _is_skip_link(el)
+        ):
             continue
         seen.add(id(el))
         controls.append(
@@ -314,7 +329,10 @@ def summarize(obs: dict, sess) -> dict:
 def public_gaps(sess) -> list[dict]:
     """The gap list with internal bookkeeping fields removed, in stable id order."""
     keys = ("id", "kind", "detail", "target", "status", "closed_by")
-    return [{k: g[k] for k in keys} for g in sess.gaps]
+    return [
+        {**{k: g[k] for k in keys}, **({"in_region": g["in_region"]} if "in_region" in g else {})}
+        for g in sess.gaps
+    ]
 
 
 def _in_region(
@@ -358,12 +376,17 @@ def finalize_coverage(sess, include: list[str], exclude: list[str]) -> dict:
     its gap becomes `unresolved` and the report lists it as a limitation (user decision,
     2026-09-29)."""
     html = sess.page.content()
+    # Every actionable gap is marked with whether it lies in the submitted regions, so the
+    # evaluation can measure closure over the content that was judged, not page chrome.
+    for gap in sess.gaps:
+        if gap["kind"] in ACTIONABLE_KINDS:
+            gap["in_region"] = _in_region(
+                html, gap["target"], include, exclude, gap.get("text", "")
+            )
     in_scope = [
         gap
         for gap in sess.gaps
-        if gap["kind"] in ACTIONABLE_KINDS
-        and gap["status"] != "closed"
-        and _in_region(html, gap["target"], include, exclude, gap.get("text", ""))
+        if gap["kind"] in ACTIONABLE_KINDS and gap["status"] != "closed" and gap["in_region"]
     ]
     untried = [
         gap for gap in sess.gaps if gap["kind"] == "unexpanded_control" and gap["status"] == "open"

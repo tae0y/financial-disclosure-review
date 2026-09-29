@@ -230,3 +230,25 @@ def test_an_unprobed_include_is_probed_by_the_submit_itself(tmp_path):
             assert not any("probed" in e for e in again.get("errors", []))
         finally:
             sess.close()
+
+
+def test_skip_links_are_not_controls_and_gaps_record_their_region(tmp_path):
+    """2026-09-29 F1(현대카드): '본문 바로가기' 같은 건너뛰기 링크가 펼칠 컨트롤로 잡혀 공백이
+    남았고, 판정 영역 밖 공백까지 해소율 분모에 들어갔습니다."""
+    html = DAISY_HTML.replace(
+        "<main>", '<div id="userSkip"><a href="#product">본문 바로가기</a></div><main>'
+    )
+    with sync_playwright() as playwright:
+        sess = _session(html, tmp_path, playwright)
+        try:
+            inspected = call_tool(sess, "inspect_page", {})
+            assert not any("userSkip" in g["target"] for g in inspected["open_gaps"])
+            call_tool(sess, "probe_selector", {"selectors": ["article#product"]})
+            for _ in range(3):  # nudges (untried controls, outside text) reject the first tries
+                if call_tool(sess, "submit_rule", dict(SUBMIT)).get("accepted"):
+                    break
+            flagged = [g for g in coverage.public_gaps(sess) if "in_region" in g]
+            assert flagged and any(g["in_region"] for g in flagged)
+            assert any(not g["in_region"] for g in flagged)  # the form's panel
+        finally:
+            sess.close()
