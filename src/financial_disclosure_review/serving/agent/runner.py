@@ -25,15 +25,17 @@ def _context(
     settings: AgentSettings, model: str | None, persona: PersonaRequest | None = None
 ) -> Context:
     persona = persona or PersonaRequest()
+    # Nulls mean "not given"; an all-null attributes object must not outrank a free-text request.
+    attributes = persona.attributes.model_dump(exclude_none=True) if persona.attributes else {}
     return Context(
         model=model or settings.model,
         data_dir=settings.data_dir,
         db_path=settings.resolved_db_path(),
         rubric_dir=settings.rubric_dir,
         allowed_hosts=settings.allowed_hosts,
-        persona_request=persona.request,
-        persona_uuid=persona.uuid,
-        persona_attributes=persona.attributes,
+        persona_request=persona.request or "",
+        persona_uuid=persona.uuid or "",
+        persona_attributes=attributes or None,
     )
 
 

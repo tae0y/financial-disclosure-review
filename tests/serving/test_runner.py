@@ -124,3 +124,50 @@ def test_the_persona_request_reaches_the_review_context() -> None:
     assert ctx.persona_attributes == {"age_min": 70}
     assert _context(AgentSettings(), None).persona_request == ""
     assert PersonaRequest(uuid="").uuid == ""
+
+
+def test_null_persona_fields_mean_not_given() -> None:
+    """Nulls are dropped before the graph sees them; a blank field never outranks a filled one."""
+    from financial_disclosure_review.serving.agent.runner import _context
+    from financial_disclosure_review.serving.schemas import ReviewRequest
+    from financial_disclosure_review.serving.settings import AgentSettings
+
+    def context_of(persona):
+        body = {"url": "https://example.com/card", "persona": persona}
+        request = ReviewRequest.model_validate(body)
+        return _context(AgentSettings(), None, request.persona)
+
+    blank = context_of({"request": None, "uuid": None, "attributes": None})
+    assert (blank.persona_request, blank.persona_uuid, blank.persona_attributes) == ("", "", None)
+
+    # All-null attributes are not "given": the free-text request still decides the reader.
+    only_request = context_of(
+        {"request": "70대 은퇴자", "attributes": {"age_min": None, "province": None}}
+    )
+    assert only_request.persona_attributes is None
+    assert only_request.persona_request == "70대 은퇴자"
+
+    partial = context_of({"attributes": {"age_min": 70, "sex": None, "province": ["서울"]}})
+    assert partial.persona_attributes == {"age_min": 70, "province": ["서울"]}
+
+
+def test_the_persona_survives_the_gateway_to_worker_hop() -> None:
+    """The gateway forwards `model_dump(mode="json")`; the worker must parse it back unchanged."""
+    from financial_disclosure_review.serving.schemas import ReviewRequest
+
+    sent = ReviewRequest.model_validate(
+        {
+            "url": "https://example.com/card",
+            "persona": {"request": None, "uuid": None, "attributes": {"age_min": 70}},
+        }
+    )
+    received = ReviewRequest.model_validate(sent.model_dump(mode="json"))
+    assert received == sent
+
+
+def test_the_persona_attributes_match_the_dataset_filters() -> None:
+    """The API field list is the dataset filter list; a new filter must show up in both."""
+    from financial_disclosure_review.domain.persona_explanation.dataset import Filters
+    from financial_disclosure_review.serving.schemas import PersonaAttributes
+
+    assert set(PersonaAttributes.model_fields) == set(Filters.model_fields)
