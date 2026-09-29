@@ -8,6 +8,10 @@ created: 2026-09-27
 
 `judge_explanation_duty` judges the explanation-duty criteria twice — once against the original
 page, once against the plain-language rewrite — and records where the two answers differ. The
+original side reads only the page, so on a first round `judge_explanation_original` judges it in
+the same graph step as the persona explanation and `judge_explanation_duty` reuses those rows;
+without them (a rerun from an older checkpoint) it judges the original side itself. A judgment
+whose check rejects only some codes asks again for those codes alone and merges the answer. The
 input is a public 상품광고/업무광고 page, not a 청약 단계 설명화면, so every criterion here is
 applied by analogy (준용), per [Rubrics and scope](../README.md#rubrics-and-scope).
 

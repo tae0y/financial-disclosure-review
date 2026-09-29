@@ -13,6 +13,7 @@ from .nodes import (
     generate_persona_explanation,
     judge_display_method,
     judge_explanation_duty,
+    judge_explanation_original,
     preprocess_product_page,
     report_for,
     retrieve_reference_cases,
@@ -36,6 +37,7 @@ def build_review_graph(checkpointer=None):
     builder.add_node("retrieve_reference_cases", retrieve_reference_cases)
     builder.add_node("judge_display_method", judge_display_method)
     builder.add_node("generate_persona_explanation", generate_persona_explanation)
+    builder.add_node("judge_explanation_original", judge_explanation_original)
     builder.add_node("judge_explanation_duty", judge_explanation_duty)
     builder.add_node("verify_answer", verify_answer)
     builder.add_node("retry_dispatch", retry_dispatch)
@@ -52,10 +54,18 @@ def build_review_graph(checkpointer=None):
         route_after_classify,
         {"extract_evidence_cards": "extract_evidence_cards", "end_report": "end_report"},
     )
+    # LangGraph runs a step's nodes together and waits for all of them, so independent work is
+    # paired with the step it fits: reference cases beside the display check, and the original
+    # side of explanation duty (page only) beside the persona explanation. A node that two
+    # finished nodes point to runs once. A retry re-enters at the persona explanation alone,
+    # which is why the original side has plain edges instead of a join.
     builder.add_edge("extract_evidence_cards", "retrieve_reference_cases")
-    builder.add_edge("retrieve_reference_cases", "judge_display_method")
+    builder.add_edge("extract_evidence_cards", "judge_display_method")
+    builder.add_edge("retrieve_reference_cases", "generate_persona_explanation")
     builder.add_edge("judge_display_method", "generate_persona_explanation")
+    builder.add_edge("judge_display_method", "judge_explanation_original")
     builder.add_edge("generate_persona_explanation", "judge_explanation_duty")
+    builder.add_edge("judge_explanation_original", "judge_explanation_duty")
     builder.add_edge("judge_explanation_duty", "verify_answer")
     builder.add_conditional_edges(
         "verify_answer",

@@ -26,7 +26,8 @@ not import each other; they exchange data only through State.
 ### Workflow
 
 ```text
-START → preprocess* ─┬→ classify ─┬→ evidence cards → reference cases* → display → reader explanation → explanation duty → verify → report
+START → preprocess* ─┬→ classify ─┬→ evidence cards ─┬→ reference cases* ─┬→ reader explanation ─────┬→ explanation duty → verify → report
+                     │            │                  └→ display ───────────┴→ explanation duty (original side) ┘
                      │            └→ report (out of scope / uncertain)
                      └→ report (collection failed / insufficient)
 
@@ -46,6 +47,10 @@ a reader given by uuid, attributes or the product-type default skips selection. 
 - Classification ends normally for `범위 밖` and `판정 불가`; the report explains why.
 - Reference cases are report-only: no judging prompt reads them, and they are not a retry target.
 - The reader explanation precedes explanation duty because the latter compares the source with it.
+  The original side of explanation duty reads only the page, so `judge_explanation_original` runs
+  in the same step as the reader explanation; reference cases likewise run beside the display
+  check. LangGraph waits for every node of a step, which is why each independent node is paired
+  with the step it fits.
 - Agents choose tools; code validates every quote, selector and filter they propose, and each
   agent has a turn budget and a machine-readable stop reason.
 - Verification routes to the earliest actionable failure. At most two rounds run; display checks

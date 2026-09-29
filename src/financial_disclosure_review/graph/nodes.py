@@ -13,7 +13,7 @@ from ..core.threads import run_in_thread
 from ..domain.classification import classify_page
 from ..domain.display_check import judge_display
 from ..domain.evidence_cards import extract_evidence_cards as extract_cards
-from ..domain.explanation_duty_check import judge_explanation
+from ..domain.explanation_duty_check import judge_explanation, judge_original
 from ..domain.explanation_duty_check.ledger import check_ledger, map_rubric_fidelity
 from ..domain.persona_explanation import choose_profile
 from ..domain.persona_explanation import generate_persona_explanation as generate_persona
@@ -168,6 +168,24 @@ def generate_persona_explanation(state: State, runtime: Runtime[Context]) -> dic
     return {"persona_explanation": persona}
 
 
+def judge_explanation_original(state: State, runtime: Runtime[Context]) -> dict:
+    """The original side of explanation duty, beside the persona explanation it does not read.
+
+    `judge_explanation_duty` reuses these rows; without them (a rerun from an older checkpoint,
+    or nothing to judge yet) it judges the original side itself.
+    """
+    print("[judge_explanation_original]")
+    classification = state.get("classification") or {}
+    page = state.get("product_page") or {}
+    if not classification.get("product_type") or not classification.get("page_type"):
+        return {}
+    if not page.get("html"):
+        return {}
+    check: dict[str, Any] = dict(state.get("explanation_duty_check") or {})
+    check.update(judge_original(page, classification, runtime.context))
+    return {"explanation_duty_check": check}
+
+
 def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
     print("[judge_explanation_duty]")
     check: dict[str, Any] = dict(state.get("explanation_duty_check") or {})
@@ -221,7 +239,8 @@ def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
             {"html": persona["html"]},
             classification,
             runtime.context,
-            check.get("original") or None,
+            # An empty original side (every item ruled out) is a result, not a missing one.
+            check.get("original") if check.get("items") else None,
             check.get("items") or None,
             feedback=feedback,
         )
