@@ -2,8 +2,10 @@
 
 Korean financial-product pages are reviewed for disclosure, display, and explanation issues, with
 a reader-tailored explanation checked against the page's facts.
-The LangGraph workflow produces a reviewer report; it does not provide a legal opinion or publish
-content automatically.
+A fixed LangGraph workflow produces a reviewer report; it does not provide a legal opinion or
+publish content automatically. Inside that workflow, three bounded tool-calling agents collect the
+page, link reference cases and pick the reader; the review order, routing, retries and verdict
+rules stay in code.
 
 ## Prerequisites
 

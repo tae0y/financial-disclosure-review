@@ -181,7 +181,8 @@ Added with the bounded evidence agent, evidence cards, report-only reference cas
 explanation (branch `agentic-evidence-persona`). The five suites above replay unchanged after this
 work (80 hits, 0 misses, same numbers): none of their prompts or inputs changed.
 
-`uv run python eval/agentic_eval.py [--record]` runs on the two real lottecard pages in
+`uv run python eval/agentic_eval.py [--record]` (renamed `eval/cards_persona_eval.py` on
+2026-09-29, see §8) runs on the two real lottecard pages in
 `eval/fixtures/` against a 25-entry gold set in `eval/fixtures/gold/evidence_cards.json` (both
 local only: `eval/fixtures/` is gitignored). Recording cost $0.0981 (13 calls); replay is free.
 
@@ -272,6 +273,60 @@ out of its 8 turns on most pages; raising `case_link_max_turns` is the next leve
 
 **Human comprehension and harmful analogies** are not measured by code. `eval/review_sheet.py`
 writes a blank sheet from live runs for a person to score; no score was filled by a model.
+
+### 8. Audit remediation (2026-09-29, branch `agentic-followup`)
+
+The [agentic behavior audit](../data/agentic-behavior-audit.md) confirmed three bounded agents
+inside a fixed workflow and found the evaluation too generous in three places. Changes, all
+without a paid call:
+
+- **Failures are results.** A run whose budget runs out after collection now ends in a `판정
+  불가` report naming the interrupted node, instead of no report. `eval/agent_loop_eval.py` gives
+  each requested thread one outcome (`complete`, `insufficient`, `collection_failed`,
+  `interrupted`, `no_report`, `no_checkpoint`) and a success rate over all of them. The linking
+  agent's links from a run cut short are `부분 완료`, and a run cut short with no link is `판정
+  불가`, not `해당 사례 없음`; `eval/linking_eval.py` adds the completion rate.
+- **One generation per result.** `eval/agentic_eval.py` is now `eval/cards_persona_eval.py` and
+  no longer measures the retired lexical reference threshold. Every result file carries a `meta`
+  block: implementation, commit, dirty flag, prompt hashes and the gold file's hash and version
+  (`evaluation/run_meta.py`). Results written before this date have no `meta`.
+- **Avoidable agent failures.** Root causes read from the stored traces: the KB 카드론 page became
+  `chrome-error://` and the agent guessed selectors for 20 turns (now `수집 실패/page_unavailable`
+  before the next model turn); the linking agent made one tool call per turn (search and read now
+  take batches); 롯데 카드론 was accepted with untried controls inside its regions (now sent back
+  once).
+
+Re-aggregating the same seven live threads with the new outcome rule
+(`eval/results/260929-115950-agent-loop.md`, $0): success 2/7 (0.286), report produced 6/7. The
+earlier "완료 3/7" counted 신한 Hi-Point, which ended without a report.
+
+**Re-measurement after the fixes** (paid $1.13: linking gold $0.091, live pages $1.034; fresh
+data dirs `data/live4` and `data/live5` so the page agent ran on every page; $0.15 per page).
+
+| Measure | Before (live3) | After |
+|---|---|---|
+| Reports produced | 6/7 | 7/7 |
+| Collection 완료 | 3/7 | 3/7 |
+| In-region gap closure | 36.9% | 51.0% (123/241) |
+| KB 카드론 (error page) | 20 turns, $0.036 | 0 turns, $0, `page_unavailable` |
+| 롯데 카드론 gaps closed | 0/26 | 22/26 |
+| Collection and judgment both finished | 2/7 | 1/7 |
+| Linking gold recall | 5/14 | 9/14 |
+| Linking gold false links | 2/7 | 4/9 |
+| Linking runs ending by finish | 1/4 | 2/4 |
+
+The first live round exposed a defect in the new in-region nudge: it named controls the agent
+had already expanded under another selector (신한 Hi-Point) or whose gap a popup kept open (현대
+카드론), the agent repeated the expand, and exploration closed as `repeated_action`. Controls an
+earlier expand reached are now skipped; the rerun of those two pages ended `완료/reachable_coverage`
+and `조사 불충분/submitted_with_gaps` (the live3 outcomes).
+
+Four pages ran out of the $0.15 cap during judgment and now end in a `판정 불가` report instead of
+none; pages that finished judgment spent $0.18–0.22, so the cap, not the agents, set the last
+row (live3's first round ran at $0.8). More false links come from links that cite many cards,
+including ones the gold says must not link. Per-page reports:
+`data/audit-remeasure-260929/`. Results: `eval/results/260929-140148-agent-loop.md`,
+`260929-141601-agent-loop.md`, `260929-132236-linking.json`.
 
 ## Model comparison
 

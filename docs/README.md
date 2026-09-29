@@ -34,6 +34,15 @@ START → preprocess* ─┬→ classify ─┬→ evidence cards → reference 
   The reader explanation also runs a small selection agent when the reader is given in free text.
 ```
 
+The system is a deterministic review workflow with bounded agentic subflows, not an autonomous
+agent. The graph, its routing and its retry policy are fixed in code; classification, card
+extraction, display judgment, explanation and explanation-duty checks are single structured model
+calls. Only the three subflows above choose their own tool calls, and each can be bypassed: a
+saved site rule replays without the page agent, a page without cards or cases skips linking, and
+a reader given by uuid, attributes or the product-type default skips selection. The report's
+`에이전트 실행` line and `summary.agent_runs` state which loops ran in each review (see the
+[2026-09-29 audit](../data/agentic-behavior-audit.md)).
+
 - Classification ends normally for `범위 밖` and `판정 불가`; the report explains why.
 - Reference cases are report-only: no judging prompt reads them, and they are not a retry target.
 - The reader explanation precedes explanation duty because the latter compares the source with it.
