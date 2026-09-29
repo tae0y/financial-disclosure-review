@@ -39,22 +39,19 @@ it with `uv run python -m financial_disclosure_review.serving.openapi`.
 
 Only `url` is required. `detail` defaults to `summary`; `max_calls` and `max_usd` cap one run.
 `persona` chooses the reader of the reader-tailored explanation (독자 맞춤 설명) from the
-synthetic Nemotron-Personas-Korea dataset: `{"uuid": "<32 hex>"}`, `{"attributes": {"age_min":
-70, "education_level": ["초등학교"]}}`, or `{"request": "70대 은퇴자, 카드론을 처음 알아보는 사람"}`
-(free text, turned into dataset filters by a small bounded agent). The first one given wins;
-nothing given uses the product type's default reader.
+synthetic Nemotron-Personas-Korea dataset. The usual input is `{"request": "70대 은퇴자, 카드론을
+처음 알아보는 사람"}`: one or two sentences of free text (up to 300 characters) that a small
+bounded agent turns into dataset filters and a financial-familiarity hint. Two exact forms also
+exist: `{"uuid": "<32 hex>"}` for one dataset row, and `{"attributes": {"age_min": 70,
+"education_level": ["초등학교"]}}` for the filters themselves. The first one given wins; nothing
+given uses the product type's default reader.
 
 Every persona field is nullable, and so is `persona` itself. `null`, an omitted key, an empty
-string and an `attributes` object whose fields are all `null` all mean "not given", so a form can
-send every field and leave the blanks as `null`. `attributes` accepts exactly these keys:
-`age_min`, `age_max` (0–120), `sex`, and the string lists `education_level`,
-`occupation_contains` (at most 2), `province`, `family_type`, `housing_type`, `marital_status`.
-
-A malformed persona — an unknown key, a wrong type, an age out of range, a scalar where a list is
-expected, a `uuid` that is not 32 hex characters — is rejected with `422` before a job exists. A
-well-formed value the dataset does not have (e.g. `"province": ["서울특별시"]` where the dataset
-says `서울`) never fails the run; the report states how the reader was chosen and what was used
-instead. The persona only shapes the explanation's wording; it never changes a compliance verdict.
+string and an `attributes` object whose values are all `null` all mean "not given", so a form can
+send `{"request": "...", "uuid": null, "attributes": null}`. Only an over-long `request` or a
+`uuid` that is not 32 hex characters is rejected with `422`; any other invalid value never fails
+the run — the report states how the reader was chosen and what was used instead. The persona only
+shapes the explanation's wording; it never changes a compliance verdict.
 
 ```bash
 BASE=http://localhost:8000

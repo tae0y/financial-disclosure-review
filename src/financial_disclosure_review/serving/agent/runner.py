@@ -26,7 +26,7 @@ def _context(
 ) -> Context:
     persona = persona or PersonaRequest()
     # Nulls mean "not given"; an all-null attributes object must not outrank a free-text request.
-    attributes = persona.attributes.model_dump(exclude_none=True) if persona.attributes else {}
+    attributes = {k: v for k, v in (persona.attributes or {}).items() if v is not None}
     return Context(
         model=model or settings.model,
         data_dir=settings.data_dir,

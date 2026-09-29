@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class Detail(str, Enum):
@@ -14,36 +14,12 @@ class Detail(str, Enum):
     full = "full"
 
 
-class PersonaAttributes(BaseModel):
-    """The reader as dataset filters. Every field is nullable: null (or omitted) means no
-    filter on it. The shape is checked here (unknown key or wrong type is a 422); whether a
-    value exists in the dataset is checked in the run, which falls back to the default reader
-    when it does not."""
-
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={"examples": [{"age_min": 70, "education_level": ["초등학교"]}]},
-    )
-
-    age_min: int | None = Field(default=None, ge=0, le=120, description="Youngest age, inclusive")
-    age_max: int | None = Field(default=None, ge=0, le=120, description="Oldest age, inclusive")
-    sex: str | None = Field(default=None, description="남자 or 여자")
-    education_level: list[str] | None = Field(default=None, description="e.g. ['초등학교']")
-    occupation_contains: list[str] | None = Field(
-        default=None, max_length=2, description="Substrings of occupation; a row matches any one"
-    )
-    province: list[str] | None = Field(default=None, description="e.g. ['서울', '경기']")
-    family_type: list[str] | None = None
-    housing_type: list[str] | None = None
-    marital_status: list[str] | None = None
-
-
 class PersonaRequest(BaseModel):
     """Who the reader-tailored explanation is written for. Every field is nullable; null, an
-    empty string and an all-null `attributes` all mean "not given". The first one given wins:
-    `uuid`, then `attributes`, then free-text `request`. Nothing given: the product type's
-    default reader. A well-formed value the dataset does not have never fails the run; the
-    report says what was used instead."""
+    empty string and an `attributes` object whose values are all null mean "not given". The
+    first one given wins: `uuid`, then `attributes`, then free-text `request`. Nothing given:
+    the product type's default reader. An invalid value never fails the run; the report says
+    what was used instead."""
 
     request: str | None = Field(
         default=None,
@@ -53,7 +29,13 @@ class PersonaRequest(BaseModel):
     uuid: str | None = Field(
         default=None, pattern=r"^([0-9a-f]{32})?$", description="One exact dataset row"
     )
-    attributes: PersonaAttributes | None = None
+    attributes: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Dataset filters: age_min, age_max, sex, education_level, occupation_contains,"
+            " province, family_type, housing_type, marital_status. Null values are ignored"
+        ),
+    )
 
 
 class ReviewRequest(BaseModel):

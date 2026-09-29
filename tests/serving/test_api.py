@@ -266,22 +266,13 @@ def test_null_persona_fields_are_accepted_and_reach_the_worker(tmp_path) -> None
     assert agent.requests[0].persona is None
     sent = agent.requests[1].persona
     assert sent.request is None and sent.uuid is None
-    assert sent.attributes.age_min == 70 and sent.attributes.province == ["서울"]
+    assert sent.attributes["age_min"] == 70 and sent.attributes["province"] == ["서울"]
 
 
-@pytest.mark.parametrize(
-    "persona",
-    [
-        {"attributes": {"income": 3000}},
-        {"attributes": {"age_min": "칠십"}},
-        {"attributes": {"age_min": 200}},
-        {"attributes": {"province": "서울"}},
-        {"uuid": "not-a-uuid"},
-    ],
-)
-def test_a_malformed_persona_is_rejected_before_a_job_exists(tmp_path, stub, persona) -> None:
+def test_a_malformed_persona_uuid_is_rejected_before_a_job_exists(tmp_path, stub) -> None:
     client, agent = build(tmp_path, stub)
     with client:
+        persona = {"uuid": "not-a-uuid"}
         response = client.post("/v1/reviews", json={"url": URL, "persona": persona}, headers=AUTH)
         assert response.status_code == 422
         assert client.get("/v1/reviews", headers=AUTH).json()["count"] == 0

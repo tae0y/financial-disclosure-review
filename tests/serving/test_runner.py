@@ -165,9 +165,13 @@ def test_the_persona_survives_the_gateway_to_worker_hop() -> None:
     assert received == sent
 
 
-def test_the_persona_attributes_match_the_dataset_filters() -> None:
-    """The API field list is the dataset filter list; a new filter must show up in both."""
-    from financial_disclosure_review.domain.persona_explanation.dataset import Filters
-    from financial_disclosure_review.serving.schemas import PersonaAttributes
+def test_unknown_persona_attributes_reach_the_run_instead_of_failing_the_request() -> None:
+    """The run, not the request, rejects them and falls back to the default reader."""
+    from financial_disclosure_review.serving.agent.runner import _context
+    from financial_disclosure_review.serving.schemas import ReviewRequest
+    from financial_disclosure_review.serving.settings import AgentSettings
 
-    assert set(PersonaAttributes.model_fields) == set(Filters.model_fields)
+    request = ReviewRequest.model_validate(
+        {"url": "https://example.com/card", "persona": {"attributes": {"income": 3000}}}
+    )
+    assert _context(AgentSettings(), None, request.persona).persona_attributes == {"income": 3000}
