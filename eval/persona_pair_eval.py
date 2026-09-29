@@ -26,7 +26,7 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(ROOT / ".env")
 
-from agentic_eval import FIXTURES, persona_metrics  # noqa: E402
+from cards_persona_eval import FIXTURES, persona_metrics  # noqa: E402
 
 from financial_disclosure_review.core.context import Context, default_data_dir  # noqa: E402
 from financial_disclosure_review.core.text import visible_text  # noqa: E402
@@ -40,6 +40,7 @@ from financial_disclosure_review.domain.persona_explanation import (  # noqa: E4
     generate_persona_explanation,
 )
 from financial_disclosure_review.evaluation.cassette import Cassette  # noqa: E402
+from financial_disclosure_review.evaluation.run_meta import run_meta  # noqa: E402
 
 READERS = {
     "older_low_familiarity": {"age_min": 70, "education_level": ["초등학교"]},
@@ -121,6 +122,7 @@ def main() -> None:
 
     saved = cassette.save()
     out = {
+        "meta": run_meta("persona_explanation reader pair (cassette)"),
         "mode": mode,
         "model": args.model,
         "pages": result,

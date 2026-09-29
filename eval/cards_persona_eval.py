@@ -1,21 +1,25 @@
-"""Stage 4 evaluation: evidence cards, reference cases and the persona explanation on real pages.
+"""Evidence cards and the persona explanation on real pages (single structured calls, no agent).
+
+Named `agentic_eval.py` until 2026-09-29. The audit of that date (A-05) found the name implied
+it measured the agents while its reference-case part still called the retired lexical
+`retrieve_reference_cases`; that part is removed. The linking agent is measured by
+`eval/linking_eval.py`, the page agent and reader selection by `eval/agent_loop_eval.py`.
 
 Runs on the two real lottecard pages kept in `eval/fixtures/` (gitignored in the public repo),
 with the gold set in `eval/fixtures/gold/evidence_cards.json`. Every model call goes through a
 cassette, so a recorded run replays for free:
 
-    uv run python eval/agentic_eval.py            # replay, $0 (fails on a missing recording)
-    uv run python eval/agentic_eval.py --record   # calls the model for what is not recorded
+    uv run python eval/cards_persona_eval.py            # replay, $0 (fails on a missing recording)
+    uv run python eval/cards_persona_eval.py --record   # calls the model for what is not recorded
 
-Measured, separately (구현 프롬프트 Stage 4):
+Measured, separately:
 - evidence cards: quote resolution, gold recall, risk-gold recall;
-- reference cases: expected-link recall, false links, partial-detectability notes;
 - persona explanation: accepted/reverted units, fact-ledger coverage, analogies kept on risk
   cards (must be 0), and whether the ledger check catches a number or condition that a mutated
   explanation drops or changes.
 
-The page agent loop is measured from a live review's trace, not here (it needs a browser).
-Writes `eval/results/<timestamp>-agentic-<mode>.{json,md}`.
+Writes `eval/results/<timestamp>-cards-persona-<mode>.{json,md}` with a `meta` block naming the
+code revision, prompt hashes and gold version.
 """
 
 import argparse
@@ -33,7 +37,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(ROOT / ".env")
 
 from financial_disclosure_review.core.context import Context  # noqa: E402
-from financial_disclosure_review.core.text import norm, visible_text  # noqa: E402
+from financial_disclosure_review.core.text import visible_text  # noqa: E402
 from financial_disclosure_review.core.usage import current, start_run  # noqa: E402
 from financial_disclosure_review.domain.evidence_cards import extract_evidence_cards  # noqa: E402
 from financial_disclosure_review.domain.explanation_duty_check.ledger import (  # noqa: E402
@@ -47,57 +51,12 @@ from financial_disclosure_review.domain.persona_explanation.generate import (  #
 )
 from financial_disclosure_review.evaluation.cassette import Cassette  # noqa: E402
 from financial_disclosure_review.evaluation.evidence_metrics import card_metrics  # noqa: E402
-from financial_disclosure_review.knowledge.reference import (  # noqa: E402
-    default_corpus_path,
-    retrieve_reference_cases,
-)
+from financial_disclosure_review.evaluation.run_meta import run_meta  # noqa: E402
 
 FIXTURES = ("display_lottecard_card_loan", "display_lottecard_loca_classic")
 GOLD = ROOT / "eval" / "fixtures" / "gold" / "evidence_cards.json"
-# Cards judged to share a pattern with a corpus case (docs/agent-node-specs/reference_cases.md).
-EXPECTED_LINKS = {
-    "국내외 가맹점에서 최대 1% 할인": "case.crefia_ad_type_unconditional_discount",
-    "모든 무이자할부 이용금액, 국세, 지방세, 도시가스비": (
-        "case.fss_20241007_interest_free_benefit_exclusion"
-    ),
-    "추가적인 혜택(포인트 및 할인혜택 등)에는 제공조건 및 한도등이 적용됩니다.": (
-        "case.fss_20241007_addon_limit_restore"
-    ),
-}
 RISK_KINDS = ("rate_claim", "fee_claim", "warning")
 MUTATIONS_PER_PAGE = 4
-
-
-def _overlaps(a: str, b: str) -> bool:
-    na, nb = norm(a), norm(b)
-    return bool(na) and bool(nb) and (na in nb or nb in na)
-
-
-def reference_metrics(refs: dict, cards: list[dict], fixture_gold: list[dict]) -> dict:
-    """Expected links found and links to anything else, judged by the card quotes they cite."""
-    by_id = {c["id"]: c for c in cards}
-    expected = {
-        q: case for q, case in EXPECTED_LINKS.items() if any(g["quote"] == q for g in fixture_gold)
-    }
-    found, false_links = [], []
-    for link in refs.get("links") or []:
-        quotes = [by_id[i]["quote"] for i in link.get("card_ids") or [] if i in by_id]
-        hit = [
-            q
-            for q, case in expected.items()
-            if case == link["case_id"] and any(_overlaps(q, quote) for quote in quotes)
-        ]
-        (found if hit else false_links).append(link["case_id"])
-    return {
-        "status": refs.get("status"),
-        "candidates": len(refs.get("candidates") or []),
-        "links": len(refs.get("links") or []),
-        "expected": len(expected),
-        "expected_found": len(set(found)),
-        "false_links": false_links,
-        "partial_notes": sum(1 for link in refs.get("links") or [] if link.get("page_only_note")),
-        "top_candidates": [(c["case_id"], c["final"]) for c in (refs.get("candidates") or [])[:3]],
-    }
 
 
 def _mutate(text: str, value: str, how: str) -> str | None:
@@ -267,9 +226,6 @@ def main() -> None:
         page, classification = fixture["page"], fixture["classification"]
         fixture_gold = [g for g in gold if g["fixture"] == name]
         cards = extract_evidence_cards(page, classification, ctx, ask=cassette.ask)
-        refs = retrieve_reference_cases(
-            cards["cards"], classification, ctx.db_path, corpus_path=default_corpus_path()
-        )
         persona = generate_persona_explanation(
             cards["sources"], cards["cards"], classification, ctx, ask=cassette.ask
         )
@@ -292,31 +248,20 @@ def main() -> None:
                 "sources": len(cards["sources"]),
                 "kinds": sorted({c["kind"] for c in cards["cards"]}),
             },
-            "references": reference_metrics(refs, cards["cards"], fixture_gold),
             "persona": persona_metrics(persona, ledger, cards["cards"]),
             "mutations": mutations,
             "generation_mutations": generation_mutations(persona, cards["sources"], cards["cards"]),
-            "linked_cards": [
-                {
-                    "case_id": link["case_id"],
-                    "cards": [
-                        c["quote"][:80] for c in cards["cards"] if c["id"] in link["card_ids"]
-                    ],
-                    "page_only_note": link["page_only_note"],
-                }
-                for link in refs.get("links") or []
-            ],
             "examples": {
                 "card": cards["cards"][0] if cards["cards"] else None,
                 "unit": next((u for u in persona["units"] if u["status"] == "accepted"), None),
                 "ledger": (ledger["ledger"] or [None])[0],
                 "fidelity": (ledger["fidelity"] or [None])[0],
-                "link": (refs.get("links") or [None])[0],
             },
         }
 
     saved = cassette.save()
     result = {
+        "meta": run_meta("evidence_cards+persona_explanation (cassette)", gold=GOLD),
         "mode": mode,
         "model": ctx.model,
         "profile": ctx.persona_profile or "(default)",
@@ -325,12 +270,18 @@ def main() -> None:
         "pages": pages,
     }
     stamp = datetime.now().strftime("%y%m%d-%H%M%S")
-    out = ROOT / "eval" / "results" / f"{stamp}-agentic-{mode}"
+    out = ROOT / "eval" / "results" / f"{stamp}-cards-persona-{mode}"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.with_suffix(".json").write_text(
         json.dumps(result, ensure_ascii=False, indent=1, default=str), encoding="utf-8"
     )
-    lines = [f"# agentic evaluation ({mode}, {ctx.model})", ""]
+    meta = result["meta"]
+    lines = [
+        f"# evidence cards and persona explanation ({mode}, {ctx.model})",
+        "",
+        f"meta: commit {meta['commit']}{' (dirty)' if meta['dirty'] else ''}, gold {meta['gold']}",
+        "",
+    ]
     for name, page in pages.items():
         lines += [f"## {name}", "", "```json"]
         lines += [

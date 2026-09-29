@@ -7,7 +7,10 @@ reference-case linking agent and the reader selection, per page and overall:
   how many were closed; hidden text set aside as unreachable is counted separately;
 - unnecessary actions: interactions that were allowed but revealed nothing new;
 - blocked actions: interactions the tools refused;
-- stop reasons, status, per-page cost, calls and time.
+- stop reasons, status, per-page cost, calls and time;
+- one outcome per requested thread (complete / insufficient / collection_failed / interrupted /
+  no_report / no_checkpoint) and the success rate over every requested thread, so a crash or a
+  missing report counts as a failure instead of dropping out of the denominator.
 
     uv run python eval/agent_loop_eval.py --checkpoints data/live3/checkpoints.sqlite \
         --thread f1-lottecard-lasvegas --thread f1-shinhan-card ...
@@ -28,17 +31,30 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from langgraph.checkpoint.sqlite import SqliteSaver  # noqa: E402
 
+from financial_disclosure_review.domain.product_page.discover import (  # noqa: E402
+    SYSTEM_PROMPT as PAGE_PROMPT,
+)
+from financial_disclosure_review.evaluation.agent_outcomes import (  # noqa: E402
+    outcome_rates,
+    page_outcome,
+)
+from financial_disclosure_review.evaluation.run_meta import run_meta  # noqa: E402
+from financial_disclosure_review.knowledge.linking import (  # noqa: E402
+    SYSTEM_PROMPT as LINK_PROMPT,
+)
+
 ACTIONABLE = ("unexpanded_control", "hidden_text")
 
 
-def final_state(saver: SqliteSaver, thread_id: str) -> dict[str, Any]:
+def final_state(saver: SqliteSaver, thread_id: str) -> dict[str, Any] | None:
+    """The thread's last State, or None when it was never checkpointed (counted as a failure)."""
     checkpoint = saver.get({"configurable": {"thread_id": thread_id}})
-    if checkpoint is None:
-        raise LookupError(f"no checkpoint for thread {thread_id!r}")
-    return dict(checkpoint["channel_values"])
+    return None if checkpoint is None else dict(checkpoint["channel_values"])
 
 
-def page_metrics(thread_id: str, state: dict[str, Any]) -> dict[str, Any]:
+def page_metrics(thread_id: str, state: dict[str, Any] | None) -> dict[str, Any]:
+    outcome = page_outcome(state)
+    state = state or {}
     page = state.get("product_page") or {}
     gaps = (page.get("coverage") or {}).get("gaps") or []
     # Gaps inside the submitted regions only (recorded since 2026-09-29); older runs have no
@@ -52,6 +68,7 @@ def page_metrics(thread_id: str, state: dict[str, Any]) -> dict[str, Any]:
     cost = (state.get("report") or {}).get("cost") or {}
     return {
         "thread": thread_id,
+        "outcome": outcome,
         "url": page.get("url"),
         "status": page.get("status"),
         "stop_reason": page.get("stop_reason"),
@@ -91,6 +108,7 @@ def overall(rows: list[dict[str, Any]]) -> dict[str, Any]:
     allowed = interactions - sum(r["blocked_actions"] for r in rows)
     return {
         "pages": len(rows),
+        **outcome_rates(r["outcome"] for r in rows),
         "gap_closure_rate": ratio(sum(r["closed_gaps"] for r in rows), actionable),
         "unreachable_hidden_share": ratio(sum(r["unreachable_hidden"] for r in rows), actionable),
         "unnecessary_action_rate": ratio(sum(r["unnecessary_actions"] for r in rows), allowed),
@@ -109,6 +127,7 @@ def overall(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def markdown(rows: list[dict[str, Any]], total: dict[str, Any]) -> str:
     head = [
         "thread",
+        "outcome",
         "status/stop",
         "gaps closed",
         "unreachable",
@@ -122,6 +141,7 @@ def markdown(rows: list[dict[str, Any]], total: dict[str, Any]) -> str:
     for r in rows:
         cells = [
             r["thread"],
+            r["outcome"],
             f"{r['status']}/{r['stop_reason']}",
             f"{r['closed_gaps']}/{r['actionable_gaps']}",
             str(r["unreachable_hidden"]),
@@ -144,14 +164,22 @@ def main() -> None:
     with SqliteSaver.from_conn_string(args.checkpoints) as saver:
         rows = [page_metrics(t, final_state(saver, t)) for t in args.thread]
     total = overall(rows)
+    meta = run_meta(
+        "page_agent+linking_agent+reader_selection (live checkpoints)",
+        prompts={"page_agent": PAGE_PROMPT, "linking_agent": LINK_PROMPT},
+    )
     stamp = datetime.now().strftime("%y%m%d-%H%M%S")
     out = ROOT / "eval" / "results"
     out.mkdir(parents=True, exist_ok=True)
     (out / f"{stamp}-agent-loop.json").write_text(
-        json.dumps({"pages": rows, "overall": total}, ensure_ascii=False, indent=2),
+        json.dumps({"meta": meta, "pages": rows, "overall": total}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    (out / f"{stamp}-agent-loop.md").write_text(markdown(rows, total), encoding="utf-8")
+    note = (
+        f"meta: {meta['implementation']}, commit {meta['commit']}"
+        f"{' (dirty)' if meta['dirty'] else ''}, prompts {meta['prompt_sha256']}\n\n"
+    )
+    (out / f"{stamp}-agent-loop.md").write_text(note + markdown(rows, total), encoding="utf-8")
     print(markdown(rows, total))
 
 

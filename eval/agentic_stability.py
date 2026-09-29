@@ -1,9 +1,9 @@
 """Repeat stability of evidence-card extraction and persona generation (backlog F2).
 
-The same two real lottecard pages as `eval/agentic_eval.py`, three rounds each. Round 1 reuses the
-unsalted recordings of the agentic cassette; rounds 2 and 3 are salted, so they are separate
-model answers to the same input. Persona generation runs on the round-1 cards in every round, so
-its variance is the generator's own, not inherited from extraction.
+The same two real lottecard pages as `eval/cards_persona_eval.py`, three rounds each. Round 1
+reuses the unsalted recordings of the agentic cassette; rounds 2 and 3 are salted, so they are
+separate model answers to the same input. Persona generation runs on the round-1 cards in every
+round, so its variance is the generator's own, not inherited from extraction.
 
     uv run python eval/agentic_stability.py            # replay, $0
     uv run python eval/agentic_stability.py --record   # records rounds 2-3 once
@@ -31,7 +31,7 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(ROOT / ".env")
 
-from agentic_eval import FIXTURES, GOLD, persona_metrics  # noqa: E402
+from cards_persona_eval import FIXTURES, GOLD, persona_metrics  # noqa: E402
 
 from financial_disclosure_review.core.context import Context  # noqa: E402
 from financial_disclosure_review.core.text import norm, visible_text  # noqa: E402
@@ -45,6 +45,7 @@ from financial_disclosure_review.domain.persona_explanation import (  # noqa: E4
 )
 from financial_disclosure_review.evaluation.cassette import Cassette  # noqa: E402
 from financial_disclosure_review.evaluation.evidence_metrics import card_metrics  # noqa: E402
+from financial_disclosure_review.evaluation.run_meta import run_meta  # noqa: E402
 
 ROUNDS = ("", "round-2", "round-3")
 
@@ -136,6 +137,7 @@ def main() -> None:
 
     saved = cassette.save()
     out = {
+        "meta": run_meta("evidence_cards+persona_explanation stability (cassette)", gold=GOLD),
         "mode": mode,
         "model": args.model,
         "pages": result,

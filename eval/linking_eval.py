@@ -12,7 +12,9 @@ the JSON result is the record.
 Measured: expected-link recall (a card linked to an acceptable case), false links (a link whose
 card is a negative, or a link to an unacceptable case for an expected card), links on cards the
 gold does not mention (reported for review, not scored), partial-detectability notes present on
-every partial/review_required/out_of_scope link, stop reasons and cost.
+every partial/review_required/out_of_scope link, stop reasons and cost, and the completion rate:
+the share of rounds that ended by `finish` or the link cap. A round cut short by its turn or
+budget limit is incomplete and stays in the recall denominator with the links it did find.
 """
 
 import argparse
@@ -37,10 +39,15 @@ from financial_disclosure_review.core.text import norm  # noqa: E402
 from financial_disclosure_review.core.usage import current, start_run  # noqa: E402
 from financial_disclosure_review.domain.evidence_cards import extract_evidence_cards  # noqa: E402
 from financial_disclosure_review.evaluation.cassette import Cassette  # noqa: E402
-from financial_disclosure_review.knowledge.linking import link_reference_cases  # noqa: E402
+from financial_disclosure_review.evaluation.run_meta import run_meta  # noqa: E402
+from financial_disclosure_review.knowledge.linking import (  # noqa: E402
+    SYSTEM_PROMPT,
+    link_reference_cases,
+)
 
 GOLD = ROOT / "eval" / "fixtures" / "gold" / "reference_links.json"
 PARTIAL = ("partial", "review_required", "out_of_scope")
+COMPLETE_STOPS = ("finished", "link_cap")
 
 
 def page_cards(page: dict, checkpoints: str | None, cassette: Cassette, ctx: Context):
@@ -101,6 +108,7 @@ def score(page: dict, cards: list[dict], result: dict) -> dict[str, Any]:
         "unscored_links": extra,
         "partial_notes_ok": all(link.get("page_only_note") for link in partial),
         "stop_reason": result.get("stop_reason"),
+        "status": result.get("status"),
         "searches": (result.get("method") or {}).get("searches"),
         "reads": (result.get("method") or {}).get("reads"),
     }
@@ -145,12 +153,21 @@ def main() -> None:
         "unscored_links": sum(len(r["unscored_links"]) for r in rows),
         "partial_notes_ok": all(r["partial_notes_ok"] for r in rows),
         "stop_reasons": dict(Counter(r["stop_reason"] for r in rows)),
+        "completion_rate": round(
+            sum(r["stop_reason"] in COMPLETE_STOPS for r in rows) / len(rows), 3
+        )
+        if rows
+        else None,
+        "statuses": dict(Counter(r["status"] for r in rows)),
         "cost": current().summary(),
     }
+    meta = run_meta("linking_agent", prompts={"system": SYSTEM_PROMPT}, gold=GOLD)
     stamp = datetime.now().strftime("%y%m%d-%H%M%S")
     folder = ROOT / "eval" / "results"
     folder.mkdir(parents=True, exist_ok=True)
-    text = json.dumps({"overall": overall, "rows": rows}, ensure_ascii=False, indent=1)
+    text = json.dumps(
+        {"meta": meta, "overall": overall, "rows": rows}, ensure_ascii=False, indent=1
+    )
     (folder / f"{stamp}-linking.json").write_text(text, encoding="utf-8")
     print(json.dumps(overall, ensure_ascii=False, indent=1))
 
