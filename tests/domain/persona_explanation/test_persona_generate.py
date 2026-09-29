@@ -10,6 +10,8 @@ from financial_disclosure_review.domain.persona_explanation.generate import (
     CONTROLS,
     generate_persona_explanation,
 )
+from financial_disclosure_review.domain.persona_explanation.profiles import resolve_profile
+from financial_disclosure_review.domain.persona_explanation.prompts import PERSONA_TASK
 from tests.domain.persona_explanation.persona_fixtures import (
     CLASSIFICATION,
     FIRSTCARD,
@@ -126,6 +128,23 @@ def test_rate_and_penalty_analogies_are_dropped_for_every_reader():
         for unit in result["units"]:
             assert unit["analogy"] == ""
             assert any(reason in p for p in unit["problems"] if p.startswith("analogy_dropped"))
+
+
+def test_list_numbering_is_not_an_invented_number():
+    """2026-09-29 C4: 금융 친숙 독자에게 모델이 '1) … 2) …' 목록으로 쓰자 번호가 원문에 없는 수치로
+    잡혀 단위가 모두 원문으로 되돌아갔습니다. 목록 번호는 사실이 아닙니다."""
+    fixture = load_persona_fixture("threshold_exclusion")
+    draft = copy.deepcopy(fixture["drafts"]["lowfin"])
+    draft[0]["explanation"] = (
+        "1) 전월 이용금액이 30만원 이상이어야 합니다. 2) 할인은 월 최대 2만원입니다."
+        " (3) 일부 가맹점 제외 조건이 있습니다."
+    )
+    draft[0]["analogy"] = ""
+    result, _ = run(fixture, draft)
+    assert result["units"][0]["status"] == "accepted", result["units"][0]["problems"]
+    draft[0]["explanation"] += " 1년이면 24만원입니다."
+    result, _ = run(fixture, draft)
+    assert any("근거 원문에 없는 수치: 24" in p for p in result["units"][0]["problems"])
 
 
 def test_an_invented_number_reverts_the_unit_to_the_original_line():
@@ -325,3 +344,41 @@ def test_only_this_modules_feedback_reaches_the_prompt():
             "requested_change": "일부 가맹점 제외를 남기세요",
         }
     ]
+
+
+def test_a_given_profile_is_used_as_is_and_its_reader_reaches_the_prompt(tmp_path):
+    fixture = load_persona_fixture("threshold_exclusion")
+    profile = copy.deepcopy(resolve_profile(LOWFIN, PROFILES))
+    profile["id"] = "nemotron:" + "0" * 32
+    profile["attributes"]["reader"] = "74세 여자 · 학력 초등학교 · 직업 무직\n가상의 인물입니다."
+    fake = scripted_ask({"items": fixture["drafts"]["lowfin"]})
+    result = generate_persona_explanation(
+        fixture["sources"],
+        fixture["cards"],
+        CLASSIFICATION,
+        fake_ctx(),
+        ask=fake,
+        profile_id="unknown-id-that-would-be-invalid",
+        profiles_path=tmp_path / "missing.yaml",
+        profile=profile,
+    )
+    assert result["profile"] is profile
+    assert result["status"] == "완료"
+    assert fake.data[0]["profile"]["reader"] == profile["attributes"]["reader"]
+
+
+def test_an_invalid_given_profile_keeps_the_original_text():
+    fixture = load_persona_fixture("threshold_exclusion")
+    profile = {
+        **resolve_profile(LOWFIN, PROFILES),
+        "status": "무효",
+        "reason": "템플릿 버전 불일치",
+    }
+    result, fake = run(fixture, fixture["drafts"]["lowfin"], profile=profile)
+    assert result["status"] == "원문 대체" and "템플릿 버전 불일치" in result["reason"]
+    assert fake.calls == []
+
+
+def test_the_task_limits_the_reader_sketch_to_register():
+    assert "reader" in PERSONA_TASK
+    assert "자격" in PERSONA_TASK.split("reader", 1)[1]

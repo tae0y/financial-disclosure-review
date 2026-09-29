@@ -14,6 +14,34 @@ class Detail(str, Enum):
     full = "full"
 
 
+class PersonaRequest(BaseModel):
+    """User information for the reader-tailored explanation. Every field is nullable. For
+    `request` and `uuid`, null or an empty string means "not given"; for `attributes`, so does
+    an object whose values are all null. The first one given wins: `uuid`, then `attributes`,
+    then free-text `request`. Nothing given uses the product type's default reader. A value
+    the selector cannot use falls back during the run, and the report says what was used
+    instead."""
+
+    request: str | None = Field(
+        default=None,
+        max_length=300,
+        description=(
+            "The usual UI input: one or two sentences about the user (up to 300 characters), "
+            "e.g. '70대 은퇴자이고 카드론을 처음 알아보는 사람입니다.'"
+        ),
+    )
+    uuid: str | None = Field(
+        default=None, pattern=r"^([0-9a-f]{32})?$", description="One exact dataset row"
+    )
+    attributes: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Dataset filters: age_min, age_max, sex, education_level, occupation_contains,"
+            " province, family_type, housing_type, marital_status. Null values are ignored"
+        ),
+    )
+
+
 class ReviewRequest(BaseModel):
     """One product page to review. Everything but `url` falls back to the process defaults."""
 
@@ -26,6 +54,11 @@ class ReviewRequest(BaseModel):
                     "model": "gpt-5",
                     "detail": "full",
                     "max_usd": 2.0,
+                    "persona": {
+                        "request": "70대 은퇴자이고 카드론을 처음 알아보는 사람입니다.",
+                        "uuid": None,
+                        "attributes": None,
+                    },
                 },
             ]
         }
@@ -41,6 +74,13 @@ class ReviewRequest(BaseModel):
     detail: Detail = Detail.summary
     max_calls: int | None = Field(default=None, ge=1, le=500)
     max_usd: float | None = Field(default=None, gt=0, le=50)
+    persona: PersonaRequest | None = Field(
+        default=None,
+        description=(
+            "User information for the reader-tailored explanation. Normal callers should set "
+            "only persona.request; omit persona (or send null) when no user information was given"
+        ),
+    )
 
 
 class RerunRequest(BaseModel):
@@ -61,8 +101,9 @@ class RerunRequest(BaseModel):
     from_node: str = Field(
         max_length=80,
         description=(
-            "A graph node name: preprocess_product_page, classify_type, judge_display_method, "
-            "generate_plain_lang, judge_explanation_duty, verify_answer, end_report."
+            "A graph node name: preprocess_product_page, classify_type, extract_evidence_cards, "
+            "retrieve_reference_cases, judge_display_method, generate_persona_explanation, "
+            "judge_explanation_duty, verify_answer, end_report."
         ),
     )
     model: str | None = None

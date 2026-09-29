@@ -104,6 +104,42 @@ def _own_text(el) -> str:
     return " ".join("".join(s for s in el.find_all(string=True, recursive=False)).split())
 
 
+SKIP_LINK = re.compile(r"바로\s*가기|건너뛰기|skip", re.I)
+
+
+def _is_skip_link(el) -> bool:
+    """An accessibility skip link ("본문 바로가기" -> #contents) jumps, it reveals nothing."""
+    href = str(el.get("href") or "")
+    return el.name == "a" and href.startswith("#") and bool(SKIP_LINK.search(el.get_text(" ")))
+
+
+def _delegates_to_toggle(el) -> bool:
+    """A `.collapse-title` whose accordion has its own toggle input: the input is the control
+    (the title is clicked through it), so the title must not become a second gap."""
+    parent = el.parent
+    if not any("collapse-title" in c for c in el.get("class") or []) or parent is None:
+        return False
+    return "collapse" in (parent.get("class") or []) and any(
+        child.name == "input" and child.get("type") in ("checkbox", "radio")
+        for child in parent.find_all(recursive=False)
+    )
+
+
+def _was_clicked(sess, selector: str) -> bool:
+    """Whether a real expand click landed on this control (marked in the page by click_matches),
+    so one expand over many accordions closes each accordion's gap."""
+    try:
+        return bool(
+            sess.page.evaluate(
+                "s => { const e = document.querySelector(s);"
+                " return !!(e && window.__fdrClicked && window.__fdrClicked.has(e)); }",
+                selector,
+            )
+        )
+    except PlaywrightError:
+        return False
+
+
 def observe(sess) -> dict:
     """Measure the live page: visible/hidden text blocks, candidate controls, samples."""
     html = sess.page.content()
@@ -125,7 +161,13 @@ def observe(sess) -> dict:
 
     controls, seen = [], set()
     for el in body.select(CONTROL_QUERY):
-        if in_chrome(el) or in_layer(el) or id(el) in seen:
+        if (
+            in_chrome(el)
+            or in_layer(el)
+            or id(el) in seen
+            or _delegates_to_toggle(el)
+            or _is_skip_link(el)
+        ):
             continue
         seen.add(id(el))
         controls.append(
@@ -178,6 +220,17 @@ def _find(gaps: list[dict], kind: str, target: str) -> dict | None:
     return next((g for g in gaps if g["kind"] == kind and g["target"] == target), None)
 
 
+def _find_hidden(gaps: list[dict], target: str, text: str) -> dict | None:
+    return next(
+        (
+            g
+            for g in gaps
+            if g["kind"] == "hidden_text" and g["target"] == target and g.get("text") == text
+        ),
+        None,
+    )
+
+
 def _new_gap(sess, kind: str, detail: str, target: str, status: str = "open") -> dict:
     gap = {
         "id": f"gap-{len(sess.gaps) + 1}",
@@ -199,7 +252,7 @@ def derive_gaps(sess, obs: dict) -> list[dict]:
     seen_control_targets = set()
     for control in obs["candidate_controls"]:
         seen_control_targets.add(control["selector"])
-        if control["selector"] in sess.tried_expand:
+        if control["selector"] in sess.tried_expand or _was_clicked(sess, control["selector"]):
             gap = _find(sess.gaps, "unexpanded_control", control["selector"])
             if gap and gap["status"] == "open":
                 gap["status"] = "closed"
@@ -215,18 +268,20 @@ def derive_gaps(sess, obs: dict) -> list[dict]:
     # A control that dropped out of the candidate list (already tried) but never got a gap
     # object needs no action; one that is still open and no longer a candidate stays as-is.
 
-    # hidden_text: closes once its target is no longer among the hidden blocks.
-    hidden_now = {b["selector"] for b in obs["hidden_blocks"]}
+    # hidden_text: one gap per hidden block, keyed by selector AND text (a structural selector
+    # can match several accordions' panels); closes once that block is no longer hidden.
+    hidden_now = {(b["selector"], b["text"]) for b in obs["hidden_blocks"]}
     for block in obs["hidden_blocks"]:
-        if _find(sess.gaps, "hidden_text", block["selector"]) is None:
+        if _find_hidden(sess.gaps, block["selector"], block["text"]) is None:
             status = "open" if obs["candidate_controls"] else "unresolved"
             detail = f"hidden text: {block['text'][:60]!r}"
-            _new_gap(sess, "hidden_text", detail, block["selector"], status)
+            gap = _new_gap(sess, "hidden_text", detail, block["selector"], status)
+            gap["text"] = block["text"]
     for gap in sess.gaps:
         if (
             gap["kind"] == "hidden_text"
             and gap["status"] != "closed"
-            and gap["target"] not in hidden_now
+            and (gap["target"], gap.get("text", "")) not in hidden_now
         ):
             gap["status"] = "closed"
             gap["closed_by"] = note
@@ -274,10 +329,15 @@ def summarize(obs: dict, sess) -> dict:
 def public_gaps(sess) -> list[dict]:
     """The gap list with internal bookkeeping fields removed, in stable id order."""
     keys = ("id", "kind", "detail", "target", "status", "closed_by")
-    return [{k: g[k] for k in keys} for g in sess.gaps]
+    return [
+        {**{k: g[k] for k in keys}, **({"in_region": g["in_region"]} if "in_region" in g else {})}
+        for g in sess.gaps
+    ]
 
 
-def _in_region(html: str, selector: str, include: list[str], exclude: list[str]) -> bool:
+def in_region(
+    html: str, selector: str, include: list[str], exclude: list[str], text: str = ""
+) -> bool:
     soup = BeautifulSoup(html, "html.parser")
     inside, excluded = set(), set()
     for sel in include:
@@ -295,22 +355,46 @@ def _in_region(html: str, selector: str, include: list[str], exclude: list[str])
     except Exception:
         return False
     for el in found:
+        if text and _own_text(el) != text:
+            continue
         chain = {id(a) for a in [el, *el.parents]}
         if chain & inside and not (chain & excluded):
             return True
     return False
 
 
+def unreachable_hidden(sess) -> list[dict]:
+    """Hidden-text gaps no remaining control could reveal: reported as a limitation only."""
+    return [g for g in sess.gaps if g["kind"] == "hidden_text" and g["status"] == "unresolved"]
+
+
 def finalize_coverage(sess, include: list[str], exclude: list[str]) -> dict:
-    """Gaps evaluated against the SUBMITTED regions: the `product_page.status` decision."""
+    """Gaps evaluated against the SUBMITTED regions: the `product_page.status` decision.
+
+    Hidden text lowers the status only while an untried control could still reveal it. Text that
+    stays hidden after every reachable control was tried (or when there is none) is excluded:
+    its gap becomes `unresolved` and the report lists it as a limitation (user decision,
+    2026-09-29)."""
     html = sess.page.content()
-    remaining = [
+    # Every actionable gap is marked with whether it lies in the submitted regions, so the
+    # evaluation can measure closure over the content that was judged, not page chrome.
+    for gap in sess.gaps:
+        if gap["kind"] in ACTIONABLE_KINDS:
+            gap["in_region"] = in_region(html, gap["target"], include, exclude, gap.get("text", ""))
+    in_scope = [
         gap
         for gap in sess.gaps
-        if gap["kind"] in ACTIONABLE_KINDS
-        and gap["status"] != "closed"
-        and _in_region(html, gap["target"], include, exclude)
+        if gap["kind"] in ACTIONABLE_KINDS and gap["status"] != "closed" and gap["in_region"]
     ]
+    untried = [
+        gap for gap in sess.gaps if gap["kind"] == "unexpanded_control" and gap["status"] == "open"
+    ]
+    remaining = [gap for gap in in_scope if gap["kind"] == "unexpanded_control"]
+    if untried:
+        remaining += [gap for gap in in_scope if gap["kind"] == "hidden_text"]
+    unreachable = [] if untried else [gap for gap in in_scope if gap["kind"] == "hidden_text"]
+    for gap in unreachable:
+        gap["status"] = "unresolved"
     if remaining:
         status = "조사 불충분"
         if sess.exploration_closed:
@@ -321,5 +405,5 @@ def finalize_coverage(sess, include: list[str], exclude: list[str]) -> dict:
             stop_reason = "submitted_with_gaps"
     else:
         status = "완료"
-        stop_reason = "full_coverage"
+        stop_reason = "reachable_coverage" if unreachable else "full_coverage"
     return {"status": status, "stop_reason": stop_reason}

@@ -1,12 +1,16 @@
 """Loading the reviewed reader profiles; anything unexpected yields an invalid one, never raises."""
 
+import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ...core.context import default_rubric_dir
+from . import dataset
+from .template import TEMPLATE_VERSION, TemplateError, derive_profile, load_template
 
 PROFILES_FILE = "persona_profiles.yaml"
 # Version pin of every profile the node may use. A profile whose id is missing here, or whose
@@ -16,7 +20,8 @@ PROFILE_ALLOWLIST: dict[str, int] = {
     "nemotron-ko-20s-firstcard": 1,
     "nemotron-ko-40s-loanfamiliar": 1,
 }
-DATASET = "nvidia/Nemotron-Personas-Korea"
+DATASET = dataset.DATASET
+UUID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 class ProfileSource(BaseModel):
@@ -106,4 +111,39 @@ def resolve_profile(profile_id: str | None = None, path: str | Path | None = Non
         "status": "적용",
         "reason": "",
         "attributes": attributes,
+    }
+
+
+def dataset_profile_version() -> str:
+    """Template version and dataset revision together: either change makes a new profile."""
+    return f"t{TEMPLATE_VERSION}@{dataset.REVISION[:7]}"
+
+
+def resolve_dataset_profile(
+    row: Mapping[str, Any],
+    product_type: str | None,
+    template_path: str | Path,
+    familiarity: Literal["낮음", "보통", "높음"] | None = None,
+) -> dict:
+    """The profile of one dataset row, in the shape of resolve_profile plus attributes.reader.
+
+    Derived by the template's fixed rules; an unreadable or other-version template, or a row
+    without a proper uuid, gives a 무효 profile instead of raising.
+    """
+    uuid = str(row.get("uuid") or "")
+    profile_id = f"nemotron:{uuid}"
+    if not UUID_RE.match(uuid):
+        return _invalid(profile_id, "데이터셋 행의 uuid 형식 오류")
+    try:
+        template = load_template(template_path)
+    except TemplateError as error:
+        return _invalid(profile_id, str(error))
+    return {
+        "id": profile_id,
+        "version": dataset_profile_version(),
+        "source": (f"{DATASET} rev={dataset.REVISION[:7]} uuid={uuid} ({dataset.LICENSE})"),
+        "review_status": "ai-drafted",
+        "status": "적용",
+        "reason": "",
+        "attributes": derive_profile(row, product_type, template, familiarity),
     }

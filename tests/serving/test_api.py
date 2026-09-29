@@ -231,6 +231,54 @@ def test_max_usd_over_the_cap_is_rejected(tmp_path, stub) -> None:
     assert response.status_code == 422
 
 
+def test_null_persona_fields_are_accepted_and_reach_the_worker(tmp_path) -> None:
+    """A form sends every persona field, null when the user left it blank."""
+
+    class Recording(StubAgent):
+        async def run(self, request) -> RunResult:
+            self.requests.append(request)
+            return await super().run(request)
+
+    agent = Recording()
+    agent.requests = []
+    client, _ = build(tmp_path, agent)
+    persona = {
+        "request": None,
+        "uuid": None,
+        "attributes": {
+            "age_min": 70,
+            "age_max": None,
+            "sex": None,
+            "education_level": None,
+            "occupation_contains": None,
+            "province": ["서울"],
+            "family_type": None,
+            "housing_type": None,
+            "marital_status": None,
+        },
+    }
+    with client:
+        for body in ({"url": URL, "persona": None}, {"url": URL, "persona": persona}):
+            accepted = client.post("/v1/reviews", json=body, headers=AUTH)
+            assert accepted.status_code == 202, accepted.json()
+            assert wait_for(client, accepted.json()["job_id"])["status"] == "succeeded"
+
+    assert agent.requests[0].persona is None
+    sent = agent.requests[1].persona
+    assert sent.request is None and sent.uuid is None
+    assert sent.attributes["age_min"] == 70 and sent.attributes["province"] == ["서울"]
+
+
+def test_a_malformed_persona_uuid_is_rejected_before_a_job_exists(tmp_path, stub) -> None:
+    client, agent = build(tmp_path, stub)
+    with client:
+        persona = {"uuid": "not-a-uuid"}
+        response = client.post("/v1/reviews", json={"url": URL, "persona": persona}, headers=AUTH)
+        assert response.status_code == 422
+        assert client.get("/v1/reviews", headers=AUTH).json()["count"] == 0
+    assert agent.calls == []
+
+
 def test_every_v1_route_rejects_a_caller_without_a_token(tmp_path, stub) -> None:
     client, agent = build(tmp_path, stub)
     with client:

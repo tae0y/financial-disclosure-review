@@ -405,6 +405,30 @@ def test_a_completed_collection_adds_no_action():
     assert not any(action.startswith("페이지 수집") for action in result["actions"])
 
 
+def test_unreachable_hidden_text_is_a_listed_limitation_not_a_lower_status():
+    page = {
+        **PAGE,
+        "html": "<p>연회비 1만원</p>",
+        "status": "완료",
+        "stop_reason": "reachable_coverage",
+        "coverage": {
+            "gaps": [
+                {
+                    "id": "gap-2",
+                    "kind": "hidden_text",
+                    "detail": "hidden text: '약관 요약'",
+                    "target": "div.notice > p",
+                    "status": "unresolved",
+                    "closed_by": "",
+                }
+            ]
+        },
+    }
+    result = report(page=page)
+    assert result["status"] == "검토 완료"
+    assert "보이지 않은 숨김 글 1건" in result["markdown"]
+
+
 CARDS = {
     "status": "완료",
     "reason": "",
@@ -520,3 +544,143 @@ def test_the_persona_explanation_is_reported_with_its_profile_units_and_controls
     assert result["summary"]["plain_blocks"] == 1
     assert result["summary"]["plain_rejected"] == 1
     assert any(f["verdict"] == "원문 대체" and "dom-1" in f["target"] for f in result["findings"])
+
+
+def test_a_duty_and_its_f_twin_with_the_same_verdict_are_one_finding():
+    """감사 P1-7: 데모의 원문 부적합 19건은 실제 11개 주제였습니다."""
+    duty = {
+        "items": [],
+        "original": [
+            {"code": "설명07", "verdict": "부적합", "reason": "연체 불이익 없음", "quote": ""},
+            {"code": "F07", "verdict": "부적합", "reason": "연체 이자율 없음", "quote": ""},
+            {"code": "F20", "verdict": "부적합", "reason": "강조 없음", "quote": ""},
+            {"code": "설명11", "verdict": "판정 불가", "reason": "-", "quote": ""},
+            {"code": "F11", "verdict": "부적합", "reason": "-", "quote": ""},
+        ],
+        "plain": [],
+        "fidelity": [],
+    }
+    result = report(page={**PAGE, "html": "<p>연회비 1만원</p>", "status": "완료"}, duty=duty)
+    codes = [f["code"] for f in result["findings"] if f["module"] == "explanation_duty_check"]
+    assert codes.count("설명07/F07") == 1
+    assert "설명07" not in codes and "F07" not in codes
+    assert "F20" in codes
+    assert "설명11" in codes and "F11" in codes  # different verdicts stay apart
+    assert result["summary"]["duty_violations_original"] == 4
+    assert result["summary"]["duty_topics_violated_original"] == 3
+
+
+def test_the_report_says_how_the_reader_was_chosen():
+    plain = {
+        **PLAIN_OK,
+        "units": [],
+        "profile": {
+            "id": "nemotron:abc",
+            "version": "t1@ada0f5b",
+            "status": "적용",
+            "attributes": {"reader": "74세 남성, 초등학교, 하역 종사원"},
+        },
+        "selection": {
+            "decided_by": "agent",
+            "filters": {"age_min": 70},
+            "match_count": 55912,
+            "stop_reason": "chosen",
+            "reason": "",
+        },
+    }
+    markdown = report(plain=plain)["markdown"]
+    assert "독자 선택: 자유 문장 → 선택 agent" in markdown
+    assert "일치 55912행" in markdown
+    assert "74세 남성" in markdown
+
+
+def test_agent_links_report_their_search_and_stop():
+    references = {
+        "status": "완료",
+        "method": {"linking": "agent", "searches": 3, "reads": 2, "cases_from": "db"},
+        "stop_reason": "finished",
+        "candidates": [{"case_id": "case.x"}],
+        "links": [],
+    }
+    markdown = report(references=references)["markdown"]
+    assert "연결 agent(검색 3회, 읽기 2회, 중단 사유 finished)" in markdown
+
+
+# Audit 2026-09-29 R2: which agent loops actually ran in this request, and how far.
+AGENT_PAGE = {
+    **PAGE,
+    "status": "완료",
+    "stop_reason": "full_coverage",
+    "html": "<p>x</p>",
+    "agent_trace": [
+        {"turn": 1, "tool": "inspect_page"},
+        {"turn": 2, "tool": "interact"},
+        {"turn": 2, "tool": "probe_selector"},
+        {"turn": 3, "tool": "submit_rule"},
+    ],
+}
+AGENT_SELECTION = {
+    **PLAIN_OK,
+    "selection": {
+        "decided_by": "agent",
+        "stop_reason": "chosen",
+        "trace": [
+            {"turn": 1, "tool": "list_values"},
+            {"turn": 1, "tool": "list_values"},
+            {"turn": 2, "tool": "choose"},
+        ],
+    },
+}
+AGENT_REFERENCES = {
+    "status": "부분 완료",
+    "method": {"linking": "agent"},
+    "stop_reason": "max_turns",
+    "agent_trace": [{"turn": t, "tool": "search_cases"} for t in range(1, 9)],
+    "links": [],
+}
+
+
+def test_each_agent_loop_that_ran_is_summarized_with_turns_and_stop():
+    runs = report(page=AGENT_PAGE, plain=AGENT_SELECTION, references=AGENT_REFERENCES)["summary"][
+        "agent_runs"
+    ]
+    assert runs["discovery"] == {
+        "ran": "agent",
+        "turns": 3,
+        "tool_calls": 4,
+        "stop_reason": "full_coverage",
+    }
+    assert runs["case_link"] == {
+        "ran": "agent",
+        "turns": 8,
+        "tool_calls": 8,
+        "stop_reason": "max_turns",
+    }
+    assert runs["reader_selection"] == {
+        "ran": "agent",
+        "turns": 2,
+        "tool_calls": 3,
+        "stop_reason": "chosen",
+    }
+
+
+def test_loops_that_did_not_run_say_so():
+    page = {**PAGE, "status": "완료", "stop_reason": "rule_reused", "html": "<p>x</p>"}
+    plain = {**PLAIN_OK, "selection": {"decided_by": "default", "trace": []}}
+    references = {"status": "건너뜀", "method": {"linking": "agent"}, "links": []}
+    runs = report(page=page, plain=plain, references=references)["summary"]["agent_runs"]
+    assert runs["discovery"]["ran"] == "reuse"
+    assert runs["case_link"]["ran"] == "skipped"
+    assert runs["reader_selection"]["ran"] == "default"
+    assert all(run["turns"] == 0 for run in runs.values())
+    assert report()["summary"]["agent_runs"]["case_link"]["ran"] == "not_run"
+
+
+def test_the_markdown_header_lists_the_agent_loops():
+    markdown = report(page=AGENT_PAGE, plain=AGENT_SELECTION, references=AGENT_REFERENCES)[
+        "markdown"
+    ]
+    assert (
+        "- 에이전트 실행: 페이지 탐색 agent 3턴(full_coverage) · 사례 연결 agent 8턴(max_turns)"
+        " · 독자 선택 agent 2턴(chosen)"
+    ) in markdown

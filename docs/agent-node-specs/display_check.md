@@ -14,7 +14,17 @@ from each other, and not hidden behind a control. Code measures; the model label
 
 | Done by code | Done by the model |
 |---|---|
-| joining snapshot rows to the LLM-facing html, font size in pt, contrast ratio, visibility per state, markers and line boundaries, per-group minima and threshold lists | which group each block belongs to, and the verdict per rubric item |
+| joining snapshot rows to the LLM-facing html, font size in pt, contrast ratio, visibility per state, markers and line boundaries, per-group minima and threshold lists, and the verdicts of E02, E04 and E05 | which group each block belongs to, and the verdict of every qualitative item (E01, E03, E06, E07, E08, …) |
+
+**Code-decided items (`CODE_DECIDED` = E02 size, E04/E05 contrast).** Their verdict follows
+from the measurements, so `code_verdict` sets it and they are never sent to `judge_items`
+(`judgments.code_decided` lists them). A measured threshold violation is `부적합` citing exactly
+the violating blocks. A pass needs every labelled block of the item to have been visible and
+measured, with nothing unresolved: a labelled block never visible, undrawn text (`size_unmeasured`,
+E02), image-backed text without a readable crop (`visual_unresolved`), unmeasured contrast, a
+legacy capture (E04/E05) or disclosure text inside an image each make it `판정 불가`, and the
+reason names what was missing. Backlog E1, 2026-09-29; this changes `judge_items` inputs, so the
+display-flip cassette has to be re-recorded.
 
 The model never computes a number. `VERDICT_TASK` says its grounds are the given measures and
 block text only, and `check_verdicts` rejects a verdict that contradicts them: `적합` where the

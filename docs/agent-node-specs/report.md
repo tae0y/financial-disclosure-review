@@ -21,6 +21,7 @@ reviewer has to do about them, and the mapping is mechanical:
 | verification passed, no 부적합, no 판정 불가 | 검토 완료 | 담당자 확인 후 쉬운말 게시 가능 |
 | verification passed, but items are 부적합 | 사람 검토 필요 | 쉬운말 자동 게시 불가 — 원문 유지 |
 | verification failed after the retries | 사람 검토 필요 | 쉬운말 자동 게시 불가 — 원문 유지 |
+| the run budget ran out after collection | 판정 불가 | names the interrupted node |
 
 A `판정 불가` item is a task, never a pass. `findings` collects every row a person must look at:
 `부적합` and `판정 불가` from both checks, every fidelity difference, and every plain-language
@@ -52,6 +53,14 @@ be mistaken for a reviewed one. Then: 담당자 조치 목록, 검토 요약, �
 agent 기록(상태·중단 사유·조사 공백·행동 로그), 증거 카드와 조사 공백, 참고 사례(판정에 사용하지
 않음). The last three are appended so earlier section numbers stay stable.
 
+A `BudgetError` raised after collection no longer ends the thread without a report:
+`graph.build.invoke_to_report` (used by the CLI and the API worker) builds the report from the
+last checkpoint, with `summary.interrupted_at` naming the node that did not finish, and writes it
+back as `end_report`. The header also carries one `에이전트 실행` line and `summary.agent_runs`
+(the same object in the API summary): for the page agent, the case-linking agent and the reader
+selection, whether the model loop ran (`agent`) or how the step was settled without it (`reuse`,
+`skipped`, `default`, ...), with turns, tool calls and stop reason (audit 2026-09-29, R2, R5).
+
 Collection comes first in the status: a page with no collected html reads `수집 실패` or `조사
 불충분`, never a classification problem, and an open evidence gap keeps a clean run from reading
 `검토 완료`. A checkpoint written before the persona explanation (`plain_language`) still
@@ -80,3 +89,14 @@ Until 2026-09-28 that printed the rebuild's own zero in place of what the review
 now passes the cost already on the thread's report, and a rebuild that made no call carries it
 forward and says so (`carried_forward`). A run that did call the model always reports its own
 cost.
+
+## One finding per explanation-duty topic
+
+The F group of `card_guardrail_rubric` and the 설명의무 group of `plain_service_rubric` state
+the same duties on two code axes (`core/duty_codes.DUTY_TWINS`: F01–F19 ↔ 설명01–19, F21 ↔ 설명27,
+F22 ↔ 설명28; F20 has no twin). Both stay judged so each citation survives, but `_findings`
+merges a code and its twin into one row (`설명07/F07`) when they have the same verdict on the
+same side, so the action list names each duty once. Twins with different verdicts stay separate.
+`summary.duty_topics_violated_original` counts distinct topics; `duty_violations_original` still
+counts rows. The §5 table keeps every row, ordered so twins sit together (audit P1-7).
+

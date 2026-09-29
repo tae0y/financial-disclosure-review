@@ -239,6 +239,18 @@ def tool_interact(sess: PageSession, args: dict) -> dict:
     return {"error": f"unknown action {action!r}"}
 
 
+def _elements(soup: BeautifulSoup, selectors) -> set[int]:
+    """Identities of the elements the selectors match in one parsed page (an invalid selector
+    matches nothing), so selectors written differently compare by what they select."""
+    found: set[int] = set()
+    for selector in selectors:
+        try:
+            found |= {id(el) for el in soup.select(selector)}
+        except Exception:
+            continue
+    return found
+
+
 def tool_submit(sess: PageSession, args: dict) -> dict:
     """Validate a proposed rule against the live page; the model never writes the rule file."""
     if sess.on_linked:
@@ -291,10 +303,16 @@ def tool_submit(sess: PageSession, args: dict) -> dict:
         head = BeautifulSoup(piece["html"], "html.parser").find(True)
         if head is not None and head.name in CHROME_TAGS:
             errors.append(f"include {piece['selector']!r} selects page chrome <{head.name}>")
+    # An include the agent never looked at is still refused, but the tool probes it now and
+    # returns what it selects, so the next submit needs no separate probe turn (2026-09-29 F1:
+    # a page spent all 20 turns alternating submit -> "probe first" -> probe -> submit).
     unprobed = [s for s in proposal.include if s not in sess.probed]
+    probed_now = None
     if unprobed:
+        probed_now = tool_probe(sess, unprobed)
         errors.append(
-            f"probe_selector these include selectors first to see what they select: {unprobed}"
+            f"these include selectors had not been probed: {unprobed}. Their probe results are"
+            " in `probe` below; check what they select and resubmit (no separate probe needed)."
         )
     open_controls = [
         g for g in sess.gaps if g["kind"] == "unexpanded_control" and g["status"] != "closed"
@@ -306,6 +324,29 @@ def tool_submit(sess: PageSession, args: dict) -> dict:
             f"open gaps {ids} name expandable controls that were never tried. Expand them and"
             " check for hidden product content, or resubmit if none holds any."
         )
+    # Trying some control elsewhere must not excuse an untried one inside the regions being
+    # submitted (2026-09-29 롯데 카드론: accepted with 3 such controls never tried). Only while
+    # exploration is open, since expanding is refused after that; asked once per page.
+    if not errors and not sess.exploration_closed and not sess.region_nudged:
+        # A control an earlier expand already reached is not untried, even when its gap stayed
+        # open (another selector for the same element, or a popup hid it from the next
+        # observation): naming it made the agent repeat the expand and close exploration as
+        # repeated_action (2026-09-29 re-measurement, 신한 Hi-Point and 현대 카드론).
+        reached = _elements(soup, sess.tried_expand)
+        inside = [
+            g
+            for g in open_controls
+            if coverage.in_region(html, g["target"], proposal.include, proposal.exclude)
+            and not _elements(soup, [g["target"]]) & reached
+        ]
+        if inside:
+            sess.region_nudged = True
+            errors.append(
+                f"open gaps {[g['id'] for g in inside]} are unexpanded controls inside the"
+                f" regions you submitted ({[g['target'] for g in inside][:10]}). Expand them"
+                " (interact expand with their gap_id), or resubmit unchanged if none hides"
+                " product content."
+            )
     if not errors and not sess.outside_reviewed:
         left = list(
             dict.fromkeys(
@@ -321,7 +362,11 @@ def tool_submit(sess: PageSession, args: dict) -> dict:
                 " again. Resubmit unchanged if none is product content."
             )
     if errors:
-        return {"accepted": False, "errors": errors}
+        return {
+            "accepted": False,
+            "errors": errors,
+            **({"probe": probed_now} if probed_now else {}),
+        }
     sess.pending = {"version": 1, **proposal.model_dump()}
     sess.final_coverage = coverage.finalize_coverage(sess, proposal.include, proposal.exclude)
     sess.last_action_note = "submit_rule accepted"

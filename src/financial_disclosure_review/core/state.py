@@ -47,6 +47,9 @@ class ReferenceCases(TypedDict, total=False):
     method: Any
     candidates: Any
     links: Any
+    # The linking agent's tool calls and why it stopped (finished, max_turns, link_cap, ...).
+    agent_trace: Any
+    stop_reason: Any
 
 
 class DisplayCheck(TypedDict, total=False):
@@ -60,6 +63,9 @@ class PersonaExplanation(TypedDict, total=False):
     status: Any
     reason: Any
     profile: Any
+    # How the reader was chosen (uuid / attributes / agent / default / fallback) and the
+    # selection agent's trace; kept so a retry explains for the same reader.
+    selection: Any
     fact_ledger: Any
     units: Any
     html: Any

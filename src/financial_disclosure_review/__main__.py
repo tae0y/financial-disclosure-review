@@ -1,4 +1,4 @@
-"""CLI: run one review, re-run a thread from a node, or build the reference DB."""
+"""CLI: run one review, re-run a thread from a node, build the reference DB, fetch personas."""
 
 import argparse
 import json
@@ -12,8 +12,16 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from .core.context import Context, default_data_dir, default_db_path, default_rubric_dir
 from .core.state import empty_state
 from .core.usage import start_run
+from .domain.persona_explanation.dataset import (
+    DATASET,
+    REVISION,
+    dataset_dir,
+    ensure_dataset,
+    filters_from_pairs,
+    missing_shards,
+)
 from .evaluation import SUITES, default_eval_dir, render, run_evaluation
-from .graph.build import build_review_graph
+from .graph.build import build_review_graph, invoke_to_report
 from .knowledge.build import build_rubric_db
 from .knowledge.build_cases import build_case_db, case_db_counts
 
@@ -23,7 +31,25 @@ def default_checkpoint_path(data_dir: str) -> str:
 
 
 def context_from(args: argparse.Namespace) -> Context:
-    return Context(model=args.model, data_dir=args.data_dir, db_path=args.db_path)
+    attributes: dict = {}
+    for pair in getattr(args, "persona_attr", None) or []:
+        attributes.update(pair)
+    return Context(
+        model=args.model,
+        data_dir=args.data_dir,
+        db_path=args.db_path,
+        persona_request=getattr(args, "persona", "") or "",
+        persona_uuid=getattr(args, "persona_uuid", "") or "",
+        persona_attributes=attributes or None,
+    )
+
+
+def persona_attr(text: str) -> dict:
+    """One --persona-attr key=value, checked against the dataset filter fields."""
+    try:
+        return filters_from_pairs([text])
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from None
 
 
 def save_report(state: dict, data_dir: str, thread_id: str) -> str:
@@ -103,7 +129,7 @@ def review(args: argparse.Namespace) -> int:
     print("thread:", thread_id)
     start_run(max_calls=args.max_calls, max_usd=args.max_usd)
     with SqliteSaver.from_conn_string(args.checkpoints) as saver:
-        final = build_review_graph(saver).invoke(state, config, context=context_from(args))
+        final = invoke_to_report(build_review_graph(saver), state, config, context_from(args))
     print_summary(final)
     saved = save_report(final, args.data_dir, thread_id)
     if saved:
@@ -122,7 +148,7 @@ def rerun(args: argparse.Namespace) -> int:
             print(f"thread {args.thread!r} has no checkpoint whose next node is {args.from_node!r}")
             return 1
         start_run(max_calls=args.max_calls, max_usd=args.max_usd)
-        final = graph.invoke(None, before.config, context=context_from(args))
+        final = invoke_to_report(graph, None, before.config, context_from(args))
     print_summary(final)
     saved = save_report(final, args.data_dir, args.thread)
     if saved:
@@ -188,28 +214,75 @@ def build_cases(args: argparse.Namespace) -> int:
     return 0
 
 
-def parser() -> argparse.ArgumentParser:
-    data_dir = default_data_dir()
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--model", default=Context.model)
-    common.add_argument("--data-dir", default=data_dir)
-    common.add_argument("--db-path", default=default_db_path())
-    common.add_argument("--checkpoints", default=default_checkpoint_path(data_dir))
-    common.add_argument(
-        "--max-calls", type=int, default=60, help="model calls one run may make; 0 for no cap"
+def fetch_personas(args: argparse.Namespace) -> int:
+    """Download and verify the pinned persona dataset; exit 1 when any shard failed."""
+    folder = dataset_dir(args.data_dir)
+    if args.if_missing and not missing_shards(args.data_dir):
+        print(f"persona dataset present at {folder}")
+        return 0
+    print(f"persona dataset {DATASET}@{REVISION[:7]} -> {folder}")
+    report = ensure_dataset(args.data_dir)
+    rows = report["shards"]
+    good = [r for r in rows if r["status"] != "failed"]
+    fetched = sum(r["bytes"] for r in rows if r["status"] == "downloaded")
+    print(
+        f"{len(good)}/{len(rows)} shards verified,"
+        f" {sum(r['bytes'] for r in good) / 1e9:.2f} GB on disk, {fetched / 1e9:.2f} GB downloaded"
     )
-    common.add_argument(
-        "--max-usd", type=float, default=1.0, help="USD one run may spend; 0 for no cap"
-    )
+    return 0 if report["ok"] else 1
 
+
+def common_options(defaults: bool) -> argparse.ArgumentParser:
+    """Options every command takes. They may come before or after the subcommand: the copy on
+    the subcommand has no defaults, so it only overrides what was actually typed after it."""
+
+    def default(value):
+        return value if defaults else argparse.SUPPRESS
+
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--model", default=default(Context.model))
+    common.add_argument("--data-dir", default=default(default_data_dir()))
+    common.add_argument("--db-path", default=default(default_db_path()))
+    common.add_argument(
+        "--checkpoints", default=default(None), help="default: <data-dir>/checkpoints.sqlite"
+    )
+    common.add_argument(
+        "--max-calls",
+        type=int,
+        default=default(60),
+        help="model calls one run may make; 0 for no cap",
+    )
+    common.add_argument(
+        "--max-usd", type=float, default=default(1.0), help="USD one run may spend; 0 for no cap"
+    )
+    return common
+
+
+def resolve_paths(args: argparse.Namespace) -> argparse.Namespace:
+    if not args.checkpoints:
+        args.checkpoints = default_checkpoint_path(args.data_dir)
+    return args
+
+
+def parser() -> argparse.ArgumentParser:
+    common = common_options(defaults=False)
     root = argparse.ArgumentParser(
-        prog="financial_disclosure_review", description=__doc__, parents=[common]
+        prog="financial_disclosure_review", description=__doc__, parents=[common_options(True)]
     )
     commands = root.add_subparsers(dest="command", required=True)
 
     one = commands.add_parser("review", help="review one product page URL", parents=[common])
     one.add_argument("url")
     one.add_argument("--thread", default="", help="thread id; a timestamped one by default")
+    one.add_argument("--persona", default="", help="the reader in free text (Korean)")
+    one.add_argument("--persona-uuid", default="", help="one exact persona dataset row")
+    one.add_argument(
+        "--persona-attr",
+        action="append",
+        type=persona_attr,
+        metavar="KEY=VALUE",
+        help="persona dataset filter, repeatable (e.g. age_min=70, province=서울,경기)",
+    )
     one.set_defaults(run=review)
 
     again = commands.add_parser("rerun", help="re-run a thread from one node", parents=[common])
@@ -233,6 +306,16 @@ def parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="print what would be embedded and spend nothing"
     )
     cases.set_defaults(run=build_cases)
+
+    personas = commands.add_parser(
+        "fetch-personas",
+        help="download and verify the pinned persona dataset (about 2GB)",
+        parents=[common],
+    )
+    personas.add_argument(
+        "--if-missing", action="store_true", help="do nothing when every shard file exists"
+    )
+    personas.set_defaults(run=fetch_personas)
 
     check = commands.add_parser(
         "evaluate", help="run the evaluation suites (replay is free)", parents=[common]
@@ -263,7 +346,7 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(find_dotenv(usecwd=True))
-    args = parser().parse_args(argv)
+    args = resolve_paths(parser().parse_args(argv))
     return args.run(args)
 
 

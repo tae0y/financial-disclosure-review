@@ -238,9 +238,10 @@ def test_the_embedded_text_carries_the_fields_a_query_is_about():
 def test_a_case_text_hash_is_preserved_and_must_match_the_embedded_excerpt(db_path):
     case = load_cases(db_path)[0]
     assert len(case["text_sha256"]) == 64
-    assert case["text_sha256"] == yaml.safe_load(
-        (CORPUS / "case_corpus.yaml").read_text()
-    )["items"][0]["text_sha256"]
+    assert (
+        case["text_sha256"]
+        == yaml.safe_load((CORPUS / "case_corpus.yaml").read_text())["items"][0]["text_sha256"]
+    )
 
 
 def test_case_summary_names_the_institution_and_the_issue():

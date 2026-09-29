@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from typing import Any
 
+from ...core.duty_codes import duty_topic
 from ...core.usage import current
 
 STATUS_PASSED = "검토 완료"
@@ -91,6 +92,27 @@ def _reverted(plain: Mapping[str, Any]) -> list[dict]:
     return list(plain.get("contract_errors") or [])
 
 
+def _merge_twins(found: list[dict]) -> list[dict]:
+    """One row per explanation-duty topic: a 설명 code and its F twin with the same verdict on the
+    same side read as `설명07/F07`, so a reviewer does not act on the same duty twice."""
+    merged: list[dict] = []
+    by_key: dict[tuple, dict] = {}
+    for row in found:
+        if row["module"] != "explanation_duty_check":
+            merged.append(row)
+            continue
+        key = (duty_topic(row["code"]), row["verdict"], row["target"])
+        first = by_key.get(key)
+        if first is None:
+            by_key[key] = row
+            merged.append(row)
+            continue
+        codes = sorted({*first["code"].split("/"), row["code"]}, key=lambda c: c[0] == "F")
+        first["code"] = "/".join(codes)
+        first["quotes"] = list(dict.fromkeys(first["quotes"] + row["quotes"]))
+    return merged
+
+
 def _findings(
     display: Mapping[str, Any],
     duty: Mapping[str, Any],
@@ -131,6 +153,7 @@ def _findings(
             row["severity"], row["basis"] = severity(
                 row["module"], bindings.get(row["code"]), page_type
             )
+    found = _merge_twins(found)
     for row in duty.get("fidelity") or []:
         where = ",".join(row.get("source_ids") or []) or row.get("source_id", "")
         found.append(
@@ -156,6 +179,74 @@ def _findings(
             }
         )
     return found
+
+
+def _loop(ran: str, trace: Any, stop_reason: Any) -> dict:
+    steps = [t for t in trace or [] if isinstance(t, Mapping) and t.get("turn")]
+    return {
+        "ran": ran,
+        "turns": max((int(t["turn"]) for t in steps), default=0),
+        "tool_calls": sum(1 for t in steps if t.get("tool")),
+        "stop_reason": str(stop_reason or ""),
+    }
+
+
+def agent_runs(
+    page: Mapping[str, Any], references: Mapping[str, Any], selection: Mapping[str, Any]
+) -> dict:
+    """Which of the three agent loops ran in this review, with turns, tool calls and stop.
+
+    `ran` is `agent` when the model loop ran; otherwise how the step was settled without one:
+    discovery `reuse` (a saved site rule) or `none`; case_link `skipped` (no cards or cases) or
+    `not_run`; reader_selection `default`, `uuid`, `attributes`, `fallback` or `not_run`.
+    """
+    trace = page.get("agent_trace") or []
+    if trace:
+        discovery = "agent"
+    else:
+        discovery = "reuse" if page.get("stop_reason") == "rule_reused" else "none"
+    link_trace = references.get("agent_trace") or []
+    if link_trace:
+        case_link = "agent"
+    else:
+        case_link = "skipped" if references.get("status") else "not_run"
+    pick_trace = selection.get("trace") or []
+    if any(t.get("turn") for t in pick_trace):
+        reader = "agent"
+    else:
+        reader = str(selection.get("decided_by") or "not_run")
+    return {
+        "discovery": _loop(discovery, trace, page.get("stop_reason")),
+        "case_link": _loop(case_link, link_trace, references.get("stop_reason")),
+        "reader_selection": _loop(reader, pick_trace, selection.get("stop_reason")),
+    }
+
+
+RUN_LABELS = {
+    "discovery": ("페이지 탐색", {"reuse": "저장 규칙 재사용", "none": "실행 안 됨"}),
+    "case_link": ("사례 연결", {"skipped": "건너뜀", "not_run": "실행 안 됨"}),
+    "reader_selection": (
+        "독자 선택",
+        {
+            "default": "상품유형 기본 조건",
+            "uuid": "지정 uuid",
+            "attributes": "지정 속성",
+            "fallback": "대체",
+            "not_run": "실행 안 됨",
+        },
+    ),
+}
+
+
+def _agent_runs_line(runs: Mapping[str, Mapping[str, Any]]) -> str:
+    parts = []
+    for key, (label, settled) in RUN_LABELS.items():
+        run = runs[key]
+        if run["ran"] == "agent":
+            parts.append(f"{label} agent {run['turns']}턴({run['stop_reason'] or '-'})")
+        else:
+            parts.append(f"{label} {settled.get(run['ran'], run['ran'])}")
+    return "- 에이전트 실행: " + " · ".join(parts)
 
 
 def _collection_action(page: Mapping[str, Any]) -> str:
@@ -198,10 +289,23 @@ def _status(
                 "사람이 페이지를 직접 확인하거나 원인을 해소한 뒤 재실행",
             ],
         )
+    collection = _collection_action(page)
+    if stop.get("interrupted_at"):
+        # A run cut short by its budget judged only part of the page: no verdict is earned,
+        # whatever the finished steps found.
+        return (
+            STATUS_UNJUDGED,
+            f"{stop['interrupted_at']} 단계에서 실행이 중단되어"
+            f"({stop.get('reason') or '사유 미기재'}) 자동 판정을 내리지 않았습니다.",
+            [
+                f"검토 중단({stop.get('reason') or '사유 미기재'}): {stop.get('detail') or '-'}",
+                *([collection] if collection else []),
+                "한도를 조정해 재실행하거나 사람이 페이지 전체를 직접 검토",
+            ],
+        )
     status, decision, actions = _judged_status(
         classification, display, verification, findings, stop
     )
-    collection = _collection_action(page)
     if collection:
         actions = [collection, *actions]
         # An open evidence gap means the page was not fully seen; a clean pass is not earned.
@@ -333,6 +437,13 @@ def build_report(
         "duty_violations_plain": sum(
             1 for row in duty.get("plain") or [] if row.get("verdict") == "부적합"
         ),
+        "duty_topics_violated_original": len(
+            {
+                duty_topic(row.get("code", ""))
+                for row in duty.get("original") or []
+                if row.get("verdict") == "부적합"
+            }
+        ),
         "fidelity_diffs": len(duty.get("fidelity") or []),
         "plain_blocks": len(_accepted(plain)),
         "plain_rejected": len(_reverted(plain)),
@@ -345,6 +456,8 @@ def build_report(
     cards, references = cards or {}, references or {}
     summary["evidence_cards"] = len(cards.get("cards") or [])
     summary["reference_links"] = len(references.get("links") or [])
+    summary["interrupted_at"] = stop.get("interrupted_at") or ""
+    summary["agent_runs"] = agent_runs(page, references, plain.get("selection") or {})
     limits = _limits(display, plain, duty)
     limits += _card_limits(cards, duty)
     return {
@@ -376,10 +489,44 @@ def build_report(
     }
 
 
+def _selection_lines(selection: Mapping[str, Any], profile: Mapping[str, Any]) -> list[str]:
+    """How the reader was chosen, and who the reader is, when the dataset path ran."""
+    if not selection:
+        return []
+    how = {
+        "uuid": "지정한 uuid",
+        "attributes": "지정한 속성",
+        "agent": "자유 문장 → 선택 agent",
+        "default": "상품유형 기본 조건",
+        "fallback": "대체(조건 완화 또는 기존 프로필)",
+    }.get(str(selection.get("decided_by")), str(selection.get("decided_by")))
+    lines = [
+        f"- 독자 선택: {how}, 조건 {selection.get('filters') or '{}'},"
+        f" 일치 {selection.get('match_count', 0)}행"
+        + (f", 중단 사유 {selection['stop_reason']}" if selection.get("stop_reason") else "")
+        + (f" ({_clip(str(selection['reason']), 160)})" if selection.get("reason") else "")
+    ]
+    attributes = profile.get("attributes") or {}
+    if attributes.get("financial_familiarity"):
+        source = (
+            "요청 문장" if attributes.get("familiarity_source") == "request" else "행 속성 추정"
+        )
+        lines.append(f"- 금융 익숙도: {attributes['financial_familiarity']} ({source})")
+    reader = attributes.get("reader")
+    if reader:
+        lines.append(f"- 독자 개요(합성 페르소나): {_clip(str(reader), 200)}")
+    return lines
+
+
 def _collection_section(page: Mapping[str, Any]) -> list[str]:
     """What the page agent did, why it stopped, and which evidence gaps stayed open."""
     coverage = page.get("coverage") or {}
     trace = page.get("agent_trace") or []
+    unreachable = [
+        g
+        for g in coverage.get("gaps") or []
+        if g.get("kind") == "hidden_text" and g.get("status") == "unresolved"
+    ]
     lines = [
         "## 10. 페이지 수집 agent 기록",
         "",
@@ -389,6 +536,15 @@ def _collection_section(page: Mapping[str, Any]) -> list[str]:
         f"- 조사 범위(전 → 후): {coverage.get('before') or '-'} → {coverage.get('after') or '-'}",
         "- `조사 불충분`은 누락의 증거가 아닙니다. 보이지 않은 조건은 위반이 아니라 조사 공백으로"
         " 남깁니다.",
+        *(
+            [
+                "- 한계: 열 수 있는 컨트롤을 모두 시도해도 보이지 않은"
+                f" 숨김 글 {len(unreachable)}건은 상태 판단에서 제외했습니다."
+                " 이 글에 조건·예외가 있다면 이 검토는 확인하지 못했습니다."
+            ]
+            if unreachable
+            else []
+        ),
         "",
     ]
     lines += _table(
@@ -513,7 +669,21 @@ def _references_section(references: Mapping[str, Any]) -> list[str]:
         " 판정은 사례와 무관하게 루브릭과 페이지 인용으로만 정해졌습니다.",
         f"- 상태: {references.get('status', '-')}{reason},"
         f" 후보 {len(references.get('candidates') or [])}건,"
-        f" 임계값 {method.get('threshold', '-')}, 사례 출처 {method.get('cases_from', '-')}",
+        + (
+            f" 연결 agent(검색 {method.get('searches', 0)}회, 읽기 {method.get('reads', 0)}회,"
+            f" 중단 사유 {references.get('stop_reason') or '-'}),"
+            if method.get("linking") == "agent"
+            else f" 임계값 {method.get('threshold', '-')},"
+        )
+        + f" 사례 출처 {method.get('cases_from', '-')}",
+        *(
+            [
+                "- 연결은 agent가 제안하고, 코드가 페이지 인용과 사례 인용을 원문에서 다시 찾아"
+                " 확인한 것만 남겼습니다."
+            ]
+            if method.get("linking") == "agent"
+            else []
+        ),
         "",
     ]
     lines += _table(
@@ -618,6 +788,7 @@ def _markdown(
         f" / {classification.get('page_type') or '(해당 없음)'}",
         f"- 분류 근거: {_clip(str(classification.get('reason', '')), 300)}",
         f"- 페이지 수집: {page.get('status') or '(기록 없음)'} ({page.get('stop_reason') or '-'})",
+        _agent_runs_line(summary["agent_runs"]),
         "",
         "## 1. 담당자 조치 목록",
         "",
@@ -713,10 +884,18 @@ def _markdown(
                 str((fidelity_by_code.get(row.get("code")) or {}).get("kind", "-")),
                 _clip(row.get("quote", ""), 80),
             ]
-            for row in duty.get("original") or []
+            for row in sorted(
+                duty.get("original") or [],
+                key=lambda r: (duty_topic(r.get("code", "")), r.get("code", "")[:1] == "F"),
+            )
         ],
         ["항목", "조건", "원문 판정", f"{EXPLANATION} 판정", "의미 차이", "원문 인용"],
     )
+    lines += [
+        "- F01–F19·F21·F22는 같은 의무를 담은 설명 코드(설명01–19·27·28)와 한 주제입니다."
+        " 표에는 둘 다 남기고, 조치 목록에서는 같은 판정이면 한 번만 셉니다.",
+        "",
+    ]
     lines += [f"## 6. {EXPLANATION} 결과", ""]
     if "units" in plain:
         profile = plain.get("profile") or {}
@@ -726,6 +905,7 @@ def _markdown(
             f"- 독자 프로필: {profile.get('id', '-')} v{profile.get('version', '-')}"
             f" ({profile.get('source', '-')}, {profile.get('review_status', '-')},"
             f" {profile.get('status', '-')})",
+            *_selection_lines(plain.get("selection") or {}, profile),
             "- 원문 사실(exact_fact)은 설명 옆에 그대로 남습니다."
             " 위험 개념에는 비유를 쓰지 않습니다.",
             "",

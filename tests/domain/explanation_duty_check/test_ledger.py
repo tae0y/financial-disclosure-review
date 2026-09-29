@@ -4,6 +4,7 @@ from financial_disclosure_review.core.text import visible_text
 from financial_disclosure_review.domain.explanation_duty_check.ledger import (
     UNMAPPED_SOURCE,
     check_ledger,
+    map_rubric_fidelity,
 )
 from financial_disclosure_review.domain.persona_explanation.generate import (
     generate_persona_explanation,
@@ -48,6 +49,12 @@ def _run_check(fixture: dict, result: dict, fake, explanation_text: str | None =
     )
 
 
+def _unit_says(result: dict, text: str) -> dict:
+    """The result with its first unit's own text replaced (the ledger reads unit text)."""
+    unit = {**result["units"][0], "exact_fact": "", "explanation": text, "analogy": ""}
+    return {**result, "units": [unit, *result["units"][1:]]}
+
+
 def test_all_values_present_means_zero_model_calls():
     fixture, result = _explain("threshold_exclusion", fixture_drafts("lowfin"))
     fake = scripted_ask({"items": []})
@@ -79,6 +86,7 @@ def test_two_persona_phrasings_give_the_same_code_decided_ledger():
 def test_absent_values_go_to_exactly_one_model_call():
     fixture, result = _explain("threshold_exclusion", fixture_drafts("lowfin"))
     explanation = "지난달 30만원 넘게 쓰면 한 달 2만원까지 깎아 줍니다. 몇몇 매장은 빠집니다."
+    result = _unit_says(result, explanation)
     fake = scripted_ask(
         {
             "items": [
@@ -117,6 +125,7 @@ def fixture_drafts(key: str) -> list[dict]:
 def test_a_quote_not_in_the_explanation_is_salvaged_to_cannot_judge():
     fixture, result = _explain("threshold_exclusion", fixture_drafts("lowfin"))
     explanation = "지난달 많이 쓰면 할인됩니다."
+    result = _unit_says(result, explanation)
     wrong = {
         "items": [
             {"fact_id": f, "verdict": "보존", "quote": "지어낸 인용", "reason": "있음"}
@@ -135,7 +144,7 @@ def test_a_structurally_wrong_answer_marks_every_pending_fact_cannot_judge():
     fake = scripted_ask(
         {"items": [{"fact_id": "f9", "verdict": "누락", "quote": "", "reason": "x"}]}
     )
-    checked = _run_check(fixture, result, fake, "빈 설명")
+    checked = _run_check(fixture, _unit_says(result, "빈 설명"), fake, "빈 설명")
     assert len(fake.calls) == 2
     assert [r["verdict"] for r in checked["ledger"]] == ["판정 불가"] * 4
 
@@ -201,3 +210,95 @@ def test_every_fixture_explanation_keeps_non_empty_fidelity_sources():
         assert fake.calls == [], name
         assert all(r["source_ids"] for r in checked["ledger"])
         assert checked["fidelity"] == [], name
+
+
+def test_a_value_dropped_from_its_unit_is_not_saved_by_another_line():
+    """LOCA 변조 1/4 탐지(2026-09-29): 한 단위에서 빠진 값이 다른 줄에 있으면 '보존'으로 잘못
+    판정했습니다. 원장은 그 값을 설명해야 하는 단위의 글만 봅니다."""
+    fixture, result = _explain("threshold_exclusion", fixture_drafts("lowfin"))
+    unit_text = "지난달 30만원 이상 쓰면 할인됩니다. 일부 가맹점 제외 조건이 있습니다."
+    result = _unit_says(result, unit_text)
+    page = unit_text + " 할인 한도는 월 최대 2만원입니다."
+    fake = scripted_ask(
+        {
+            "items": [
+                {"fact_id": "f2", "verdict": "누락", "quote": "", "reason": "한도 없음"},
+                {"fact_id": "f3", "verdict": "보존", "quote": "지난달 30만원 이상", "reason": "-"},
+            ]
+        }
+    )
+    checked = _run_check(fixture, result, fake, page)
+    assert fake.calls == ["LedgerSemantics"]
+    items = {i["fact_id"]: i for i in fake.data[0]["items"]}
+    assert set(items) == {"f2", "f3"}
+    assert "2만원" not in items["f2"]["scope_text"]
+    assert [(f["code"], f["kind"]) for f in checked["fidelity"]] == [("f2", "누락")]
+    assert checked["fidelity"][0]["informational"] is False
+
+
+UNITS = [
+    {
+        "unit_id": "u1",
+        "status": "accepted",
+        "source_ids": ["dom-7"],
+        "exact_fact": "카드 사용액이 과다하면 신용평점이 하락할 수 있습니다",
+        "explanation": "카드를 여러 장 만들면 신용점수가 떨어질 수 있어요.",
+        "analogy": "",
+    },
+    {
+        "unit_id": "u2",
+        "status": "reverted",
+        "source_ids": ["dom-9"],
+        "exact_fact": "연체 시 연체이자가 부과됩니다",
+        "explanation": "늦게 내면 이자가 붙어요.",
+        "analogy": "",
+    },
+]
+
+
+def test_a_rubric_difference_on_an_accepted_unit_is_not_informational():
+    """실측 설명06: 설명이 경고의 원인을 '사용액 과다'에서 '다수의 카드 발급'으로 바꿨는데 출처 줄이
+    없어 정보 행으로만 보고됐습니다."""
+    rows = [
+        {
+            "code": "설명06",
+            "kind": "변경",
+            "reason": "원인이 바뀜",
+            "original_quote": "카드 사용액이 과다하면 신용평점이 하락할 수 있습니다",
+            "quote": "카드를 여러 장 만들면 신용점수가 떨어질 수 있어요.",
+        }
+    ]
+    [row] = map_rubric_fidelity(rows, UNITS)
+    assert row["unit_ids"] == ["u1"]
+    assert row["source_ids"] == ["dom-7"]
+    assert row["informational"] is False
+
+
+def test_rubric_differences_on_reverted_or_no_units_stay_informational():
+    rows = [
+        {
+            "code": "설명09",
+            "kind": "누락",
+            "reason": "-",
+            "original_quote": "연체 시 연체이자가 부과됩니다",
+            "quote": "",
+        },
+        {
+            "code": "설명11",
+            "kind": "추가",
+            "reason": "-",
+            "original_quote": "",
+            "quote": "원문 어디에도 없는 새 문장입니다",
+        },
+        {
+            "code": "설명06",
+            "kind": "판정 불가",
+            "reason": "-",
+            "original_quote": "",
+            "quote": "카드를 여러 장 만들면 신용점수가 떨어질 수 있어요.",
+        },
+    ]
+    reverted, unmapped, unsure = map_rubric_fidelity(rows, UNITS)
+    assert (reverted["unit_ids"], reverted["informational"]) == (["u2"], True)
+    assert unmapped["source_ids"] == [UNMAPPED_SOURCE] and unmapped["informational"] is True
+    assert unsure["unit_ids"] == ["u1"] and unsure["informational"] is True

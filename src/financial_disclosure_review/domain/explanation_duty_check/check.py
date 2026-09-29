@@ -84,6 +84,7 @@ def judge_plain_side(
         check,
         "low",
         salvage,
+        by_code=True,
         items=evidence,
         text=plain_text,
         **_feedback_notes(feedback),
@@ -154,8 +155,16 @@ def judge_fidelity_rows(candidates: list[dict], model: str, ask) -> list[dict]:
     answer = call_ask(
         ask, model, FidelityDiffs, FIDELITY_TASK, check, "low", salvage, items=evidence
     )
+    quotes = {c["code"]: (c["original"]["quote"], c["plain"]["quote"]) for c in candidates}
     return [
-        {"code": f["code"], "source_id": "", "kind": f["kind"], "reason": f["reason"]}
+        {
+            "code": f["code"],
+            "source_id": "",
+            "kind": f["kind"],
+            "reason": f["reason"],
+            "original_quote": quotes.get(f["code"], ("", ""))[0],
+            "quote": quotes.get(f["code"], ("", ""))[1],
+        }
         for f in answer["items"]
         if f["kind"] != "변화없음"
     ]
@@ -234,6 +243,7 @@ def judge_original_side(
         check,
         "medium",
         salvage,
+        by_code=True,
         items=evidence,
         text=original_text,
         **_feedback_notes(feedback),
@@ -273,6 +283,35 @@ def _original_rows(
                 }
             )
     return items_rows, original_rows
+
+
+def judge_original(
+    page: Mapping[str, Any], classification: Mapping[str, Any], ctx: Context, ask=ask
+) -> dict:
+    """The original side of a first round: scope every rubric item, judge the in-scope ones on
+    the page alone. It reads neither the explanation nor feedback, so it can run beside them."""
+    product_type = classification.get("product_type")
+    in_scope, items_rows = [], []
+    for item in load_explanation_items(ctx.db_path):
+        why = explanation_scope(item, product_type)
+        if why:
+            items_rows.append(
+                {
+                    "code": item["code"],
+                    "rubric": item["rubric"],
+                    "applied": False,
+                    "condition_status": "",
+                    "reason": why,
+                }
+            )
+        else:
+            in_scope.append(item)
+
+    judged: dict[str, dict] = {}
+    if in_scope:
+        judged = judge_original_side(in_scope, visible_text(page["html"]), ctx.model, ask)
+    judged_items, original_rows = _original_rows(in_scope, judged)
+    return {"items": items_rows + judged_items, "original": original_rows}
 
 
 def judge_explanation(
@@ -316,28 +355,8 @@ def judge_explanation(
                 if r["code"] not in redo or r["code"] in redone
             ]
     else:
-        product_type = classification.get("product_type")
-        in_scope, items_rows = [], []
-        for item in all_items:
-            why = explanation_scope(item, product_type)
-            if why:
-                items_rows.append(
-                    {
-                        "code": item["code"],
-                        "rubric": item["rubric"],
-                        "applied": False,
-                        "condition_status": "",
-                        "reason": why,
-                    }
-                )
-            else:
-                in_scope.append(item)
-
-        judged: dict[str, dict] = {}
-        if in_scope:
-            judged = judge_original_side(in_scope, visible_text(page["html"]), ctx.model, ask)
-        judged_items, original_rows = _original_rows(in_scope, judged)
-        items_rows += judged_items
+        first = judge_original(page, classification, ctx, ask)
+        items_rows, original_rows = first["items"], first["original"]
 
     to_judge_codes = [
         i["code"]

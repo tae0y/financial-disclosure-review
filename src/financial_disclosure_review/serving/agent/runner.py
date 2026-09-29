@@ -11,8 +11,9 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from ...core.context import Context
 from ...core.state import empty_state
 from ...core.usage import start_run
-from ...graph.build import build_review_graph
-from ..schemas import Detail, RunResult
+from ...domain.report.build import agent_runs
+from ...graph.build import build_review_graph, invoke_to_report
+from ..schemas import Detail, PersonaRequest, RunResult
 from ..settings import AgentSettings
 
 
@@ -21,13 +22,21 @@ def new_thread_id(prefix: str = "review") -> str:
     return f"{prefix}-{datetime.now().strftime('%y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
 
-def _context(settings: AgentSettings, model: str | None) -> Context:
+def _context(
+    settings: AgentSettings, model: str | None, persona: PersonaRequest | None = None
+) -> Context:
+    persona = persona or PersonaRequest()
+    # Nulls mean "not given"; an all-null attributes object must not outrank a free-text request.
+    attributes = {k: v for k, v in (persona.attributes or {}).items() if v is not None}
     return Context(
         model=model or settings.model,
         data_dir=settings.data_dir,
         db_path=settings.resolved_db_path(),
         rubric_dir=settings.rubric_dir,
         allowed_hosts=settings.allowed_hosts,
+        persona_request=persona.request or "",
+        persona_uuid=persona.uuid or "",
+        persona_attributes=attributes or None,
     )
 
 
@@ -44,6 +53,7 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
 
     applied = [row for row in duty.get("items") or [] if row.get("applied")]
     view: dict[str, Any] = {
+        "agent_runs": agent_runs(page, references, persona.get("selection") or {}),
         "product_page": {
             "url": page.get("url"),
             "product": page.get("product"),
@@ -90,6 +100,7 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
         "persona_explanation": {
             "status": persona.get("status"),
             "profile": (persona.get("profile") or {}).get("id"),
+            "reader_chosen_by": (persona.get("selection") or {}).get("decided_by"),
             "accepted_units": sum(
                 1 for u in persona.get("units") or [] if u.get("status") == "accepted"
             ),
@@ -119,6 +130,7 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
         view["persona_explanation"]["html"] = persona.get("html")
         view["persona_explanation"]["units"] = persona.get("units") or []
         view["persona_explanation"]["fact_ledger"] = persona.get("fact_ledger") or []
+        view["persona_explanation"]["selection"] = persona.get("selection") or {}
         view["explanation_duty_check"]["items"] = duty.get("items") or []
         view["explanation_duty_check"]["original"] = duty.get("original") or []
         view["explanation_duty_check"]["plain"] = duty.get("plain") or []
@@ -158,6 +170,7 @@ def run_review(
     detail: Detail = Detail.summary,
     max_calls: int | None = None,
     max_usd: float | None = None,
+    persona: PersonaRequest | None = None,
 ) -> RunResult:
     """Review one URL from a fresh State, writing checkpoints under its own thread id."""
     thread = thread_id or new_thread_id()
@@ -171,7 +184,9 @@ def run_review(
     )
     started = time.time()
     with SqliteSaver.from_conn_string(settings.resolved_checkpoints()) as saver:
-        final = build_review_graph(saver).invoke(state, config, context=_context(settings, model))
+        final = invoke_to_report(
+            build_review_graph(saver), state, config, _context(settings, model, persona)
+        )
     return _result(dict(final), thread, detail, time.time() - started, meter.summary())
 
 
@@ -199,5 +214,5 @@ def run_rerun(
             raise LookupError(
                 f"thread {thread_id!r} has no checkpoint whose next node is {from_node!r}"
             )
-        final = graph.invoke(None, before.config, context=_context(settings, model))
+        final = invoke_to_report(graph, None, before.config, _context(settings, model))
     return _result(dict(final), thread_id, detail, time.time() - started, meter.summary())

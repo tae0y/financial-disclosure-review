@@ -7,7 +7,7 @@ from ...core.context import Context
 from ...core.text import short
 from ...llm.client import ToolChat
 from . import coverage
-from .session import PageSession
+from .session import PageSession, PageUnavailable, error_page
 from .tools import TOOLS, call_tool
 
 # The last few turns of the budget are reserved for submit_rule once exploration has closed,
@@ -60,6 +60,11 @@ def discover(sess: PageSession, ctx: Context, chat=None) -> dict:
     chat.system(SYSTEM_PROMPT)
     chat.user(intro)
     for turn in range(1, ctx.max_turns + 1):
+        # A page that fell into a browser error has nothing to select; turns spent on it only
+        # guess selectors (2026-09-29 KB 카드론: 20 turns on chrome-error://).
+        problem = error_page(sess.page.url)
+        if problem:
+            raise PageUnavailable(f"{problem} before turn {turn}")
         if not sess.exploration_closed and turn > ctx.max_turns - TURN_BUDGET_RESERVE:
             sess.exploration_closed = "turn_budget"
         sess.model_calls += 1

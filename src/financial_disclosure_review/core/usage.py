@@ -2,6 +2,7 @@
 
 import threading
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 
 # USD per 1M tokens, (input, output). Assumption, dated 2026-09-27, from the OpenAI price page.
@@ -92,15 +93,18 @@ class Meter:
         }
 
 
-_current = Meter()
+# One meter per run, not per process: each run's thread holds its own (the agent serves runs on
+# separate worker threads), and LangGraph copies the context into parallel branches, which then
+# share their run's meter object.
+_current: ContextVar[Meter] = ContextVar("fdr_run_meter", default=Meter())
 
 
 def start_run(max_calls: int = 60, max_usd: float = 1.0) -> Meter:
-    """Begin metering a run and return its meter. The CLI calls this once per invoke."""
-    global _current
-    _current = Meter(max_calls=max_calls, max_usd=max_usd)
-    return _current
+    """Begin metering a run in the current context and return its meter."""
+    meter = Meter(max_calls=max_calls, max_usd=max_usd)
+    _current.set(meter)
+    return meter
 
 
 def current() -> Meter:
-    return _current
+    return _current.get()

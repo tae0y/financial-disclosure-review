@@ -84,7 +84,10 @@ EVIDENCE = {"status": "완료", "sources": SOURCES, "cards": CARDS}
 def runtime(tmp_path_factory) -> Runtime[Context]:
     path = tmp_path_factory.mktemp("reference") / "reference.sqlite"
     build_rubric_db(FIXTURE_DIR / "rubric", path)
-    return cast(Runtime[Context], SimpleNamespace(context=Context(model="fake", db_path=str(path))))
+    # An empty data dir: no persona dataset, so the node uses the legacy yaml profile.
+    data_dir = tmp_path_factory.mktemp("data")
+    context = Context(model="fake", db_path=str(path), data_dir=str(data_dir))
+    return cast(Runtime[Context], SimpleNamespace(context=context))
 
 
 def routed(result: dict) -> str:
@@ -341,3 +344,94 @@ def test_a_persona_failure_is_routed_back_to_the_generator(monkeypatch, runtime)
     assert routed(dict(state)) == "retry_dispatch"
     state["verification"] = {**verification, **plan_retry(verification)}  # type: ignore[typeddict-item]
     assert route_after_retry(state) == "generate_persona_explanation"
+
+
+def test_a_rubric_difference_tied_to_an_accepted_unit_fails_verification(monkeypatch, runtime):
+    """실측 설명06: 경고의 원인을 바꾼 설명 단위가 정보 행으로만 남아 게시 후보가 됐습니다."""
+    first = run_chain(monkeypatch, runtime, persona_ask())
+    unit = next(u for u in first["persona_explanation"]["units"] if u["status"] == "accepted")
+    judged_rows = {
+        "items": first["explanation_duty_check"]["items"],
+        "original": first["explanation_duty_check"]["original"],
+        "plain": first["explanation_duty_check"]["plain"],
+        "fidelity": [
+            {
+                "code": "설명06",
+                "source_id": "",
+                "kind": "변경",
+                "reason": "원인이 바뀜",
+                "original_quote": unit["exact_fact"],
+                "quote": unit["explanation"],
+            }
+        ],
+    }
+    monkeypatch.setattr(nodes, "judge_explanation", lambda *a, **k: judged_rows)
+    state = dict(first)
+    state.update(judge_explanation_duty(cast(State, state), runtime))
+    state.update(verify_answer(cast(State, state), runtime))
+    verification = state["verification"]
+    assert verification["passed"] is False
+    assert "persona_explanation" in verification["failed_modules"]
+    request = next(f for f in verification["feedback"] if f["module"] == "persona_explanation")
+    assert request["source_id"] == ",".join(unit["source_ids"])
+
+
+def test_the_reader_is_chosen_from_the_dataset_once_and_kept_on_retry(
+    monkeypatch, runtime, tmp_path
+):
+    from tests.domain.persona_explanation.persona_dataset import write_dataset
+
+    write_dataset(tmp_path)
+    ctx = Context(
+        model="fake",
+        db_path=runtime.context.db_path,
+        data_dir=str(tmp_path),
+        persona_attributes={"age_min": 70},
+    )
+    dataset_runtime = cast(Runtime[Context], SimpleNamespace(context=ctx))
+    first = run_chain(monkeypatch, dataset_runtime, persona_ask())
+    persona = first["persona_explanation"]
+    assert persona["profile"]["id"].startswith("nemotron:")
+    assert persona["selection"]["decided_by"] == "attributes"
+    assert persona["profile"]["attributes"]["reader"]
+
+    # A retry must not pick again, even if the request changed in between.
+    retry_ctx = Context(**{**ctx.__dict__, "persona_attributes": {"age_max": 29}})
+    retry_runtime = cast(Runtime[Context], SimpleNamespace(context=retry_ctx))
+    again = generate_persona_explanation(cast(State, first), retry_runtime)
+    assert again["persona_explanation"]["profile"]["id"] == persona["profile"]["id"]
+
+
+def test_mandatory_disclosure_lines_stay_emphasised_in_the_explanation():
+    """감사 P2-12: 의무표시로 라벨된 줄은 설명 html에서도 강조됩니다."""
+    from financial_disclosure_review.domain.persona_explanation.generate import assemble_html
+    from financial_disclosure_review.graph.nodes import mark_mandatory
+
+    sources = [
+        {"source_id": "dom-1", "text": "커피 10% 할인"},
+        {"source_id": "dom-2", "text": "연체이자율은 약정금리 + 연 3%p입니다."},
+    ]
+    display = {
+        "judgments": {
+            "labels": {"mandatory": ["b7"]},
+            "blocks": [{"id": "b7", "text": "연체이자율은 약정금리 + 연 3%p입니다."}],
+        }
+    }
+    marked = mark_mandatory(sources, display)
+    assert [s.get("mandatory", False) for s in marked] == [False, True]
+    html = assemble_html(marked, [])
+    assert 'data-source-id="dom-2" data-mandatory="true"><strong>' in html
+    assert 'data-source-id="dom-1">커피' in html
+    unit = {
+        "unit_id": "u1",
+        "replaces": "dom-2",
+        "status": "accepted",
+        "source_ids": ["dom-2"],
+        "exact_fact": "연체이자율은 약정금리 + 연 3%p",
+        "explanation": "늦게 내면 이자가 더 붙습니다.",
+        "analogy": "",
+    }
+    assert 'data-mandatory="true"><p data-role="exact-fact"><strong>' in assemble_html(
+        marked, [unit]
+    )
+    assert mark_mandatory(sources, {}) == sources

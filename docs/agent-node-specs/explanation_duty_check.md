@@ -8,6 +8,10 @@ created: 2026-09-27
 
 `judge_explanation_duty` judges the explanation-duty criteria twice — once against the original
 page, once against the plain-language rewrite — and records where the two answers differ. The
+original side reads only the page, so on a first round `judge_explanation_original` judges it in
+the same graph step as the persona explanation and `judge_explanation_duty` reuses those rows;
+without them (a rerun from an older checkpoint) it judges the original side itself. A judgment
+whose check rejects only some codes asks again for those codes alone and merges the answer. The
 input is a public 상품광고/업무광고 page, not a 청약 단계 설명화면, so every criterion here is
 applied by analogy (준용), per [Rubrics and scope](../README.md#rubrics-and-scope).
 
@@ -50,6 +54,26 @@ codes are downgraded to `판정 불가`; a mismatch in the set of codes raises.
 the two sides, and `변화없음` answers are dropped from the result. `추가` is not a fix: the task
 text says outright that a plain-language rewrite filling a gap the original left does not resolve
 the original's `부적합`.
+
+Each returned row now carries both quotes (`original_quote`, and `quote` from the explanation
+side). `ledger.map_rubric_fidelity` ties the row to persona units: a unit matches when the
+explanation-side quote lies in the unit's text, or the original-side quote overlaps the unit's
+`exact_fact` (whitespace-insensitive containment either way, at least 6 characters). A row tied
+to an accepted unit gets that unit's `source_ids` and `informational: false`, so
+`verify_answer` fails `persona_explanation` and the retry regenerates that unit. A row tied to
+no unit, or only to reverted units, or whose kind is `판정 불가`, stays informational. This closes
+the 2026-09-29 live-run gap where 설명06 (the explanation changed a warning's cause from 사용액
+과다 to 다수의 카드 발급) passed because rubric rows had no source line; replayed on that
+checkpoint, 설명06 maps to unit `u21`.
+
+## Fact ledger scope
+
+`check_ledger` checks each fact inside its own scope: the text (`exact_fact`, `explanation`,
+`analogy`) of its accepted units. A fact none of whose units was accepted is shown in its original
+line, so its scope is the whole explanation page. The model call (`LedgerSemantics`) receives each
+pending fact's `scope_text` and must quote from it. Before this, the page-wide check let a value
+dropped from one unit count as preserved when another line repeated it (LOCA ledger mutations:
+1/4 detected).
 
 ## Retry
 

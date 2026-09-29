@@ -27,6 +27,7 @@ def test_the_graph_compiles_with_every_node_and_edge():
         "retrieve_reference_cases",
         "judge_display_method",
         "generate_persona_explanation",
+        "judge_explanation_original",
         "judge_explanation_duty",
         "verify_answer",
         "retry_dispatch",
@@ -94,6 +95,100 @@ def fake_duty(
     }
 
 
+def fake_original(page, classification, ctx) -> dict:
+    first = fake_duty(page, classification, {}, ctx, None, None)
+    return {"items": first["items"], "original": first["original"]}
+
+
+def fake_review(monkeypatch, revolving, calls: list[str], verdicts=None) -> None:
+    """Every node faked; `calls` names each domain call in order, `verdicts` fakes verification."""
+    from financial_disclosure_review.domain.verification import verify
+
+    page = {**make_render_page(), **page_of(revolving)}
+    PAGE_HTML_FOR_PERSONA[0] = page["html"]
+    monkeypatch.setattr(nodes, "fetch_product_page", lambda url, ctx: page)
+    monkeypatch.setattr(nodes, "classify_page", lambda page, model: dict(REVOLVING_CLASSIFICATION))
+    monkeypatch.setattr(
+        nodes,
+        "judge_display",
+        lambda page, classification, ctx: {"items": [], "judgments": {"status": "완료"}},
+    )
+    monkeypatch.setattr(nodes, "extract_cards", fake_cards)
+
+    def persona(*args, **kwargs):
+        calls.append("persona")
+        return fake_persona(*args, **kwargs)
+
+    def original(*args):
+        calls.append("original")
+        return fake_original(*args)
+
+    def duty(page, classification, plain, ctx, previous_original, previous_items, **kwargs):
+        calls.append("duty" if previous_items is None else "duty(original reused)")
+        return fake_duty(page, classification, plain, ctx, previous_original, previous_items)
+
+    rounds = iter(verdicts or [])
+
+    def verdict(*args):
+        real = verify(*args)
+        return {**real, **next(rounds, {})}
+
+    monkeypatch.setattr(nodes, "generate_persona", persona)
+    monkeypatch.setattr(nodes, "judge_original", original)
+    monkeypatch.setattr(nodes, "judge_explanation", duty)
+    monkeypatch.setattr(nodes, "verify", verdict)
+
+
+def test_independent_judgments_share_a_step_with_the_explanation(monkeypatch, revolving, tmp_path):
+    """Reference cases run beside the display check, and the original side of the explanation
+    duty beside the persona explanation, which it does not read."""
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    calls: list[str] = []
+    fake_review(monkeypatch, revolving, calls)
+    config: RunnableConfig = {"configurable": {"thread_id": "parallel"}}
+    with SqliteSaver.from_conn_string(str(tmp_path / "checkpoints.sqlite")) as saver:
+        graph = build_review_graph(saver)
+        final = graph.invoke(initial(), config, context=Context(model="fake"))
+        steps = [set(state.next) for state in graph.get_state_history(config)]
+
+    assert {"judge_display_method", "retrieve_reference_cases"} in steps
+    assert {"generate_persona_explanation", "judge_explanation_original"} in steps
+    assert calls == ["persona", "original", "duty(original reused)"] or calls == [
+        "original",
+        "persona",
+        "duty(original reused)",
+    ]
+    assert final["report"]["status"] == "검토 완료"
+
+
+def test_a_retry_regenerates_the_explanation_without_judging_the_original_again(
+    monkeypatch, revolving
+):
+    calls: list[str] = []
+    failed = {
+        "passed": False,
+        "failed_modules": ["persona_explanation"],
+        "feedback": [
+            {
+                "module": "persona_explanation",
+                "code": "",
+                "source_id": "dom-0",
+                "reason": "테스트",
+                "requested_change": "다시 생성",
+                "target": "",
+            }
+        ],
+    }
+    fake_review(monkeypatch, revolving, calls, verdicts=[failed])
+    final = build_review_graph().invoke(initial(), context=Context(model="fake"))
+
+    assert calls.count("original") == 1
+    assert calls.count("persona") == 2
+    assert calls[-1] == "duty(original reused)"
+    assert final["verification"]["loop_count"] == 2
+
+
 def test_a_reviewable_page_runs_through_to_the_report(monkeypatch, revolving):
     page = {**make_render_page(), **page_of(revolving)}
     page["snapshots"] = make_render_page()["snapshots"]
@@ -112,6 +207,7 @@ def test_a_reviewable_page_runs_through_to_the_report(monkeypatch, revolving):
     PAGE_HTML_FOR_PERSONA[0] = page["html"]
     monkeypatch.setattr(nodes, "generate_persona", fake_persona)
     monkeypatch.setattr(nodes, "judge_explanation", fake_duty)
+    monkeypatch.setattr(nodes, "judge_original", fake_original)
     final = build_review_graph().invoke(initial(), context=Context(model="fake"))
 
     assert final["classification"] == REVOLVING_CLASSIFICATION
@@ -207,3 +303,46 @@ def test_a_collection_failure_reaches_a_report_without_any_model_call(monkeypatc
     assert final["classification"] == {}
     assert final["report"]["status"] == "수집 실패"
     assert "navigation failed" in final["report"]["markdown"]
+
+
+def test_a_budget_stop_after_collection_still_ends_in_a_report(monkeypatch, revolving):
+    """Audit 2026-09-29 R5: a spent budget is a result, not a crash without a report."""
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from financial_disclosure_review.core.usage import BudgetError
+    from financial_disclosure_review.graph.build import invoke_to_report
+
+    monkeypatch.setattr(nodes, "fetch_product_page", lambda url, ctx: page_of(revolving))
+    monkeypatch.setattr(nodes, "classify_page", lambda page, model: dict(REVOLVING_CLASSIFICATION))
+
+    def spent(*args, **kwargs):
+        raise BudgetError("run budget $0.15 reached ($0.151) before cards")
+
+    monkeypatch.setattr(nodes, "extract_cards", spent)
+    config: RunnableConfig = {"configurable": {"thread_id": "budget"}}
+    graph = build_review_graph(InMemorySaver())
+    final = invoke_to_report(graph, initial(), config, Context(model="fake"))
+
+    report = final["report"]
+    assert report["status"] == "판정 불가"
+    assert "extract_evidence_cards" in report["decision"]
+    assert "$0.15" in report["actions"][0]
+    assert report["summary"]["interrupted_at"] == "extract_evidence_cards"
+    # The checkpoint ends with the report, so the thread reads as finished.
+    snapshot = graph.get_state(config)
+    assert snapshot.next == ()
+    assert snapshot.values["report"]["status"] == "판정 불가"
+
+
+def test_a_budget_stop_without_a_checkpointer_still_raises(monkeypatch, revolving):
+    from financial_disclosure_review.core.usage import BudgetError
+    from financial_disclosure_review.graph.build import invoke_to_report
+
+    monkeypatch.setattr(nodes, "fetch_product_page", lambda url, ctx: page_of(revolving))
+
+    def spent(*args, **kwargs):
+        raise BudgetError("cap")
+
+    monkeypatch.setattr(nodes, "classify_page", spent)
+    with pytest.raises(BudgetError):
+        invoke_to_report(build_review_graph(), initial(), {}, Context(model="fake"))

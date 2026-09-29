@@ -16,8 +16,9 @@ services:
       FDR_MODEL: ${FDR_MODEL:-gpt-5-mini}
       FDR_MAX_CALLS: ${FDR_MAX_CALLS:-60}
       FDR_MAX_USD: ${FDR_MAX_USD:-1.0}
-      # The run meter in core.usage is a module-level global, so one run at a time per process.
-      FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-1}
+      # Runs served at once. Each run keeps its own budget meter (core.usage); each also starts a
+      # Chromium, which is what bounds this.
+      FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-2}
       FDR_LOG_LEVEL: ${FDR_LOG_LEVEL:-INFO}
       TZ: Asia/Seoul
     expose:
@@ -54,7 +55,7 @@ services:
     environment:
       FDR_AGENT_URL: http://agent:8100
       FDR_JOBS_DB: /app/data/jobs.sqlite
-      FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-1}
+      FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-2}
       # Read browser origins from env_file.  A Compose interpolation here would resolve against
       # the shell/project environment and can overwrite ../.env with an empty value.
       FDR_RUN_TIMEOUT: ${FDR_RUN_TIMEOUT:-1800}

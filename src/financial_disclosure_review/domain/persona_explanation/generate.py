@@ -23,6 +23,7 @@ from .schema import PersonaUnitDrafts
 
 RISK_CARD_KINDS = {"rate_claim", "fee_claim", "warning"}
 RISK_TERMS_RE = re.compile(r"리볼빙|금리|이자|연체|위약금|수수료|이월")
+ENUM_MARKER = re.compile(r"(?<!\S)\(?\d{1,2}[)）.](?=\s)")
 VERDICT_RE = re.compile(r"적합|부적합|위반|합법|불법|문제없")
 BENEFIT_KINDS = {"benefit_claim"}
 CARD_FIELDS = (
@@ -45,15 +46,27 @@ CONTROLS = {
 }
 
 
+MANDATORY_ATTR = ' data-mandatory="true"'
+
+
 def _source_html(source: Mapping[str, Any]) -> str:
-    return f'<p data-source-id="{escape(source["source_id"])}">{escape(source["text"])}</p>'
+    """One original line; a mandatory disclosure (감사 P2-12) is marked and set in bold."""
+    text = escape(source["text"])
+    if source.get("mandatory"):
+        return (
+            f'<p data-source-id="{escape(source["source_id"])}"{MANDATORY_ATTR}>'
+            f"<strong>{text}</strong></p>"
+        )
+    return f'<p data-source-id="{escape(source["source_id"])}">{text}</p>'
 
 
-def _unit_html(unit: Mapping[str, Any]) -> str:
+def _unit_html(unit: Mapping[str, Any], mandatory: bool = False) -> str:
+    fact = escape(unit["exact_fact"])
     parts = [
         f'<section data-unit-id="{escape(unit["unit_id"])}"'
-        f' data-source-ids="{escape(" ".join(unit["source_ids"]))}">',
-        f'<p data-role="exact-fact">{escape(unit["exact_fact"])}</p>',
+        f' data-source-ids="{escape(" ".join(unit["source_ids"]))}"'
+        f"{MANDATORY_ATTR if mandatory else ''}>",
+        f'<p data-role="exact-fact">{f"<strong>{fact}</strong>" if mandatory else fact}</p>',
         f'<p data-role="explanation">{escape(unit["explanation"])}</p>',
     ]
     if unit["analogy"]:
@@ -62,10 +75,18 @@ def _unit_html(unit: Mapping[str, Any]) -> str:
 
 
 def assemble_html(sources: Sequence[Mapping[str, Any]], units: Sequence[Mapping[str, Any]]) -> str:
-    """Every source in page order; an accepted unit replaces only its first source line."""
+    """Every source in page order; an accepted unit replaces only its first source line.
+
+    A source flagged `mandatory` (a 의무표시 block, labelled by display_check) stays emphasised,
+    and so does a unit that stands in for any mandatory line it covers."""
     by_first = {u["replaces"]: u for u in units if u["status"] == "accepted"}
+    mandatory = {s["source_id"] for s in sources if s.get("mandatory")}
     return "".join(
-        _unit_html(by_first[s["source_id"]]) if s["source_id"] in by_first else _source_html(s)
+        _unit_html(
+            by_first[s["source_id"]], bool(mandatory & set(by_first[s["source_id"]]["source_ids"]))
+        )
+        if s["source_id"] in by_first
+        else _source_html(s)
         for s in sources
     )
 
@@ -134,7 +155,8 @@ def review_unit(
             notes.append(f"analogy_dropped: {why}")
             analogy = ""
 
-    generated = f"{explanation} {analogy}"
+    # "1) …", "(2) …", "3. …" number a list; they state no fact, so they are not checked.
+    generated = ENUM_MARKER.sub(" ", f"{explanation} {analogy}")
     extra = sorted(number_set(generated) - number_set(source_text) - counter_ones(generated))
     if extra:
         problems.append(f"근거 원문에 없는 수치: {', '.join(extra)}")
@@ -230,14 +252,17 @@ def generate_persona_explanation(
     ask=ask,
     profile_id: str | None = None,
     profiles_path: str | Path | None = None,
+    profile: dict | None = None,
 ) -> dict:
     """독자 맞춤 설명 생성. PersonaExplanation의 모든 필드를 돌려준다.
 
     {status, reason, profile, fact_ledger, units, html, controls}. 모델 호출은 최대 한 번(구조가
-    깨진 답에 한해 한 번 재질문)이며, 검증에 걸린 단위는 원문 줄로 남는다.
+    깨진 답에 한해 한 번 재질문)이며, 검증에 걸린 단위는 원문 줄로 남는다. `profile`이 주어지면
+    (choose_profile의 결과) 다시 고르지 않고 그대로 쓴다: 재시도도 같은 독자로 설명한다.
     """
-    wanted_profile = profile_id if profile_id is not None else ctx.persona_profile
-    profile = resolve_profile(wanted_profile, profiles_path)
+    if profile is None:
+        wanted_profile = profile_id if profile_id is not None else ctx.persona_profile
+        profile = resolve_profile(wanted_profile, profiles_path)
     ledger = build_fact_ledger(cards)
     if not sources:
         return _fallback("판정 불가", "설명할 원문 출처(sources)가 없음", profile, ledger, sources)
@@ -263,7 +288,7 @@ def generate_persona_explanation(
         for f in feedback
         if f.get("module") == "persona_explanation"
     ]
-    extra = {"previous_feedback": own_feedback} if own_feedback else {}
+    extra: dict[str, Any] = {"previous_feedback": own_feedback} if own_feedback else {}
 
     answer = call_ask(
         ask,

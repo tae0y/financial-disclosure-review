@@ -85,6 +85,12 @@ Stop:
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.override.yml down
 ```
 
+## Zero-cost run
+
+To check a change end to end without model cost, run the mock stack next to (or instead of) the
+local one: `docker/docker-compose.mock.yml` answers every model call with a local mock of the
+OpenAI API. See [setup-mock-llm.md](setup-mock-llm.md).
+
 ## Production run
 
 Drop the override file. Neither application port is published to the host; the only way in is the

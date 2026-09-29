@@ -5,7 +5,10 @@ import pytest
 
 from financial_disclosure_review.core.context import Context
 from financial_disclosure_review.core.text import locate_quote, visible_text
-from financial_disclosure_review.domain.explanation_duty_check.check import judge_explanation
+from financial_disclosure_review.domain.explanation_duty_check.check import (
+    judge_explanation,
+    judge_original,
+)
 from financial_disclosure_review.domain.explanation_duty_check.rubric import (
     load_explanation_items,
 )
@@ -375,3 +378,21 @@ def test_plain_side_feedback_reaches_the_plain_judgment_only(ctx, first_round):
     assert "ExplanationJudgments" not in ask.calls, "원문 쪽 지적이 없으면 원문은 다시 묻지 않음"
     plain_calls = [data for name, data in ask.sent if name == "PlainJudgments"]
     assert plain_calls and plain_calls[0]["previous_feedback"][0]["code"] == "설명01"
+
+
+def test_the_original_side_alone_matches_the_first_round(ctx, first_round):
+    """judge_original runs beside the persona explanation; its rows are the first round's."""
+    ask = FakeExplanationAsk(**FIRST_ROUND_ASK)
+    alone = judge_original(PAGE, CLASSIFICATION, ctx, ask=ask)
+    assert alone == {
+        "items": first_round["result"]["items"],
+        "original": first_round["result"]["original"],
+    }
+    assert set(ask.calls) == {"ExplanationJudgments"}
+
+
+def test_an_empty_original_side_from_judge_original_is_not_judged_again(ctx, first_round):
+    items = [{**row, "applied": False} for row in first_round["result"]["items"]]
+    ask = FakeExplanationAsk()
+    judge_explanation(PAGE, PLAIN_1, CLASSIFICATION, ctx, [], items, ask=ask)
+    assert "ExplanationJudgments" not in ask.calls

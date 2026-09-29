@@ -1,0 +1,128 @@
+# Reading-profile template for rows of nvidia/Nemotron-Personas-Korea (domain/persona_explanation).
+#
+# template.derive_profile turns ONE dataset row into the reading attributes the persona
+# explanation uses, by fixed rules only (no model call):
+#   financial_familiarity: 높음 when the occupation contains a high_occupation_terms entry;
+#     else 낮음 when education_level is in low_education or age >= low_age_min; else 보통.
+#   reading_preference, analogy_policy: by familiarity.
+#   likely_questions: by product type (classification.product_type) x familiarity; `default`
+#     covers an unknown or missing product type.
+#   prohibited_assumptions: the same fixed list for every reader.
+# default_filters: the dataset filters used when the reviewer names no reader at all.
+#
+# The code pins this file's `version` (template.TEMPLATE_VERSION); a mismatch makes every
+# dataset profile 무효. Editing the rules means bumping both. AI-drafted, not yet reviewed.
+version: 1
+ai_drafted: true
+human_review: false
+familiarity:
+  high_occupation_terms: [금융, 회계, 보험, 은행, 증권, 세무, 재무, 투자, 대출, 신용, 경리]
+  low_education: [무학, 초등학교, 중학교]
+  low_age_min: 70
+reading_preference:
+  낮음: 짧은 문장으로 한 번에 한 가지 사실만 말하고, 어려운 금융 용어는 일상어로 풀어 씀
+  보통: 핵심 조건을 먼저 말하고, 처음 보는 용어는 한 줄로 뜻을 덧붙임
+  높음: 비유 없이 수치·기간·조건을 원문 그대로 짚고, 적용 순서만 정리함
+analogy_policy:
+  낮음: benefit_only
+  보통: benefit_only
+  높음: none
+prohibited_assumptions:
+  - 독자가 이 상품의 발급·가입 대상이라고 가정하지 않음
+  - 독자의 소득·재산·기존 대출·신용점수를 추정하지 않음
+  - 발급 승인이나 한도 부여를 전제하지 않음
+  - 독자가 실제로 받을 혜택 금액이나 갚을 금액을 계산하지 않음
+  - 독자의 나이·직업·학력으로 상품이 맞는지 판단하지 않음
+likely_questions:
+  신용카드:
+    낮음:
+      - 이 카드를 쓰면 돈이 언제, 얼마나 나가나요?
+      - 혜택을 받으려면 무엇을 해야 하나요?
+      - 모르고 지나치면 손해 보는 조건이 있나요?
+      - 그만두고 싶으면 어떻게 되나요?
+    보통:
+      - 연회비는 얼마이고 언제 청구되나요?
+      - 할인을 받으려면 한 달에 얼마를 써야 하나요?
+      - 할인에서 빠지는 곳이 있나요?
+      - 결제를 못 하면 어떤 불이익이 있나요?
+    높음:
+      - 전월 실적에서 빠지는 이용 금액은 무엇인가요?
+      - 혜택 한도는 어떤 단위로 계산되나요?
+      - 연체하면 어떤 이자와 불이익이 붙나요?
+  장기카드대출:
+    낮음:
+      - 빌린 돈은 언제까지, 어떻게 갚아야 하나요?
+      - 이자는 얼마나 붙나요?
+      - 제때 못 갚으면 어떻게 되나요?
+      - 대출을 받으면 신용에 영향이 있나요?
+    보통:
+      - 금리는 어느 범위이고 무엇에 따라 달라지나요?
+      - 갚는 방법과 기간은 어떻게 되나요?
+      - 중간에 먼저 갚으면 수수료가 있나요?
+      - 연체하면 어떤 불이익이 있나요?
+    높음:
+      - 금리나 수수료율은 어느 범위이고 무엇에 따라 달라지나요?
+      - 연체하면 금리와 신용점수는 어떻게 되나요?
+      - 중도상환하면 돌려받거나 더 내는 돈이 있나요?
+  단기카드대출:
+    낮음:
+      - 이 돈은 언제 갚아야 하나요?
+      - 수수료나 이자는 얼마나 붙나요?
+      - 제때 못 갚으면 어떻게 되나요?
+    보통:
+      - 수수료율은 어느 범위이고 어떻게 정해지나요?
+      - 결제일에 한 번에 갚아야 하나요?
+      - 이용하면 신용점수에 영향이 있나요?
+      - 연체하면 어떤 불이익이 있나요?
+    높음:
+      - 수수료율 범위와 적용 기준은 무엇인가요?
+      - 연체이자율은 어떻게 정해지나요?
+      - 이용 한도는 무엇에 따라 달라지나요?
+  리볼빙:
+    낮음:
+      - 이번 달에 다 안 갚으면 남은 돈은 어떻게 되나요?
+      - 넘어간 돈에는 이자가 붙나요?
+      - 그만두고 싶으면 어떻게 하나요?
+      - 모르고 신청되는 경우가 있나요?
+    보통:
+      - 다음 달로 넘어가는 금액에 수수료가 얼마나 붙나요?
+      - 최소 결제 비율은 어떻게 정하나요?
+      - 해지하면 남은 금액은 어떻게 갚나요?
+      - 계속 이용하면 신용에 영향이 있나요?
+    높음:
+      - 수수료율 범위와 적용 기준은 무엇인가요?
+      - 약정 결제비율과 이월 잔액은 어떻게 계산되나요?
+      - 연체와 리볼빙 이용은 신용평가에 어떻게 반영되나요?
+  할부금융·리스:
+    낮음:
+      - 한 달에 얼마씩, 몇 번 내야 하나요?
+      - 중간에 그만두면 어떻게 되나요?
+      - 못 내면 어떻게 되나요?
+    보통:
+      - 금리와 수수료는 어떻게 정해지나요?
+      - 중도해지하면 위약금이 있나요?
+      - 기간이 끝나면 물건은 누구 것이 되나요?
+    높음:
+      - 적용 금리와 수수료 범위는 무엇에 따라 달라지나요?
+      - 중도상환·해지 수수료는 어떻게 계산되나요?
+      - 연체하면 어떤 이자와 불이익이 붙나요?
+  default:
+    낮음:
+      - 이 상품을 쓰면 돈이 언제, 얼마나 나가나요?
+      - 모르고 지나치면 손해 보는 조건이 있나요?
+      - 그만두고 싶으면 어떻게 되나요?
+    보통:
+      - 비용은 얼마이고 언제 청구되나요?
+      - 꼭 알아야 할 조건이나 예외가 있나요?
+      - 제때 못 내면 어떤 불이익이 있나요?
+    높음:
+      - 금리·수수료·한도는 무엇에 따라 달라지나요?
+      - 예외 조건과 제외 대상은 무엇인가요?
+      - 연체하면 어떤 불이익이 붙나요?
+default_filters:
+  신용카드: {age_min: 20}
+  장기카드대출: {age_min: 30, age_max: 59}
+  단기카드대출: {age_min: 30, age_max: 59}
+  리볼빙: {age_min: 30, age_max: 59}
+  할부금융·리스: {age_min: 30, age_max: 59}
+  default: {age_min: 20}

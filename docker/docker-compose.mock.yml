@@ -1,0 +1,102 @@
+# docker/docker-compose.mock.yml
+#
+# A zero-cost end-to-end stack: the same gateway and worker images, with the worker's model calls
+# answered by the local mock OpenAI server (financial_disclosure_review.llm.mock_server).
+#
+# Standalone on purpose — its own project name, network, port and data folder — so it never
+# touches the production stack, and it does not read ../.env, so no real model key is in reach.
+#
+#     docker compose -f docker/docker-compose.mock.yml up -d --build
+#     sh docker/mock-e2e.sh
+#     docker compose -f docker/docker-compose.mock.yml down
+#
+# Needs data/personas (from `fetch-personas`) for dataset readers, and a stored site rule in
+# data/site_rules for the reviewed URL: the page agent is not mocked. See docs/setup-mock-llm.md.
+name: financial-disclosure-review-mock
+
+x-agent-build: &agent-build
+  context: ..
+  dockerfile: docker/Dockerfile.agent
+
+services:
+  mock-llm:
+    build: *agent-build
+    entrypoint: ["python", "-m", "financial_disclosure_review.llm.mock_server"]
+    command: ["--port", "9000", "--log", "/app/data/mock-calls.jsonl"]
+    expose:
+      - "9000"
+    volumes:
+      - ../data/mock:/app/data
+    networks:
+      - mock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  agent:
+    build: *agent-build
+    environment:
+      # Never a real key: every model call goes to the mock.
+      OPENAI_API_KEY: sk-mock-not-a-real-key
+      OPENAI_BASE_URL: http://mock-llm:9000/v1
+      FDR_DATA_DIR: /app/data
+      FDR_RUBRIC_DIR: /app/rubrics
+      FDR_MODEL: gpt-5-mini
+      FDR_MAX_CALLS: 60
+      FDR_MAX_USD: 1.0
+      FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-2}
+      TZ: Asia/Seoul
+    expose:
+      - "8100"
+    volumes:
+      - ../data/mock:/app/data
+      # Read-only views of the real data: the persona dataset and the stored site rules.
+      - ../data/personas:/app/data/personas:ro
+      - ../data/site_rules:/app/data/site_rules:ro
+      - "${FDR_RUBRIC_HOST_DIR:-../assets}:/app/rubrics:ro"
+    shm_size: "1gb"
+    init: true
+    networks:
+      - mock
+    depends_on:
+      mock-llm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/healthz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    environment:
+      FDR_AGENT_URL: http://agent:8100
+      FDR_JOBS_DB: /app/data/jobs.sqlite
+      FDR_API_TOKEN: ${FDR_MOCK_API_TOKEN:-fdr_mock_local_test}
+      FDR_RUN_TIMEOUT: 900
+      FDR_AGENT_CONCURRENCY: ${FDR_AGENT_CONCURRENCY:-2}
+      TZ: Asia/Seoul
+    ports:
+      - "18000:8000"
+    volumes:
+      - ../data/mock:/app/data
+    networks:
+      - mock
+    depends_on:
+      agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
+
+networks:
+  mock:
+    driver: bridge

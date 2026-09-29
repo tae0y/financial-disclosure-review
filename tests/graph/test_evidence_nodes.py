@@ -50,8 +50,23 @@ def test_retrieve_without_cards_is_skipped_and_touches_nothing(tmp_path):
     assert not (tmp_path / "x.sqlite").exists()
 
 
-def test_retrieve_reads_the_corpus_yaml_when_the_db_has_no_cases(tmp_path):
-    """로컬 DB에 사례 테이블이 없어도(빌드는 임베딩 비용) 저장소 코퍼스로 BM25를 돌립니다."""
+def test_retrieve_reads_the_corpus_yaml_when_the_db_has_no_cases(tmp_path, monkeypatch):
+    """로컬 DB에 사례 테이블이 없어도(빌드는 임베딩 비용) 저장소 코퍼스로 BM25를 돌립니다.
+    연결 agent는 스크립트 chat으로 검색 한 번 후 종료합니다."""
+    from financial_disclosure_review.knowledge import linking
+    from tests.domain.product_page.fake_chat import ScriptedChat
+
+    script = [
+        [{"name": "search_cases", "args": {"query": "최소 이자율만 강조", "card_ids": ["c1"]}}],
+        [{"name": "finish", "args": {"reason": "맞는 사례 없음"}}],
+        [{"name": "finish", "args": {"reason": "맞는 사례 없음"}}],
+    ]
+    real = linking.link_reference_cases
+    monkeypatch.setattr(
+        nodes,
+        "link_reference_cases",
+        lambda *a, **k: real(*a, **k, chat=ScriptedChat(script)),
+    )
     rubric_dir = tmp_path / "assets"
     rubric_dir.mkdir()
     shutil.copy(FIXTURE_DIR / "cases" / "case_corpus.yaml", rubric_dir / "case_corpus.yaml")
@@ -75,6 +90,8 @@ def test_retrieve_reads_the_corpus_yaml_when_the_db_has_no_cases(tmp_path):
     assert refs["method"]["cases_from"] == "corpus:case_corpus.yaml"
     assert refs["status"] in ("완료", "해당 사례 없음")
     assert refs["candidates"], "the revolving card must at least be scored against the corpus"
+    assert refs["stop_reason"] == "finished"
+    assert [t["tool"] for t in refs["agent_trace"]] == ["search_cases", "finish", "finish"]
 
 
 def test_display_items_carry_the_cards_their_quotes_overlap(monkeypatch):
