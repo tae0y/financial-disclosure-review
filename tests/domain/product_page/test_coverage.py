@@ -125,7 +125,7 @@ def test_b_hidden_text_with_no_control_is_excluded_from_the_status(tmp_path):
             sess.close()
 
 
-def test_c_a_repeated_expand_is_refused_and_closes_exploration(tmp_path):
+def test_c_a_repeated_expand_is_refused_without_closing_exploration(tmp_path):
     with sync_playwright() as playwright:
         sess = _session(FORBIDDEN_HTML, tmp_path, playwright)
         try:
@@ -144,17 +144,33 @@ def test_c_a_repeated_expand_is_refused_and_closes_exploration(tmp_path):
 
             second = call_tool(sess, "interact", args)
             assert second["blocked"] is True
-            assert sess.exploration_closed == "repeated_action"
+            assert "choose another open gap" in second["blocked_reason"]
+            assert sess.exploration_closed == ""
 
             later = call_tool(
                 sess,
                 "interact",
                 {"action": "scroll", "gap_id": gap_id, "expected_evidence": "아무거나"},
             )
-            assert later["blocked"] is True
-            assert later["blocked_reason"] == "exploration closed: repeated_action; submit_rule now"
+            assert later["blocked"] is False
         finally:
             sess.close()
+
+
+def test_interaction_budget_grows_with_actionable_gaps_and_stays_bounded():
+    ctx = Context(max_interactions=2, max_turns=5)
+    gaps = [
+        {"kind": "unexpanded_control", "status": "open"},
+        {"kind": "hidden_text", "status": "open"},
+        {"kind": "benefit_without_condition", "status": "open"},
+    ]
+
+    assert coverage.max_interactions(ctx) == 2
+    assert coverage.max_interactions(ctx, gaps) == 2
+    gaps.extend({"kind": "hidden_text", "status": "closed"} for _ in range(2))
+    assert coverage.max_interactions(ctx, gaps) == 4
+    gaps.extend({"kind": "unexpanded_control", "status": "open"} for _ in range(10))
+    assert coverage.max_interactions(ctx, gaps) == 5
 
 
 @pytest.mark.parametrize(
@@ -306,5 +322,47 @@ def test_text_hidden_by_a_stylesheet_counts_as_hidden_and_opening_it_is_new_evid
             assert opened["blocked"] is False
             assert opened["new_evidence"] is True
             assert coverage.observe(sess)["hidden_text_blocks"] == 0
+        finally:
+            sess.close()
+
+
+def test_an_untried_control_outside_product_regions_does_not_block_completion(tmp_path):
+    outside_control = """
+      <div class="outside-widget">
+        <button class="recommend-toggle" aria-expanded="false" aria-controls="recommend-panel">
+          추천 상품 더보기
+        </button>
+        <div id="recommend-panel" hidden><p>추천 상품의 숨겨진 상세 안내입니다.</p></div>
+      </div>
+    """
+    original_aside = (
+        '<aside class="recommend"><p>다른 고객이 함께 본 추천 상품 목록을 여기에서 '
+        "확인할 수 있습니다.</p></aside>"
+    )
+    html = NO_CONTROL_HTML.replace(original_aside, outside_control)
+    with sync_playwright() as playwright:
+        sess = _session(html, tmp_path, playwright)
+        try:
+            inspected = call_tool(sess, "inspect_page", {})
+            assert any(gap["kind"] == "unexpanded_control" for gap in inspected["open_gaps"])
+            call_tool(sess, "probe_selector", {"selectors": ["article#product"]})
+            result = {}
+            for _ in range(4):
+                result = call_tool(sess, "submit_rule", dict(SUBMIT_BASE))
+                if result.get("accepted"):
+                    break
+
+            assert result["accepted"] is True
+            assert sess.final_coverage == {
+                "status": "완료",
+                "stop_reason": "reachable_coverage",
+            }
+            outside = next(
+                gap
+                for gap in sess.gaps
+                if gap["kind"] == "unexpanded_control" and "recommend-toggle" in gap["target"]
+            )
+            assert outside["status"] == "open"
+            assert outside["in_region"] is False
         finally:
             sess.close()

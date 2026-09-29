@@ -35,8 +35,8 @@ class Context:
     viewport_height: int = 800
     max_turns: int = 20
     max_visits: int = 3
-    # Exploration budget of the page agent: scroll/expand/open_link calls in one discovery, and
-    # consecutive interactions that revealed nothing new before exploration is closed.
+    # Exploration budget of the page agent: the interaction floor grows with actionable gaps
+    # (bounded by max_turns), while no-progress remains a consecutive-interaction cap.
     max_interactions: int = 8
     max_no_progress: int = 2
     # Reference cases rank by BM25 slot overlap; the paid query-embedding rerank is opt-in.

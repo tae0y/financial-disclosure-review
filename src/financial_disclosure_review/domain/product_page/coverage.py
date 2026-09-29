@@ -27,9 +27,19 @@ DEFAULT_MAX_NO_PROGRESS = 2
 ACTIONABLE_KINDS = ("unexpanded_control", "hidden_text")
 
 
-def max_interactions(ctx) -> int:
-    """`Context.max_interactions` when the field exists, else the Stage 1 default of 8."""
-    return getattr(ctx, "max_interactions", DEFAULT_MAX_INTERACTIONS)
+def max_interactions(ctx, gaps: list[dict] | None = None) -> int:
+    """Interaction budget scaled to the actionable gaps observed during this visit.
+
+    ``Context.max_interactions`` is the floor. Gap records persist after they close, so the
+    calculated limit cannot shrink halfway through exploration. The model-turn budget remains
+    the upper bound unless the configured interaction floor is already higher.
+    """
+    floor = max(0, int(getattr(ctx, "max_interactions", DEFAULT_MAX_INTERACTIONS)))
+    if not gaps:
+        return floor
+    actionable = sum(1 for gap in gaps if gap.get("kind") in ACTIONABLE_KINDS)
+    turn_bound = max(floor, max(0, int(getattr(ctx, "max_turns", floor))))
+    return min(max(floor, actionable), turn_bound)
 
 
 def max_no_progress(ctx) -> int:
@@ -386,10 +396,11 @@ def finalize_coverage(sess, include: list[str], exclude: list[str]) -> dict:
         for gap in sess.gaps
         if gap["kind"] in ACTIONABLE_KINDS and gap["status"] != "closed" and gap["in_region"]
     ]
-    untried = [
-        gap for gap in sess.gaps if gap["kind"] == "unexpanded_control" and gap["status"] == "open"
-    ]
-    remaining = [gap for gap in in_scope if gap["kind"] == "unexpanded_control"]
+    # Only a control inside the submitted product regions can keep those regions incomplete.
+    # Page chrome and recommendation widgets must not turn otherwise unreachable product text
+    # into a false actionable gap.
+    untried = [gap for gap in in_scope if gap["kind"] == "unexpanded_control"]
+    remaining = list(untried)
     if untried:
         remaining += [gap for gap in in_scope if gap["kind"] == "hidden_text"]
     unreachable = [] if untried else [gap for gap in in_scope if gap["kind"] == "hidden_text"]

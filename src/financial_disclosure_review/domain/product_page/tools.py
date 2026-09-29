@@ -205,11 +205,10 @@ def tool_interact(sess: PageSession, args: dict) -> dict:
             ),
         }
     if action in ("expand", "open_link") and (action, selector) in sess.tried_actions:
-        sess.exploration_closed = "repeated_action"
         return {
             "blocked": True,
             "blocked_reason": f"repeated {action} {selector!r} gives no new information; "
-            "exploration is closed",
+            "choose another open gap or submit_rule",
         }
 
     if action == "scroll":
@@ -424,7 +423,7 @@ def call_tool(sess: PageSession, name: str, args: dict) -> dict:
 def _maybe_close_exploration(sess: PageSession) -> None:
     if sess.exploration_closed:
         return
-    if sess.interactions_count >= coverage.max_interactions(sess.ctx):
+    if sess.interactions_count >= coverage.max_interactions(sess.ctx, sess.gaps):
         sess.exploration_closed = "interaction_budget"
     elif sess.no_progress_count >= coverage.max_no_progress(sess.ctx):
         sess.exploration_closed = "no_new_evidence"

@@ -30,7 +30,7 @@ Method:
 
 Rules:
 - scroll, expand and open_link all require gap_id and expected_evidence naming the coverage gap being investigated. go_back needs neither.
-- Repeating the exact same expand or open_link (same selector) is refused and ends exploration for this page -- after that, only inspect_page, probe_selector and submit_rule work.
+- Repeating the exact same expand or open_link (same selector) is refused. Choose another open gap or submit_rule; one repeated action does not end exploration.
 - Exploration also ends once no open gap remains, once interactions or turns without new evidence run out, or near the end of the turn budget. After it ends, submit_rule with what you have.
 - Use plain CSS built from the ids, classes, tags and roles that inspect_page showed. No text-matching pseudo selectors.
 - include: several selectors, one per content region. exclude: only noise inside a broad included region (menus, banners, share buttons, related-product lists, recommendations).
@@ -55,7 +55,8 @@ def discover(sess: PageSession, ctx: Context, chat=None) -> dict:
     intro = (
         f"Product page: {sess.url}\nViewport: {ctx.viewport_width}x{ctx.viewport_height}\n"
         f"Model turns available: {ctx.max_turns}. Page visits available: {ctx.max_visits} "
-        f"(used {sess.visits}). Interaction budget: {coverage.max_interactions(ctx)}."
+        f"(used {sess.visits}). Interaction budget: "
+        f"{coverage.max_interactions(ctx, getattr(sess, 'gaps', []))}."
     )
     chat.system(SYSTEM_PROMPT)
     chat.user(intro)

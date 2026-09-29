@@ -99,8 +99,9 @@ lexical signals that steer exploration -- they never become a verdict.
 scroll/expand/open_link (`go_back` needs neither); a missing rationale, a repeated
 `(action, selector)` on expand/open_link, or an element `reject_reason` would refuse are all
 returned as `{"blocked": true, "blocked_reason": "..."}` and logged as such in `agent_trace`. A
-repeat immediately closes exploration (`repeated_action`); scroll is exempt from the repeat
-check. `expand` may only click an element with `aria-expanded`/`aria-controls`, `<summary>`,
+repeat blocks only that action; the agent can continue with another gap or submit the rule.
+Scroll is exempt from the repeat check. `expand` may only click an element with
+`aria-expanded`/`aria-controls`, `<summary>`,
 `role=tab`, an `EXPANDER_CLASS` match, or an in-page anchor -- a plain `<button>` with none of
 those is refused as "not an expander". `open_link` compares the full origin (scheme, host, port),
 not just the hostname. While a click, `open_link` or `go_back` is running
@@ -109,17 +110,17 @@ not just the hostname. While a click, `open_link` or `go_back` is running
 
 Exploration closes (further `interact` calls are refused with `"exploration closed: <reason>;
 submit_rule now"`, while `inspect_page`/`probe_selector`/`submit_rule` keep working) on the first
-of: a repeated action (`repeated_action`), `Context.max_interactions` interactions reached
-(`interaction_budget`, default 8), `Context.max_no_progress` consecutive interactions with no new
+of: the dynamic interaction budget reached (`interaction_budget`; floor
+`Context.max_interactions`, default 8, raised to the number of actionable gaps and bounded by
+`Context.max_turns`), `Context.max_no_progress` consecutive interactions with no new
 visible text (`no_new_evidence`, default 2), the last 4 model turns starting (`turn_budget`), or
-no actionable open gap remaining (`full_coverage`). `Context` does not yet declare
-`max_interactions`/`max_no_progress`; `coverage.max_interactions`/`max_no_progress` read them via
-`getattr` with the Stage 1 defaults, so adding the fields later needs no code change here.
+no actionable open gap remaining (`full_coverage`).
 
 On an accepted `submit_rule`, `coverage.finalize_coverage` evaluates every `unexpanded_control`/
 `hidden_text` gap that falls inside the submitted include/exclude regions. An untried
-`unexpanded_control` always counts. A `hidden_text` gap counts only while some control on the
-page is still untried; once every reachable control was tried (or none existed), text that is
+`unexpanded_control` always counts. A `hidden_text` gap counts only while some control inside the
+submitted product regions is still untried; once every reachable in-region control was tried (or
+none existed), text that is
 still hidden is excluded, its gap becomes `unresolved`, and the report lists it as a limitation
 (user decision, 2026-09-29). None left -> `product_page.status = "완료"`, `stop_reason =
 "full_coverage"`, or `"reachable_coverage"` when unreachable hidden text was excluded. Some left
@@ -141,14 +142,14 @@ while exploration is open, and an unchanged resubmit is accepted with the status
 (2026-09-29 롯데 카드론: accepted with three such controls untried). A control whose element an
 earlier expand already reached, under any selector, is not named even if its gap stayed open
 (a popup can hide it from the next observation); naming it made the agent repeat the expand and
-close exploration as `repeated_action`.
+block that one action. It no longer closes the rest of exploration.
 
 `fetch_product_page` never raises for a page or agent failure; any other Playwright error ends
 as `수집 실패`/`fetch_error` with the browser's message (2026-09-29 F1: a KB page reloaded itself
 while the arrival scroll ran). The arrival scroll retries once after such a self-reload. It always returns `{url, product,
 actions, snapshots, html, status, stop_reason, error, coverage, agent_trace}`. `status` is one of
 `완료`, `조사 불충분`, `수집 실패`; `stop_reason` is one of `rule_reused`, `full_coverage`,
-`submitted_with_gaps`, `no_viable_control`, `no_new_evidence`, `repeated_action`, `turn_budget`,
+`submitted_with_gaps`, `no_viable_control`, `no_new_evidence`, `turn_budget`,
 `interaction_budget`, `max_turns`, `budget_exhausted`, `fetch_error`, `page_unavailable`,
 `visit_cap`, `invalid_url`,
 `replay_failed`, `reachable_coverage`. `coverage` is `{before, after, gaps}` (count dicts plus the gap list); `html` is
