@@ -26,20 +26,27 @@ not import each other; they exchange data only through State.
 ### Workflow
 
 ```text
-START → preprocess → classify ─┬→ search cases → display → plain language → explanation duty → verify → report
-                               └→ report (out of scope / uncertain)
+START → preprocess* ─┬→ classify ─┬→ evidence cards → reference cases* → display → reader explanation → explanation duty → verify → report
+                     │            └→ report (out of scope / uncertain)
+                     └→ report (collection failed / insufficient)
+
+* bounded tool-calling agents: the page-evidence agent (preprocess) and the case-linking agent.
+  The reader explanation also runs a small selection agent when the reader is given in free text.
 ```
 
 - Classification ends normally for `범위 밖` and `판정 불가`; the report explains why.
-- Case retrieval informs later judgment but is not itself a judgment or retry target.
-- Plain language precedes explanation duty because the latter compares the source with the rewrite.
+- Reference cases are report-only: no judging prompt reads them, and they are not a retry target.
+- The reader explanation precedes explanation duty because the latter compares the source with it.
+- Agents choose tools; code validates every quote, selector and filter they propose, and each
+  agent has a turn budget and a machine-readable stop reason.
 - Verification routes to the earliest actionable failure. At most two rounds run; display checks
   are not repeated because unchanged measurements would only repeat the same evidence.
 
 ### State and persistence
 
-Each top-level State key belongs to one module: `product_page`, `classification`, `case_search`,
-`display_check`, `plain_language`, `explanation_duty_check`, `verification`, and `report`. A node
+Each top-level State key belongs to one module: `product_page`, `classification`,
+`evidence_cards`, `reference_cases`, `display_check`, `persona_explanation`,
+`explanation_duty_check`, `verification`, and `report`. A node
 writes only its own key. Settings such as model, paths, and limits belong to `Context`, passed at
 invoke time rather than stored in State.
 
@@ -71,8 +78,10 @@ recorded answers by default. See [evaluation](evaluation.md) for suites and resu
 
 - [Agent node specs](agent-node-specs/) — per-node behavior: [product-page discovery](agent-node-specs/product_page.md),
   [classification](agent-node-specs/classification.md), [display checks](agent-node-specs/display_check.md),
-  [plain language](agent-node-specs/plain_language.md), [explanation duty](agent-node-specs/explanation_duty_check.md),
-  and [reporting](agent-node-specs/report.md).
+  [evidence cards](agent-node-specs/evidence_cards.md), [reference cases](agent-node-specs/reference_cases.md),
+  [reader explanation](agent-node-specs/persona_explanation.md), [explanation duty](agent-node-specs/explanation_duty_check.md),
+  and [reporting](agent-node-specs/report.md). The legacy [plain language](agent-node-specs/plain_language.md)
+  module is kept only for the plain-contract evaluation suite.
 
 ## Evidence and history
 

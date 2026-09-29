@@ -1,6 +1,7 @@
 # Financial Disclosure Review
 
-Korean financial-product pages are reviewed for disclosure, display, and plain-language issues.
+Korean financial-product pages are reviewed for disclosure, display, and explanation issues, with
+a reader-tailored explanation checked against the page's facts.
 The LangGraph workflow produces a reviewer report; it does not provide a legal opinion or publish
 content automatically.
 
@@ -46,6 +47,7 @@ content automatically.
 |---|---|---|
 | Build the rubric DB | `uv run python -m financial_disclosure_review build-db` | Offline and free. Run after changing a rubric. |
 | Build the case-search DB | `uv run python -m financial_disclosure_review build-cases` | Calls an embedding model; use `--dry-run` to inspect first. |
+| Download the reader dataset | `uv run python -m financial_disclosure_review fetch-personas` | nvidia/Nemotron-Personas-Korea at a pinned revision, about 2 GB, sha256-checked; the agent container runs it on first boot. |
 | Review a page | `uv run python -m financial_disclosure_review review "<url>"` | Model calls may incur cost. |
 | Resume a review | `uv run python -m financial_disclosure_review rerun --thread <id> --from-node <node>` | Uses the saved checkpoint. |
 | Evaluate | `uv run python -m financial_disclosure_review evaluate --ablation` | Replays the recorded cassette by default. |

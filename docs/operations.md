@@ -13,7 +13,7 @@ for a person to assess, not an automatic legal conclusion.
 | Display check fails verification | Escalate directly; repeating identical measurements is not useful. |
 | Retry budget is exhausted | Keep the original wording and block automatic publication. |
 
-Only `검토 완료` permits “담당자 확인 후 쉬운말 게시 가능.” That still leaves the release
+Only `검토 완료` permits “담당자 확인 후 독자 맞춤 설명 게시 가능.” That still leaves the release
 decision to the named reviewer.
 
 ## Cost controls
