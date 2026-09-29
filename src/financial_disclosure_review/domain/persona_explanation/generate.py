@@ -288,7 +288,7 @@ def generate_persona_explanation(
         for f in feedback
         if f.get("module") == "persona_explanation"
     ]
-    extra = {"previous_feedback": own_feedback} if own_feedback else {}
+    extra: dict[str, Any] = {"previous_feedback": own_feedback} if own_feedback else {}
 
     answer = call_ask(
         ask,

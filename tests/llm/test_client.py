@@ -115,3 +115,52 @@ def test_call_ask_raises_without_a_salvage():
 
     with pytest.raises(RuntimeError, match="failed twice"):
         call_ask(always_fails, "fake", Judgments, "테스트", reasons_missing, "low")
+
+
+def test_call_ask_prints_why_an_attempt_was_rejected(capsys):
+    def flaky(model, schema, task, effort="low", **data):
+        return {"items": [{"code": "X", "reason": "" if "previous_problems" not in data else "ok"}]}
+
+    call_ask(flaky, "fake", Judgments, "테스트", reasons_missing, "low")
+    assert "Judgments attempt 1 rejected: X: 근거 없음" in capsys.readouterr().out
+
+
+ITEMS = [{"code": "A"}, {"code": "B"}, {"code": "C"}]
+
+
+def test_call_ask_by_code_re_asks_only_the_rejected_codes():
+    asked: list[list[str]] = []
+
+    def one_bad(model, schema, task, effort="low", **data):
+        codes = [item["code"] for item in data["items"]]
+        asked.append(codes)
+        if len(asked) == 1:
+            return {"items": [{"code": c, "reason": "" if c == "B" else c} for c in codes]}
+        return {"items": [{"code": c, "reason": f"{c} 재판정"} for c in codes]}
+
+    answer = call_ask(
+        one_bad, "fake", Judgments, "t", reasons_missing, "low", by_code=True, items=ITEMS
+    )
+    assert asked == [["A", "B", "C"], ["B"]]
+    assert [row["code"] for row in answer["items"]] == ["A", "B", "C"]
+    assert answer["items"][1]["reason"] == "B 재판정"
+
+
+def test_call_ask_by_code_re_asks_everything_when_a_problem_names_no_code():
+    asked: list[list[str]] = []
+
+    def drops_a_code(model, schema, task, effort="low", **data):
+        codes = [item["code"] for item in data["items"]]
+        asked.append(codes)
+        keep = codes if len(asked) > 1 else codes[:2]
+        return {"items": [{"code": c, "reason": c} for c in keep]}
+
+    def all_codes(answer: dict) -> list[str]:
+        seen = sorted(row["code"] for row in answer["items"])
+        return [] if seen == ["A", "B", "C"] else [f"codes {seen} != ['A', 'B', 'C']"]
+
+    answer = call_ask(
+        drops_a_code, "fake", Judgments, "t", all_codes, "low", by_code=True, items=ITEMS
+    )
+    assert asked == [["A", "B", "C"], ["A", "B", "C"]]
+    assert len(answer["items"]) == 3

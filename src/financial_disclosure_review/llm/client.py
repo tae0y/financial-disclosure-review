@@ -64,20 +64,51 @@ def ask_images(
 
 
 def call_ask(
-    ask_fn, model: str, schema: type[BaseModel], task: str, check, effort: str, salvage=None, **data
+    ask_fn,
+    model: str,
+    schema: type[BaseModel],
+    task: str,
+    check,
+    effort: str,
+    salvage=None,
+    *,
+    by_code: bool = False,
+    **data,
 ) -> dict:
-    """One model step: 2 attempts max, then salvage(answer, problems) or raise; ask_fn stubs ask."""
-    problems: list[str] = []
-    answer = None
-    for _ in range(2):
-        payload = {**data, "previous_problems": problems} if problems else data
-        answer = ask_fn(model, schema, task, effort, **payload)
-        problems = check(answer)
-        if not problems:
-            return answer
+    """One model step: 2 attempts max, then salvage(answer, problems) or raise; ask_fn stubs ask.
+
+    With by_code, `data["items"]` and the answer's `items` are rows keyed by `code`, and problems
+    read `"<code>: ..."`: when every problem names one of the asked codes, the second attempt asks
+    for those codes only and merges its rows into the first answer.
+    """
+    answer = ask_fn(model, schema, task, effort, **data)
+    problems = check(answer)
+    if not problems:
+        return answer
+    print(f"    {schema.__name__} attempt 1 rejected: {'; '.join(problems)[:300]}")
+    answer = _second_attempt(ask_fn, model, schema, task, effort, data, answer, problems, by_code)
+    problems = check(answer)
+    if not problems:
+        return answer
+    print(f"    {schema.__name__} attempt 2 rejected: {'; '.join(problems)[:300]}")
     if salvage:
         return salvage(answer, problems)
     raise RuntimeError(f"model call failed twice: {'; '.join(problems)[:400]}")
+
+
+def _second_attempt(ask_fn, model, schema, task, effort, data, answer, problems, by_code) -> dict:
+    payload = {**data, "previous_problems": problems}
+    if by_code:
+        asked = [item.get("code") for item in data.get("items") or []]
+        rows = answer.get("items") or []
+        bad = {str(problem).split(":", 1)[0].strip() for problem in problems}
+        if bad <= set(asked) and sorted(row.get("code") for row in rows) == sorted(asked):
+            items = [item for item in data["items"] if item.get("code") in bad]
+            retry = ask_fn(model, schema, task, effort, **{**payload, "items": items})
+            redone = {r.get("code"): r for r in retry.get("items") or [] if r.get("code") in bad}
+            # A code the retry left out keeps its rejected row, so check() still reports it.
+            return {**answer, "items": [redone.get(row.get("code"), row) for row in rows]}
+    return ask_fn(model, schema, task, effort, **payload)
 
 
 def tool_spec(name: str, model: type[BaseModel]) -> dict:
