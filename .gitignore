@@ -234,6 +234,8 @@ data/review/
 # Downloaded persona dataset (~2GB, fetched by `fetch-personas`) and live-run data dirs.
 data/personas/
 data/live*/
+# Local backups of the reference DB taken before a rebuild.
+data/*.sqlite.bak*
 
 # PyPI configuration file
 .pypirc
