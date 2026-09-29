@@ -1,5 +1,6 @@
 """The graph nodes. Each pulls what it needs from State and calls one domain entry point."""
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -112,7 +113,9 @@ def judge_display_method(state: State, runtime: Runtime[Context]) -> dict:
     return {"display_check": check}
 
 
-def mark_mandatory(sources: list[dict[str, Any]], display: dict[str, Any]) -> list[dict[str, Any]]:
+def mark_mandatory(
+    sources: list[dict[str, Any]], display: Mapping[str, Any]
+) -> list[dict[str, Any]]:
     """Flag the source lines display_check labelled as 의무표시, so the explanation keeps them
     emphasised (audit P2-12). Matching is by normalised text containment either way."""
     judgments = display.get("judgments") or {}
