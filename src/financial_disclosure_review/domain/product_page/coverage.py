@@ -335,7 +335,7 @@ def public_gaps(sess) -> list[dict]:
     ]
 
 
-def _in_region(
+def in_region(
     html: str, selector: str, include: list[str], exclude: list[str], text: str = ""
 ) -> bool:
     soup = BeautifulSoup(html, "html.parser")
@@ -380,9 +380,7 @@ def finalize_coverage(sess, include: list[str], exclude: list[str]) -> dict:
     # evaluation can measure closure over the content that was judged, not page chrome.
     for gap in sess.gaps:
         if gap["kind"] in ACTIONABLE_KINDS:
-            gap["in_region"] = _in_region(
-                html, gap["target"], include, exclude, gap.get("text", "")
-            )
+            gap["in_region"] = in_region(html, gap["target"], include, exclude, gap.get("text", ""))
     in_scope = [
         gap
         for gap in sess.gaps

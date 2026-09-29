@@ -132,13 +132,25 @@ accordion panel often matches every panel, so keying by selector alone merged do
 into one gap. One `expand` over many accordions closes each control gap whose element the click
 actually reached (`MARK_CLICKED_JS` marks clicked elements in a page-side `WeakSet`).
 
+Before every model turn the loop checks the page address. A page that has turned into
+Chromium's error page (`chrome-error://`) ends at once as `수집 실패`/`page_unavailable`, with no
+further model call (2026-09-29 KB 카드론: the agent spent 20 turns guessing selectors on an error
+page). `submit_rule` also sends a proposal back once when unexpanded controls that were never
+tried lie inside the submitted regions, even if some other control was tried; this runs only
+while exploration is open, and an unchanged resubmit is accepted with the status the gaps give
+(2026-09-29 롯데 카드론: accepted with three such controls untried). A control whose element an
+earlier expand already reached, under any selector, is not named even if its gap stayed open
+(a popup can hide it from the next observation); naming it made the agent repeat the expand and
+close exploration as `repeated_action`.
+
 `fetch_product_page` never raises for a page or agent failure; any other Playwright error ends
 as `수집 실패`/`fetch_error` with the browser's message (2026-09-29 F1: a KB page reloaded itself
 while the arrival scroll ran). The arrival scroll retries once after such a self-reload. It always returns `{url, product,
 actions, snapshots, html, status, stop_reason, error, coverage, agent_trace}`. `status` is one of
 `완료`, `조사 불충분`, `수집 실패`; `stop_reason` is one of `rule_reused`, `full_coverage`,
 `submitted_with_gaps`, `no_viable_control`, `no_new_evidence`, `repeated_action`, `turn_budget`,
-`interaction_budget`, `max_turns`, `budget_exhausted`, `fetch_error`, `visit_cap`, `invalid_url`,
+`interaction_budget`, `max_turns`, `budget_exhausted`, `fetch_error`, `page_unavailable`,
+`visit_cap`, `invalid_url`,
 `replay_failed`, `reachable_coverage`. `coverage` is `{before, after, gaps}` (count dicts plus the gap list); `html` is
 `""` whenever `status != "완료"`. `discover(sess, ctx, chat=None)` and
 `fetch_product_page(url, ctx, chat_factory=None)` accept an injected chat (matching

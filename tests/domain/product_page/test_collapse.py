@@ -10,7 +10,7 @@ from financial_disclosure_review.core.context import Context
 from financial_disclosure_review.domain.product_page import coverage
 from financial_disclosure_review.domain.product_page.discover import discover
 from financial_disclosure_review.domain.product_page.session import PageSession
-from financial_disclosure_review.domain.product_page.tools import call_tool
+from financial_disclosure_review.domain.product_page.tools import call_tool, tool_submit
 from tests.domain.product_page.fake_chat import ScriptedChat
 from tests.helpers import FIXTURE_DIR
 
@@ -244,11 +244,71 @@ def test_skip_links_are_not_controls_and_gaps_record_their_region(tmp_path):
             inspected = call_tool(sess, "inspect_page", {})
             assert not any("userSkip" in g["target"] for g in inspected["open_gaps"])
             call_tool(sess, "probe_selector", {"selectors": ["article#product"]})
-            for _ in range(3):  # nudges (untried controls, outside text) reject the first tries
+            # nudges (untried controls, untried in-region controls, outside text) reject the
+            # first tries
+            for _ in range(4):
                 if call_tool(sess, "submit_rule", dict(SUBMIT)).get("accepted"):
                     break
             flagged = [g for g in coverage.public_gaps(sess) if "in_region" in g]
             assert flagged and any(g["in_region"] for g in flagged)
             assert any(not g["in_region"] for g in flagged)  # the form's panel
+        finally:
+            sess.close()
+
+
+TWO_CONTROLS_HTML = (FIXTURE_DIR / "html" / "coverage_two_controls.html").read_text(
+    encoding="utf-8"
+)
+
+
+def test_an_untried_control_inside_the_submitted_regions_is_sent_back_once(tmp_path):
+    """2026-09-29 롯데 카드론: accepted with in-region controls never tried. Trying some
+    other control must not excuse the ones inside what is being submitted."""
+    with sync_playwright() as playwright:
+        sess = _session(TWO_CONTROLS_HTML, tmp_path, playwright)
+        try:
+            inspected = call_tool(sess, "inspect_page", {})
+            gaps = {g["target"]: g["id"] for g in inspected["open_gaps"]}
+            first = next(t for t in gaps if "fee-toggle" not in t and "tab-toggle" in t)
+            fee = next(t for t in gaps if "fee-toggle" in t)
+            _expand(sess, first, gaps[first])
+            call_tool(sess, "probe_selector", {"selectors": ["article#product"]})
+            refused = call_tool(sess, "submit_rule", dict(SUBMIT))
+            assert refused["accepted"] is False
+            message = " ".join(refused["errors"])
+            assert gaps[fee] in message and "inside the regions" in message
+            assert gaps[first] not in message
+            # Resubmitting unchanged is accepted, and the untried control keeps the page from
+            # reading as fully covered.
+            accepted = call_tool(sess, "submit_rule", dict(SUBMIT))
+            assert accepted["accepted"] is True
+            assert sess.final_coverage["status"] == "조사 불충분"
+        finally:
+            sess.close()
+
+
+def test_a_control_already_expanded_under_another_selector_is_not_sent_back(tmp_path):
+    """2026-09-29 재측정(신한 Hi-Point, 현대 카드론): the in-region nudge named a control the
+    agent had already expanded under a different selector (or whose gap a popup kept from
+    closing); the agent repeated the expand and exploration closed as repeated_action."""
+    with sync_playwright() as playwright:
+        sess = _session(TWO_CONTROLS_HTML, tmp_path, playwright)
+        try:
+            inspected = call_tool(sess, "inspect_page", {})
+            gaps = {g["target"]: g["id"] for g in inspected["open_gaps"]}
+            cond = next(t for t in gaps if "cond-toggle" in t)
+            fee = next(t for t in gaps if "fee-toggle" in t)
+            _expand(sess, cond, gaps[cond])
+            _expand(sess, "button[aria-controls='panel-fee']", gaps[fee])
+            call_tool(sess, "probe_selector", {"selectors": ["article#product"]})
+            # The popup case: gap bookkeeping missed the expand, so the gap is still open and
+            # exploration still running. tool_submit is called directly because call_tool would
+            # re-derive (and close) the gap first, which the live popup prevented.
+            for gap in sess.gaps:
+                if gap["target"] == fee:
+                    gap["status"] = "open"
+            sess.exploration_closed = ""
+            result = tool_submit(sess, dict(SUBMIT))
+            assert not any("inside the regions" in e for e in result.get("errors", []))
         finally:
             sess.close()

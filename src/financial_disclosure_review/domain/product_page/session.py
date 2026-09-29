@@ -164,6 +164,19 @@ class PageBlocked(RuntimeError):  # noqa: N818 - moved from the notebook unrenam
     """The site refused or did not render the page. Never bypassed."""
 
 
+class PageUnavailable(PageBlocked):  # noqa: N818 - named like its parent
+    """The page turned into a browser error page after arrival; no agent turn can collect
+    anything from it."""
+
+
+def error_page(url: str) -> str:
+    """Why this address is Chromium's error page, or "" otherwise. (`about:blank` is not
+    treated as an error: offline pages are rendered there with set_content.)"""
+    if url.startswith("chrome-error://"):
+        return f"the page became a browser error page ({url})"
+    return ""
+
+
 class VisitCapReached(RuntimeError):  # noqa: N818 - moved from the notebook unrenamed
     pass
 
@@ -302,6 +315,8 @@ class PageSession:
         self.no_progress_count = 0
         self.tried_actions: set[tuple[str, str]] = set()
         self.tried_expand: set[str] = set()
+        # submit_rule sent back once for untried controls inside the submitted regions.
+        self.region_nudged = False
         self.agent_trace: list[dict] = []
         self.last_action_note = ""
         self.coverage_before: dict = {}

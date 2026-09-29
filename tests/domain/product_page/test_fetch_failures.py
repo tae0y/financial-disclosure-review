@@ -15,7 +15,12 @@ from financial_disclosure_review.domain.product_page.fetch import (
     fetch_product_page,
     visit,
 )
-from financial_disclosure_review.domain.product_page.session import PageBlocked, VisitCapReached
+from financial_disclosure_review.domain.product_page.session import (
+    PageBlocked,
+    PageUnavailable,
+    VisitCapReached,
+    error_page,
+)
 
 URL = "https://www.example-card.co.kr/card/credit/info"
 
@@ -253,3 +258,69 @@ def test_a_rule_that_cannot_be_written_does_not_fail_the_review(monkeypatch, tmp
     result = visit(sess, URL, Context(data_dir=str(tmp_path)), tmp_path / "rules")  # type: ignore[arg-type]
     assert result["html"] == "<main>본문</main>"
     assert any(kind == "rule_not_saved" for kind, _ in sess.logged)
+
+
+def test_a_page_that_turned_into_a_browser_error_comes_back_as_unavailable(monkeypatch, tmp_path):
+    """2026-09-29 KB 카드론: the page became chrome-error:// and the agent guessed selectors
+    for 20 turns. It is a collection failure, reported as such."""
+
+    class Session:
+        def __init__(self, playwright, url, ctx):
+            self.actions, self.snapshots, self.agent_trace = [], [], []
+            self.model_calls, self.visits = 0, 0
+            self.coverage_before, self.gaps = {}, []
+
+        def log(self, kind, **fields):
+            self.actions.append({"type": kind, **fields})
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(fetch_module, "url_problem", lambda url, allowed: "")
+    monkeypatch.setattr(fetch_module, "PageSession", Session)
+
+    def fake_visit(sess, url, ctx, rules_dir, chat_factory=None):
+        raise PageUnavailable("the page became chrome-error://chromewebdata/")
+
+    monkeypatch.setattr(fetch_module, "visit", fake_visit)
+    page = fetch_product_page(URL, Context(data_dir=str(tmp_path)))
+    assert page["status"] == "수집 실패"
+    assert page["stop_reason"] == "page_unavailable"
+    assert "chrome-error" in page["error"]
+
+
+def test_discovery_stops_before_a_model_turn_on_a_browser_error_page(monkeypatch):
+    from types import SimpleNamespace
+
+    from financial_disclosure_review.domain.product_page import discover as discover_module
+    from tests.domain.product_page.fake_chat import ScriptedChat
+
+    monkeypatch.setattr(discover_module.coverage, "observe", lambda sess: {})
+    monkeypatch.setattr(discover_module.coverage, "derive_gaps", lambda sess, obs: None)
+    monkeypatch.setattr(discover_module.coverage, "summarize", lambda obs, sess: {})
+    sess = SimpleNamespace(
+        url=URL,
+        page=SimpleNamespace(url="chrome-error://chromewebdata/"),
+        visits=1,
+        exploration_closed="",
+        model_calls=0,
+        agent_trace=[],
+        coverage_before={},
+    )
+    chat = ScriptedChat([[{"name": "inspect_page", "args": {}}]])
+    with pytest.raises(PageUnavailable, match="chrome-error"):
+        discover_module.discover(sess, Context(), chat=chat)  # type: ignore[arg-type]
+    assert chat.step == 0
+    assert sess.model_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("url", "unavailable"),
+    [
+        ("chrome-error://chromewebdata/", True),
+        ("about:blank", False),
+        ("https://card.kbcard.com/FNC/DVIEW/HFAMCXPRIFIC0038", False),
+    ],
+)
+def test_error_page_urls_are_recognized(url, unavailable):
+    assert bool(error_page(url)) is unavailable

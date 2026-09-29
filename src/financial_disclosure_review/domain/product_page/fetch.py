@@ -23,7 +23,7 @@ from .rules import (
     save_rule,
     validate_output,
 )
-from .session import PageBlocked, PageSession, VisitCapReached
+from .session import PageBlocked, PageSession, PageUnavailable, VisitCapReached
 
 
 class ReplayFailedError(RuntimeError):
@@ -42,6 +42,8 @@ def fetch_product_page(url: str, ctx: Context, chat_factory=None) -> dict:
         sess = PageSession(playwright, url, ctx)
         try:
             return visit(sess, url, ctx, rules_dir, chat_factory)
+        except PageUnavailable as error:
+            return _empty(url, "수집 실패", "page_unavailable", str(error), sess)
         except PageBlocked as error:
             return _empty(url, "수집 실패", "fetch_error", str(error), sess)
         except VisitCapReached as error:
