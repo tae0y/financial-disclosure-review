@@ -103,7 +103,7 @@ recorded answers by default. See [evaluation](evaluation.md) for suites and resu
 - [Evaluation](evaluation.md) — suites, results, and what the numbers do not establish.
 - [Architecture decisions](architecture-decisions/README.md) — decisions that constrain the implementation.
 - Lessons from previous projects — insights carried into this design from
-  [`financial-product-disclosure-and-plain-language`](lessons-from-previous-projects/financial-product-disclosure-and-plain-language.md)
+  [`financial-product-disclosure-and-plain-language`](lessons-from-previous-projects/disclosure-plain-language.md)
   (an earlier implementation of this task) and the
   [guardrail research study](lessons-from-previous-projects/guardrail-research-study.md) (QGuard reproduction and extension).
 

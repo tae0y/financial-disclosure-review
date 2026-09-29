@@ -14,7 +14,7 @@ Two entry points share one case source and one BM25 index:
 
 - `knowledge.linking.link_reference_cases(...)` — the linking agent (backlog B3). A bounded tool
   loop in which the model searches, reads and proposes links, and code validates every proposal.
-  This is the intended graph step; it is not wired into the graph yet.
+  The graph's `retrieve_reference_cases` node calls it (`graph/nodes.py`).
 - `knowledge.reference.retrieve_reference_cases(...)` — the deterministic retrieval (Stage 2,
   part B, design record `Stage 0 설계 기록.md` §2.3 and §8-13). Kept and exported; its BM25
   scoring is now the agent's `search_cases` tool, and its threshold measurements below are why

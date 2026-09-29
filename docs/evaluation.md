@@ -2,22 +2,31 @@
 ai-generated: true
 human-review: false
 created: 2026-09-27
-updated: 2026-09-28
+updated: 2026-09-29
 ---
 
 # Evaluation
 
 What was measured, on which data, with which labels, and what the numbers do not cover. Every
-figure here comes from a file in `eval/results/`, and every one can be re-derived for free:
+figure here comes from a file in `eval/results/`, and every cassette-backed one can be re-derived
+for free:
 
 ```bash
 uv run python -m financial_disclosure_review evaluate --ablation   # replays the cassette, $0
 ```
 
-On 2026-09-28 that command replayed all five suites from 68 recorded answers — 80 hits, 0 misses,
-$0, about 6 seconds (`eval/results/260928-202834-all-replay.md`). A suite whose prompt or model
-changes needs its answers recorded again; `--record` calls the model only for the questions the
-cassette does not hold. What the recordings cost:
+`eval/results/`, `eval/fixtures/`, `eval/cassettes/` and `tests/fixtures/classify/` hold captured
+third-party pages and are gitignored; they ship in the submission zip
+(`fdr-reproduction-assets-260929.zip`, unpacked at the repository root). Without them the
+classification and stability suites stop with `no evaluation cases` instead of reporting an
+empty score.
+
+The current figures are from the 2026-09-29 19:08 recording (`eval/results/260929-190829-all-record.md`),
+made after a partially rejected answer started re-asking only the rejected codes (`1964aae`). On
+2026-09-29 the command above replayed all five suites from 88 recorded answers — 78 hits, 0
+misses, $0, about 9 seconds (`eval/results/260929-212416-all-replay.md`). A suite whose prompt or
+model changes needs its answers recorded again; `--record` calls the model only for the questions
+the cassette does not hold. What the recordings cost:
 
 | Recording | Calls | Cost | Time | File |
 |---|---|---|---|---|
@@ -28,9 +37,11 @@ cassette does not hold. What the recordings cost:
 | stability, rounds 2–3 (2026-09-28) | 23 | $0.1657 | 646 s | `eval/results/260928-184936-stability-record.md` |
 | display-flip pipeline arm (2026-09-28) | 19 | $0.2019 | 712 s | `eval/results/260928-190811-display-flip-record.md` |
 | stability, ablation rounds 2–3 (2026-09-28) | 2 | $0.0288 | 143 s | `eval/results/260928-201825-stability-record.md` |
-| **Total for gpt-5-mini** | **68** | **$0.7231** | | |
+| display-flip, E02/E04/E05 decided by code (2026-09-29) | 10 | $0.0834 | 205 s | `eval/results/260929-091909-display-flip-record.md` |
+| all suites after partial re-asking (2026-09-29) | 10 | $0.1482 | 555 s | `eval/results/260929-190829-all-record.md` |
+| **Total for gpt-5-mini** | **88** | **$0.9547** | | |
 
-Answers recorded under the first duty-flip target rule that the current rule no longer asks for
+Answers recorded under an earlier prompt or target rule that the current code no longer asks for
 stay in the cassette unused; a replay never reads them.
 
 The model comparison (other models on the same suites) is recorded in its own cassettes; see
@@ -43,7 +54,7 @@ The model comparison (other models on the same suites) is recorded in its own ca
 | `classification` | Is a real page put in the right product type? | the product type each issuer names on its page, written into the fixture by 영태 | 6 | `keyword`: count product words, no model |
 | `duty-flip` | Is a disclosure that left the page noticed? | the deletion itself — the sentence is provably gone | 3 + 1 control | `ablation`: one call, no quote check, no condition step, no retry — on the same deletions |
 | `display-flip` | Is a disclosure made too small or too faint noticed, and only that one? | the mutation itself — the measured size or contrast is provably under the threshold | 4 + 2 controls | `rules`: thresholds with no notion of which text is mandatory |
-| `plain-contract` | Is a rewrite that drifts from the original caught? | the defect written into each pair | 13 (9 defective, 4 clean) | none measured — a build without the check publishes all 9 |
+| `plain-contract` | Is a rewrite that drifts from the original caught? (the 2026-09-28 plain-language checks; see §4) | the defect written into each pair | 13 (9 defective, 4 clean) | `mechanical`: numbers, absolute phrases and quotes only, no model judgment of conditions |
 | `stability` | Does the same input get the same answer? | agreement with itself, no label | 6 pages + 39 items, 3 rounds | `ablation`: the one-call judgment asked three times (the keyword classifier is code and never varies) |
 
 Why the explanation duty is measured by deletion and the display method by mutation is recorded
@@ -71,33 +82,39 @@ The out-of-scope path is demonstrable without a network:
 `uv run python eval/out_of_scope_report.py` replays the recorded calls and renders the report
 through the same `build_report` the graph's `end_report` node uses.
 
-### 2. Explanation duty, defect injection — both arms 1/3 on the same deletions
+### 2. Explanation duty, defect injection — pipeline 2/3, ablation 1/3 on the same deletions
 
 Base page: 롯데카드 디지로카 Las Vegas 상품안내 화면 (공개 페이지, 본문 5,667자, 적용 항목 39개).
 
 Both arms judge the same three deletions and the same control. A target is an item both arms
 judged 적합 on the unedited page; its deletion removes every quote either arm gave for it that is on
-the page, and an item whose sentence an earlier deletion already removed is skipped (F07 and 설명07
-cite the same sentence, as do F15 and 설명15). The deletions: F07 (연체이자율), F15 (부가서비스 조건),
-설명12 (L.POINT 제휴서비스 내용).
+the page, and an item whose sentence an earlier deletion already removed is skipped. The
+deletions: F07 (연체이자율), F11 (연회비), F12 (L.POINT 설명).
 
 | Metric | `pipeline` | `ablation` |
 |---|---|---|
-| 삭제한 설명을 부적합으로 잡아냄 | 1/3 (F07) | 1/3 (F07) |
-| 미탐 중 삭제 뒤에도 본문에 있는 다른 문장을 근거로 댄 경우 | F15, 설명12 | 확인 불가 (인용이 본문에 없음) |
-| 인용 유효율 (인용문이 실제로 본문에 있음) | **67/67 (100%)** | 45/156 (28.8%) |
-| 기준 실행의 인용 유효율 | **10/10 (100%)** | 14/39 (35.9%) |
-| 대조군(무관 문장 삭제) 오탐 | 2건 (F13, 설명13) | 0건 |
-| 판정 불가로 보류한 항목 (기준 실행) | 11 | 2 |
-| 기준 판정 분포 (적합/부적합/판정 불가) | 10 / 18 / 11 | 18 / 19 / 2 |
+| 삭제한 설명을 부적합으로 잡아냄 | **2/3** (F07, F11) | 1/3 (F11) |
+| 미탐 중 삭제 뒤에도 본문에 있는 다른 문장을 근거로 댄 경우 | F12 | 확인 불가 (인용이 본문에 없음) |
+| 인용 유효율 (인용문이 실제로 본문에 있음) | **64/64 (100%)** | 27/156 (17.3%) |
+| 기준 실행의 인용 유효율 | **16/16 (100%)** | 14/39 (35.9%) |
+| 대조군(무관 문장 삭제) 오탐 | 2건 (F09, 설명09) | 0건 |
+| 판정 불가로 보류한 항목 (기준 실행) | 6 | 2 |
+| 기준 판정 분포 (적합/부적합/판정 불가) | 16 / 17 / 6 | 18 / 19 / 2 |
 
-On the same deletions the two arms catch the same one. The difference that remains is the
-evidence: every quote the pipeline gives is on the page, against 29% of the ablation's, and the
-ablation calls 18 items 적합 against 10 while admitting uncertainty twice against 11. A reviewer
-can check a pipeline finding in the page and cannot check most ablation findings. The cost is two
-control false flips (F13, 설명13) the ablation did not make. Source:
-`eval/results/260928-201247-duty-flip-record.json`, replayed in
-`eval/results/260928-202834-all-replay.json`.
+The pipeline catches two of the three deletions and the ablation one. With three cases this is
+not a stable difference: the 2026-09-28 recording, before partial re-asking, had both arms at 1/3,
+and a re-recording alone can move the pipeline between 1/3 and 2/3. The steadier difference is
+the evidence: every quote the pipeline gives is on the page, against 17% of the ablation's. A
+reviewer can check a pipeline finding in the page and cannot check most ablation findings. The
+cost is two control false flips (F09, 설명09) the ablation did not make; both items also moved
+to 부적합 once in the stability rounds (§5). Source: `eval/results/260929-190829-all-record.json`,
+replayed in `eval/results/260929-212416-all-replay.json`.
+
+> **Correction (2026-09-29).** Until this date this section reported both arms at 1/3 with
+> quotes 67/67 against 45/156 and control flips F13·설명13 (`260928-201247-duty-flip-record`), and
+> read the result as "detection is a tie; the difference is the evidence". After `1964aae`
+> re-asks only the rejected codes, the re-recording changed the targets (F07·F11·F12 instead of
+> F07·F15·설명12) and the numbers above. The tie reading no longer holds; the small sample does.
 
 > **Correction (2026-09-28).** This section used to report pipeline 2/3 against ablation 1/3
 > (`260927-175540-duty-flip-record`). That was not a comparison on the same cases: each arm chose
@@ -129,12 +146,23 @@ the reader sees them as an image. With undrawn text kept out of the size rule
 (`docs/agent-node-specs/display_check.md`), the base run now reads E02 판정 불가 on that page — unmeasurable, neither
 a pass nor a failure.
 
-### 4. Plain-language contract — 9/9 caught, 0/4 false alarms
+### 4. Plain-language contract — 9/9 caught, 0/4 false alarms (2026-09-28 structure)
 
-| Metric | 2026-09-27, before the fix | 2026-09-27, after | 2026-09-28, condition judged by the model |
-|---|---|---|---|
-| 주입 결함 적발 (재현율) | 9/9 | 9/9 | **9/9** |
-| 무결함 대조군 오탐 | 2/4 (50%) | 0/4 | **0/4** |
+This suite measures `domain/plain_language` (`verify_block`, `judge_condition_preservation`), the
+line-by-line rewrite of the 2026-09-28 graph. Since the 2026-09-29 merge the graph writes a
+persona explanation instead and calls neither function, so this suite is kept as a record, not as
+evidence about the current graph. The current counterpart is the fact-ledger and mutation result
+in §6–§7 (generation-layer mutations 33/33 rejected, ledger-layer 8/8).
+
+| Metric | 2026-09-27, before the fix | 2026-09-27, after | 2026-09-28, condition judged by the model | 2026-09-29, `mechanical` arm |
+|---|---|---|---|---|
+| 주입 결함 적발 (재현율) | 9/9 | 9/9 | **9/9** | 7/9 |
+| 무결함 대조군 오탐 | 2/4 (50%) | 0/4 | **0/4** | 0/4 |
+
+The `mechanical` arm runs the same pairs with the model judgment of conditions removed; it misses
+the two pairs that drop a condition (`condition-dropped-threshold`, `condition-dropped-penalty`).
+Until 2026-09-29 this comparison was written as "no contract check = 0/9", which was inferred, not
+run.
 
 The first run found two defects in the contract layer itself, both fixed with regression tests in
 `tests/domain/plain_language/test_contract.py`:
@@ -150,30 +178,30 @@ omissions. The suite was re-recorded the same day (one call, $0.0021) with the s
 Before/after files: `260927-173641-plain-contract-replay.before-fix.json`,
 `260927-173802-plain-contract-replay.json`, `260928-183438-plain-contract-record.json`.
 
-### 5. Stability — classification steady, explanation duty 28/39, ablation 31/39
+### 5. Stability — classification steady, explanation duty 30/39, ablation 31/39
 
-Round 1 is the recording the other suites use; rounds 2–3 were recorded on 2026-09-28.
+Round 1 is the recording the other suites use; rounds 2–3 are salted repeats from the same
+cassette. Figures are from the 2026-09-29 19:08 recording.
 
 | Question | `pipeline` | `ablation` |
 |---|---|---|
 | Classification of the six pages | **6/6** | the keyword baseline is code: the same answer every time |
-| Explanation-duty verdicts on the base page (39 items) | 28/39 (71.8%) | **31/39 (79.5%)** |
-| — unstable items moving between 적합 and 부적합 | **2** (F09, 설명09) | 6 (F13, F17, F18, 설명13, 설명17, 설명18) |
-| — moving between 판정 불가 and 적합 | 8 | 0 |
+| Explanation-duty verdicts on the base page (39 items) | 30/39 (76.9%) | **31/39 (79.5%)** |
+| — unstable items moving only between 적합 and 부적합 | **2** (F09, 설명09) | 6 (F13, F17, F18, 설명13, 설명17, 설명18) |
+| — moving through all three verdicts | 2 (F13, 설명13) | 0 |
+| — moving between 판정 불가 and 적합 | 4 (F05, F14, 설명14, 설명22) | 0 |
 | — moving between 판정 불가 and 부적합 | 1 (설명21) | 2 (F01, 설명01) |
 
-The one-call arm agrees with itself more often. When the pipeline does not agree, eight of eleven
-times it moves between 판정 불가 — handing the item to a person — and 적합; six of the ablation's
+The one-call arm agrees with itself slightly more often. When the pipeline does not agree, seven
+of nine times the item passes through 판정 불가 — handing it to a person; six of the ablation's
 eight contradict themselves outright between 적합 and 부적합. The split by kind was chosen after the
 agreement rates were seen, so the agreement rate stays the headline, and on it the ablation is
-ahead. Source: `eval/results/260928-201825-stability-record.json`.
+ahead. A reviewer's to-do list from a single run is not reproducible for about a quarter of the
+explanation-duty items. Source: `eval/results/260929-190829-all-record.json`.
 
-The eleven items that moved: F05, F09, F11, F12, F14, 설명05, 설명09, 설명11, 설명14, 설명21, 설명22
-(an F code and the 설명 code with the same number share their criterion text). Ten of them were 적합
-in one round and not in another: eight moved between 판정 불가 and 적합, two (F09, 설명09) between
-부적합 and 적합; 설명21 moved between 판정 불가 and 부적합. A reviewer's to-do list from a single run is therefore not
-reproducible for about a quarter of the explanation-duty items. Source:
-`eval/results/260928-184936-stability-record.md`.
+> **Correction (2026-09-29).** Until this date this section reported 28/39 against 31/39, with
+> eleven unstable items, eight of them between 판정 불가 and 적합
+> (`260928-184936-stability-record`, `260928-201825-stability-record`).
 
 ### 6. Evidence agent, cards, reference cases and reader explanation (2026-09-29)
 
@@ -335,8 +363,8 @@ The same cassette-backed suites run with `--model`; each model has its own casse
 | Suite | gpt-5-mini (default) | gpt-5-nano | gpt-5 |
 |---|---|---|---|
 | classification (6 pages) | **6/6** · 8 calls · $0.0354 · 104 s | 4/6 · 11 calls · $0.0244 · 350 s | 5/6 · 9 calls · $0.1903 · 184 s |
-| duty-flip, pipeline arm | **1/3**, quotes 67/67 | 0/3, quotes 47/47 | not run |
-| duty-flip, ablation arm | 1/3, quotes 45/156 | 0/3, quotes 59/127 | not run |
+| duty-flip, pipeline arm (2026-09-28 code) | **1/3**, quotes 67/67 (current code: 2/3, 64/64) | 0/3, quotes 47/47 | not run |
+| duty-flip, ablation arm (2026-09-28 code) | 1/3, quotes 45/156 (current code: 1/3, 27/156) | 0/3, quotes 59/127 | not run |
 | duty-flip recordings, both rules | 15 calls · $0.2893 · 1,154 s | 16 calls · $0.1411 · 2,473 s, plus $0.0199 lost | — |
 | plain-contract | 9/9, 0/4 false alarms | 9/9, 0/4 | 9/9, 0/4 |
 
@@ -364,25 +392,26 @@ Each finding is traced to a cause rather than left as a rate.
 두 건으로 셌습니다. 채점 루프가 이를 찾았고, 두 구성이 모두 적합으로 본 항목에서 겹치지 않는 문장만 고르게
 고친 뒤 다시 녹음했습니다. 결과는 2/3 대 1/3에서 1/3 대 1/3으로 바뀌었습니다(§2).
 
-**F15·설명12 미탐은 정답 쪽 문제입니다.** 두 구성 모두 삭제 뒤에도 적합을 유지했고, 본 구성은 변형
-페이지에 실제로 있는 다른 문장을 근거로 댔습니다. F15는 "무이자 할부 혜택이 제공된 결제 건은 다른 결제일
-할인 및 포인트 적립 혜택이 제공되지 않습니다.", 설명12는 "L.POINT의 사용과 적립에 관한 자세한 내용은
-L.POINT 홈페이지(www.lpoint.com)에서 확인할 수 있습니다."입니다. 같은 사실이 여러 문장에 있으면
-'삭제했으므로 부적합'이라는 정답이 성립하지 않으므로, 이 삭제 평가에서 유효한 사례는 F07 하나이고 두 구성
-모두 잡았습니다. 결과 파일의 `missed_with_evidence_on_page`가 이런 사례를 따로 표시합니다. → 삭제 대상을
-페이지에 한 번만 나오는 주제로 제한하거나, 한 항목을 뒷받침하는 문장을 모두 지워야 합니다.
+**F12 미탐은 정답 쪽 문제입니다.** 본 구성은 삭제 뒤에도 적합을 유지했고, 변형 페이지에 실제로 있는
+다른 문장("디지로카 Las Vegas 카드로 결제 시, 롯데카드가 제공하는 L.POINT 적립 서비스가 제공되지
+않습니다.")을 근거로 댔습니다. 같은 사실이 여러 문장에 있으면 '삭제했으므로 부적합'이라는 정답이
+성립하지 않습니다. 결과 파일의 `missed_with_evidence_on_page`가 이런 사례를 따로 표시합니다. 9/28 녹음에서는
+F15·설명12가 같은 이유로 미탐이었습니다. → 삭제 대상을 페이지에 한 번만 나오는 주제로 제한하거나, 한 항목을
+뒷받침하는 문장을 모두 지워야 합니다.
 
-**F13·설명13 대조군 오탐은 페이지 변화에 대한 반응입니다.** 무관한 긴 문장 하나를 지웠을 때 두 항목이
-적합 → 부적합으로 바뀌었고, 인용했던 문장은 그대로 남아 있었습니다. 3회 반복 측정에서 두 항목은 흔들리지
-않았으므로 실행마다 생기는 잡음이 아니라, 문단이 빠져 프롬프트가 짧아지자 경계선상의 적합이 뒤집힌
-것입니다. 인용 검증은 **문장이 본문에 있는지**만 보고 **그 문장이 기준을 충족하는지**는 보지 않으므로 약한
-적합이 통과했습니다. → 기준의 어느 요소를 충족했는지 요소 단위로 쓰게 하고, 빈 요소가 있으면 판정 불가로
-내립니다.
+**F09·설명09 대조군 오탐은 경계선상의 적합이 뒤집힌 것입니다.** 무관한 긴 문장 하나를 지웠을 때 두 항목이
+적합 → 부적합으로 바뀌었습니다. 두 항목은 3회 반복 측정에서도 한 번 부적합으로 흔들렸으므로, 원래부터 약한
+적합이었습니다(9/28 녹음의 대조군 오탐은 F13·설명13이었고, 이번 반복 측정에서는 두 항목 모두 흔들렸습니다).
+인용 검증은 **문장이 본문에 있는지**만 보고 **그 문장이 기준을 충족하는지**는 보지 않으므로 약한 적합이
+통과했습니다. → 기준의 어느 요소를 충족했는지 요소 단위로 쓰게 하고, 빈 요소가 있으면 판정 불가로 내립니다.
 
-**설명의무 판정의 28%가 같은 입력에서 흔들립니다.** 흔들린 11항목 중 8항목은 1회차(9/27)에 판정 불가였다가
-2·3회차(9/28)에 적합으로 답한 경우입니다. 한 번 호출하는 축소 구성은 21%(8/39)로 덜 흔들렸지만, 그중 6항목은
-적합과 부적합이 뒤바뀌었습니다(§5). → 같은 질문을 세 번 묻고 세 답이 일치할 때만 확정하며 불일치는 판정 불가로
-넘기는 방식(호출 비용 약 3배, 설명의무 단계 기준)이 다음 개선입니다.
+**설명의무 판정의 23%가 같은 입력에서 흔들립니다.** 흔들린 9항목 중 7항목은 판정 불가를 거쳤습니다.
+F13·설명13·F14·설명14는 1회차에 판정 불가였다가 다른 회차에 적합을 받았고, 이 가운데 설명13·설명14/F14는
+인용 검증 실패로 판정 불가가 자주 나는 항목입니다. 한 번
+호출하는 축소 구성은 21%(8/39)로 조금 덜 흔들렸지만, 그중 6항목은 적합과 부적합이 뒤바뀌었습니다(§5). →
+`설명14`/`F14`처럼 인용 검증에서 반복해 실패하는 항목은 카세트의 실패한 답과 원문을 비교해, 모델의 바꿔쓰기인지
+`core.text.locate_quote` 정규화 문제인지부터 가립니다($0). 그다음 같은 질문을 세 번 묻고 세 답이 일치할 때만
+확정하며 불일치는 판정 불가로 넘기는 방식(호출 비용 약 3배, 설명의무 단계 기준)을 검토합니다.
 
 **E01의 판정과 사유가 어긋났습니다.** 같은 디지로카 Las Vegas 페이지에서 9/27 실행은 E01을 부적합,
 9/28 실행은 적합으로 판정했는데, 9/28의 사유는 "혜택 30~36pt, 불이익 9~13.5pt로 혜택이 더 강조"라고
@@ -404,8 +433,11 @@ L.POINT 홈페이지(www.lpoint.com)에서 확인할 수 있습니다."입니다
 
 - 표본이 작습니다. 분류 6건, 결함 주입 3건과 대조군 1건, 표시방법 2개 페이지에 주입 4건과 대조군 2건,
   쉬운말 13건입니다. 여기의 비율은 경향이고 신뢰구간이 붙은 성능치가 아닙니다.
-- 결함 주입 3건 가운데 2건(F15, 설명12)은 같은 사실이 다른 문장에 남아 정답이 성립하지 않았습니다.
-  설명의무 탐지에서 두 구성을 가르는 유효 사례는 없습니다(둘 다 F07만 잡음).
+- 결함 주입은 3건입니다. 본 구성 2/3 대 축소 구성 1/3이지만 재녹음만으로 1/3과 2/3을 오갈 수 있고(9/28
+  녹음에서는 둘 다 1/3), 본 구성이 놓친 F12는 같은 사실이 다른 문장에 남아 정답이 성립하지 않았습니다.
+- 실제 페이지에서 수집과 판정을 모두 끝낸 것은 7건 중 1건입니다(§8). 녹음 재생 스위트의 수치는 저장된
+  페이지에 대한 값이며, 실제 페이지의 완주율을 뜻하지 않습니다.
+- `plain-contract`는 9/28 구조의 쉬운말 검사를 잽니다. 현재 그래프는 이 검사를 부르지 않습니다(§4).
 - 설명의무는 삭제 방향만 측정했습니다. 없던 설명을 넣으면 적합으로 바뀌는지(반대 방향)는 보지 않았습니다.
 - 표시방법 평가는 측정값을 바꾼 것이지 화면을 다시 그린 것이 아닙니다. 캡처 이미지는 내보내지 않아
   이미지 위 글자는 두 구성 모두에서 판정 불가로 남습니다.
@@ -413,8 +445,9 @@ L.POINT 홈페이지(www.lpoint.com)에서 확인할 수 있습니다."입니다
   사람의 교차 확인은 아직 없습니다.
 - 쉬운말 케이스는 손으로 만든 문장쌍입니다. 실제 모델이 만드는 오류 분포와 다를 수 있습니다.
 - 인용 유효율 100%는 "인용문이 본문에 있다"는 뜻이고 "그 인용이 기준을 충족한다"는 뜻이 아닙니다.
-- 설명의무 판정은 같은 입력에서도 28%가 흔들립니다(축소 구성 21%). 한 번의 실행 결과를 확정 판정으로
+- 설명의무 판정은 같은 입력에서도 23%가 흔들립니다(축소 구성 21%). 한 번의 실행 결과를 확정 판정으로
   읽으면 안 됩니다.
+- 사례 연결·증거 카드 정답셋과 사례 40건 중 21건은 AI 초안이고, 독자 맞춤 설명의 사람 평가는 0건입니다.
 
 ## Adding a case
 

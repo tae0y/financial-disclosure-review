@@ -58,6 +58,12 @@ rules stay in code.
 `--max-usd`. The last two are checked before each model call; exceeding either raises
 `BudgetError`.
 
+Captured third-party pages and the model answers about them are not in this repository:
+`tests/fixtures/classify/`, `eval/fixtures/`, `eval/cassettes/`, `eval/results/` and
+`data/reference.sqlite` ship separately as `fdr-reproduction-assets-260929.zip`, unpacked at the
+repository root. Without them the tests that need a captured page are skipped and `evaluate`
+stops with `no evaluation cases`.
+
 ## Test
 
 ```bash
