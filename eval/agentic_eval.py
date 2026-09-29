@@ -130,9 +130,21 @@ def mutation_checks(persona: dict, original_text: str, model: str, ask) -> list[
         mutated = _mutate(explanation, fact["value"], how)
         if mutated is None:
             continue
-        result = check_ledger(
-            persona["fact_ledger"], persona["units"], original_text, mutated, model, ask
-        )
+        # The ledger reads each fact inside its own units, so the mutation is applied to the
+        # units' text as well as to the assembled page.
+        units = [
+            {
+                **u,
+                **{
+                    k: _mutate(u.get(k) or "", fact["value"], how) or u.get(k) or ""
+                    for k in ("exact_fact", "explanation", "analogy")
+                },
+            }
+            if u["unit_id"] in (fact.get("unit_ids") or [])
+            else u
+            for u in persona["units"]
+        ]
+        result = check_ledger(persona["fact_ledger"], units, original_text, mutated, model, ask)
         flagged = [
             r
             for r in result["fidelity"]
