@@ -216,6 +216,63 @@ blocked expand (the accordion container's text contains `결제`, which the refu
 payment action; the accordions open through a checkbox input the tools never click). The report
 lists the 29 gaps as the reviewer's first action instead of passing the page.
 
+### 7. Follow-up on the agentic design (2026-09-29, branch `agentic-followup`)
+
+Paid total for this follow-up: about $1.52 (embedding $0.0005, re-recordings $0.123, stability
+$0.160, reader pair $0.059, live reviews $1.04, linking gold runs $0.123).
+
+**Re-recorded suites.** display-flip, with E02/E04/E05 now decided by code: 4/4 injected defects
+caught, 0/2 controls blamed, base verdicts 적합/적합 — the same as §3, at $0.0834 instead of
+$0.2019 (`eval/results/260929-091909-display-flip-record.md`). The agentic cassette after the
+unit-scoped ledger: ledger-layer mutations caught **8/8** on the two pages (was 4/4 and 1/4 in §6),
+because a value dropped from one unit is no longer "preserved" by another line.
+
+**Repeat stability** (`eval/agentic_stability.py`, three rounds, $0.1596). Evidence-card
+extraction is not stable: Jaccard of (kind, quote) sets between rounds 0.37–0.53, 26–45 cards,
+gold recall 0.75–0.92 (카드론) and 0.54–0.77 (LOCA). Accepted persona units vary (14–43 per round).
+The code-decided fact ledger gives the same verdict for every fact in every round (40/40, 25/25)
+and no risk-card analogy survives.
+
+**Two readers, same facts** (`eval/persona_pair_eval.py`, $0.0589). Readers from the full
+Nemotron-Personas-Korea dataset by attributes (70+, 초등학교; 40s bank/insurance worker): the
+code-decided ledger is identical across readers (40/40, 25/25). The finance-familiar reader's
+units were first reverted because numbered lists (`1)`) read as invented numbers; fixed, and on
+replay LOCA goes from 5/9 to 9/9 accepted (카드론 1/3; the rest merge several lines into one
+exact_fact).
+
+**Page agent on more issuers** (`eval/agent_loop_eval.py`; data/live3, gitignored).
+
+| Page | Collection | Notes | $ |
+|---|---|---|---|
+| 롯데 디지로카 Las Vegas (mobile) | 완료 / full_coverage, 68/68 gaps closed | DaisyUI accordions open through their checkbox; E07 now 부적합 on revealed blocks instead of 판정 불가 | 0.179 |
+| 신한 Hi-Point (card) | first run: 20 turns without a rule | submit → "probe first" → probe loop; fixed (`8fd8b84`) | 0.109 |
+| — rerun | 완료 / reachable_coverage | accepted; the run then hit its $0.15 cap during judgment and ended without a report | 0.156 |
+| 신한 리볼빙 | 조사 불충분 / turn_budget, 21/70 | free-text reader chosen by the selection agent in 4 turns | 0.222 |
+| KB 카드론 | first run: crash (page reloaded itself) | fixed; rerun: 20 turns without an accepted rule | 0.036 |
+| 삼성 카드론 | 완료 / full_coverage | 장기카드대출 상품광고 | 0.088 |
+| 현대 카드론 | 조사 불충분 / submitted_with_gaps | classification 판정 불가 (quote not in visible text) | 0.043 |
+| 롯데 카드론 (PC) | 조사 불충분 / submitted_with_gaps, 0/26 | classified 신용카드 | 0.107 |
+| KB·현대 신용카드 | out of scope | both were prepaid-card pages (a URL choice mistake) | 0.099 |
+
+Two defects found this way are fixed: skip links counted as expandable controls, and the
+closure metric counted header/menu/footer gaps (gaps now carry `in_region`). Still open: a run
+that reaches its cost cap after collection raises instead of ending in a report; pages where the
+agent submits with an untried in-region control.
+
+**Reference-case linking agent against a gold set** (`eval/linking_eval.py`; gold
+`eval/fixtures/gold/reference_links.json`, AI-drafted, 4 pages, 14 expected links, 20 negatives).
+
+| Round | Recall | False links | Stop reasons | $ |
+|---|---|---|---|---|
+| 1 (as built) | 3/14 | 3/6 | finished 3, max_turns 1 | 0.051 |
+| 2 (finish sent back once while concrete cards are unsearched) | **5/14** | **2/7** | finished 1, max_turns 3 | 0.072 |
+
+The lexical threshold it replaced found 0 of 3 gold links at its default (§6). The agent now runs
+out of its 8 turns on most pages; raising `case_link_max_turns` is the next lever, at a cost.
+
+**Human comprehension and harmful analogies** are not measured by code. `eval/review_sheet.py`
+writes a blank sheet from live runs for a person to score; no score was filled by a model.
+
 ## Model comparison
 
 The same cassette-backed suites run with `--model`; each model has its own cassette.
