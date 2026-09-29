@@ -38,6 +38,13 @@ it with `uv run python -m financial_disclosure_review.serving.openapi`.
 ## Submit and poll
 
 Only `url` is required. `detail` defaults to `summary`; `max_calls` and `max_usd` cap one run.
+`persona` chooses the reader of the reader-tailored explanation (독자 맞춤 설명) from the
+synthetic Nemotron-Personas-Korea dataset: `{"uuid": "<32 hex>"}`, `{"attributes": {"age_min":
+70, "education_level": ["초등학교"]}}`, or `{"request": "70대 은퇴자, 카드론을 처음 알아보는 사람"}`
+(free text, turned into dataset filters by a small bounded agent). The first one given wins;
+nothing given uses the product type's default reader. An invalid value never fails the run — the
+report states how the reader was chosen and what was used instead. The persona only shapes the
+explanation's wording; it never changes a compliance verdict.
 
 ```bash
 BASE=http://localhost:8000
@@ -59,8 +66,9 @@ for `/v1/reruns`.
 ## Responses and limits
 
 Successful results contain the checkpoint `thread_id`, reviewer status and decision, summary,
-report, cost, and elapsed time. `detail=full` additionally includes per-item judgments and the
-plain-language HTML. Raw source HTML and snapshots never leave the API.
+report, cost, and elapsed time. `detail=full` additionally includes per-item judgments, evidence cards,
+reference-case links, the page agent's trace, and the reader-tailored explanation HTML with its
+units, fact ledger and reader selection. Raw source HTML and snapshots never leave the API.
 
 The current worker processes one run at a time because its usage meter is process-global. Extra
 submissions remain queued. Scale through worker replicas, not a higher in-process concurrency

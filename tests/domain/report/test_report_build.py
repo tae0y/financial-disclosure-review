@@ -568,3 +568,27 @@ def test_a_duty_and_its_f_twin_with_the_same_verdict_are_one_finding():
     assert "설명11" in codes and "F11" in codes  # different verdicts stay apart
     assert result["summary"]["duty_violations_original"] == 4
     assert result["summary"]["duty_topics_violated_original"] == 3
+
+
+def test_the_report_says_how_the_reader_was_chosen():
+    plain = {
+        **PLAIN_OK,
+        "units": [],
+        "profile": {
+            "id": "nemotron:abc",
+            "version": "t1@ada0f5b",
+            "status": "적용",
+            "attributes": {"reader": "74세 남성, 초등학교, 하역 종사원"},
+        },
+        "selection": {
+            "decided_by": "agent",
+            "filters": {"age_min": 70},
+            "match_count": 55912,
+            "stop_reason": "chosen",
+            "reason": "",
+        },
+    }
+    markdown = report(plain=plain)["markdown"]
+    assert "독자 선택: 자유 문장 → 선택 agent" in markdown
+    assert "일치 55912행" in markdown
+    assert "74세 남성" in markdown

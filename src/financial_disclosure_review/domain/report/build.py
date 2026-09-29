@@ -406,6 +406,29 @@ def build_report(
     }
 
 
+def _selection_lines(selection: Mapping[str, Any], profile: Mapping[str, Any]) -> list[str]:
+    """How the reader was chosen, and who the reader is, when the dataset path ran."""
+    if not selection:
+        return []
+    how = {
+        "uuid": "지정한 uuid",
+        "attributes": "지정한 속성",
+        "agent": "자유 문장 → 선택 agent",
+        "default": "상품유형 기본 조건",
+        "fallback": "대체(조건 완화 또는 기존 프로필)",
+    }.get(str(selection.get("decided_by")), str(selection.get("decided_by")))
+    lines = [
+        f"- 독자 선택: {how}, 조건 {selection.get('filters') or '{}'},"
+        f" 일치 {selection.get('match_count', 0)}행"
+        + (f", 중단 사유 {selection['stop_reason']}" if selection.get("stop_reason") else "")
+        + (f" ({_clip(str(selection['reason']), 160)})" if selection.get("reason") else "")
+    ]
+    reader = (profile.get("attributes") or {}).get("reader")
+    if reader:
+        lines.append(f"- 독자 개요(합성 페르소나): {_clip(str(reader), 200)}")
+    return lines
+
+
 def _collection_section(page: Mapping[str, Any]) -> list[str]:
     """What the page agent did, why it stopped, and which evidence gaps stayed open."""
     coverage = page.get("coverage") or {}
@@ -778,6 +801,7 @@ def _markdown(
             f"- 독자 프로필: {profile.get('id', '-')} v{profile.get('version', '-')}"
             f" ({profile.get('source', '-')}, {profile.get('review_status', '-')},"
             f" {profile.get('status', '-')})",
+            *_selection_lines(plain.get("selection") or {}, profile),
             "- 원문 사실(exact_fact)은 설명 옆에 그대로 남습니다."
             " 위험 개념에는 비유를 쓰지 않습니다.",
             "",

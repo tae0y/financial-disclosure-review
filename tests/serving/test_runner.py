@@ -106,3 +106,21 @@ def test_thread_ids_do_not_collide_within_a_second() -> None:
     ids = {new_thread_id() for _ in range(50)}
     assert len(ids) == 50
     assert all(name.startswith("review-") for name in ids)
+
+
+def test_the_persona_request_reaches_the_review_context() -> None:
+    from financial_disclosure_review.serving.agent.runner import _context
+    from financial_disclosure_review.serving.schemas import PersonaRequest, ReviewRequest
+    from financial_disclosure_review.serving.settings import AgentSettings
+
+    request = ReviewRequest.model_validate(
+        {
+            "url": "https://example.com/card",
+            "persona": {"request": "70대 은퇴자", "attributes": {"age_min": 70}},
+        }
+    )
+    ctx = _context(AgentSettings(), None, request.persona)
+    assert ctx.persona_request == "70대 은퇴자"
+    assert ctx.persona_attributes == {"age_min": 70}
+    assert _context(AgentSettings(), None).persona_request == ""
+    assert PersonaRequest(uuid="").uuid == ""

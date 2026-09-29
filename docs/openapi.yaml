@@ -157,6 +157,34 @@ components:
       - interrupted
       title: JobStatus
       type: string
+    PersonaRequest:
+      description: 'Who the reader-tailored explanation is written for. The first one given wins: `uuid`,
+
+        then `attributes`, then free-text `request`. Nothing given: the product type''s default
+
+        reader. An invalid value never fails the run; the report says what was used instead.'
+      properties:
+        attributes:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          description: 'Dataset filters: age_min, age_max, sex, education_level, occupation_contains,
+            province, family_type, housing_type, marital_status'
+          title: Attributes
+        request:
+          default: ''
+          description: Free text, e.g. '70대 은퇴자, 카드론을 처음 알아보는 사람'
+          maxLength: 300
+          title: Request
+          type: string
+        uuid:
+          default: ''
+          pattern: ^([0-9a-f]{32})?$
+          title: Uuid
+          type: string
+      title: PersonaRequest
+      type: object
     RerunRequest:
       description: Re-run an existing checkpoint thread from one node onward.
       examples:
@@ -167,8 +195,9 @@ components:
           $ref: '#/components/schemas/Detail'
           default: summary
         from_node:
-          description: 'A graph node name: preprocess_product_page, classify_type, judge_display_method,
-            generate_plain_lang, judge_explanation_duty, verify_answer, end_report.'
+          description: 'A graph node name: preprocess_product_page, classify_type, extract_evidence_cards,
+            retrieve_reference_cases, judge_display_method, generate_persona_explanation, judge_explanation_duty,
+            verify_answer, end_report.'
           maxLength: 80
           title: From Node
           type: string
@@ -207,6 +236,8 @@ components:
       - detail: full
         max_usd: 2.0
         model: gpt-5
+        persona:
+          request: 70대 은퇴자, 카드론을 처음 알아보는 사람
         url: https://www.example-card.co.kr/product/credit/apply
       properties:
         detail:
@@ -232,6 +263,10 @@ components:
           - type: 'null'
           description: Overrides FDR_MODEL, e.g. gpt-5-mini
           title: Model
+        persona:
+          anyOf:
+          - $ref: '#/components/schemas/PersonaRequest'
+          - type: 'null'
         thread_id:
           anyOf:
           - maxLength: 120

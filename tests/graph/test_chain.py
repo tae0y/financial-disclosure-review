@@ -84,7 +84,10 @@ EVIDENCE = {"status": "완료", "sources": SOURCES, "cards": CARDS}
 def runtime(tmp_path_factory) -> Runtime[Context]:
     path = tmp_path_factory.mktemp("reference") / "reference.sqlite"
     build_rubric_db(FIXTURE_DIR / "rubric", path)
-    return cast(Runtime[Context], SimpleNamespace(context=Context(model="fake", db_path=str(path))))
+    # An empty data dir: no persona dataset, so the node uses the legacy yaml profile.
+    data_dir = tmp_path_factory.mktemp("data")
+    context = Context(model="fake", db_path=str(path), data_dir=str(data_dir))
+    return cast(Runtime[Context], SimpleNamespace(context=context))
 
 
 def routed(result: dict) -> str:
@@ -371,3 +374,29 @@ def test_a_rubric_difference_tied_to_an_accepted_unit_fails_verification(monkeyp
     assert "persona_explanation" in verification["failed_modules"]
     request = next(f for f in verification["feedback"] if f["module"] == "persona_explanation")
     assert request["source_id"] == ",".join(unit["source_ids"])
+
+
+def test_the_reader_is_chosen_from_the_dataset_once_and_kept_on_retry(
+    monkeypatch, runtime, tmp_path
+):
+    from tests.domain.persona_explanation.persona_dataset import write_dataset
+
+    write_dataset(tmp_path)
+    ctx = Context(
+        model="fake",
+        db_path=runtime.context.db_path,
+        data_dir=str(tmp_path),
+        persona_attributes={"age_min": 70},
+    )
+    dataset_runtime = cast(Runtime[Context], SimpleNamespace(context=ctx))
+    first = run_chain(monkeypatch, dataset_runtime, persona_ask())
+    persona = first["persona_explanation"]
+    assert persona["profile"]["id"].startswith("nemotron:")
+    assert persona["selection"]["decided_by"] == "attributes"
+    assert persona["profile"]["attributes"]["reader"]
+
+    # A retry must not pick again, even if the request changed in between.
+    retry_ctx = Context(**{**ctx.__dict__, "persona_attributes": {"age_max": 29}})
+    retry_runtime = cast(Runtime[Context], SimpleNamespace(context=retry_ctx))
+    again = generate_persona_explanation(cast(State, first), retry_runtime)
+    assert again["persona_explanation"]["profile"]["id"] == persona["profile"]["id"]

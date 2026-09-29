@@ -14,6 +14,26 @@ class Detail(str, Enum):
     full = "full"
 
 
+class PersonaRequest(BaseModel):
+    """Who the reader-tailored explanation is written for. The first one given wins: `uuid`,
+    then `attributes`, then free-text `request`. Nothing given: the product type's default
+    reader. An invalid value never fails the run; the report says what was used instead."""
+
+    request: str = Field(
+        default="",
+        max_length=300,
+        description="Free text, e.g. '70대 은퇴자, 카드론을 처음 알아보는 사람'",
+    )
+    uuid: str = Field(default="", pattern=r"^([0-9a-f]{32})?$")
+    attributes: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Dataset filters: age_min, age_max, sex, education_level, occupation_contains,"
+            " province, family_type, housing_type, marital_status"
+        ),
+    )
+
+
 class ReviewRequest(BaseModel):
     """One product page to review. Everything but `url` falls back to the process defaults."""
 
@@ -26,6 +46,7 @@ class ReviewRequest(BaseModel):
                     "model": "gpt-5",
                     "detail": "full",
                     "max_usd": 2.0,
+                    "persona": {"request": "70대 은퇴자, 카드론을 처음 알아보는 사람"},
                 },
             ]
         }
@@ -41,6 +62,7 @@ class ReviewRequest(BaseModel):
     detail: Detail = Detail.summary
     max_calls: int | None = Field(default=None, ge=1, le=500)
     max_usd: float | None = Field(default=None, gt=0, le=50)
+    persona: PersonaRequest | None = None
 
 
 class RerunRequest(BaseModel):
@@ -61,8 +83,9 @@ class RerunRequest(BaseModel):
     from_node: str = Field(
         max_length=80,
         description=(
-            "A graph node name: preprocess_product_page, classify_type, judge_display_method, "
-            "generate_plain_lang, judge_explanation_duty, verify_answer, end_report."
+            "A graph node name: preprocess_product_page, classify_type, extract_evidence_cards, "
+            "retrieve_reference_cases, judge_display_method, generate_persona_explanation, "
+            "judge_explanation_duty, verify_answer, end_report."
         ),
     )
     model: str | None = None

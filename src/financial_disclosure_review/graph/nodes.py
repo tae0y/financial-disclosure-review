@@ -14,6 +14,7 @@ from ..domain.display_check import judge_display
 from ..domain.evidence_cards import extract_evidence_cards as extract_cards
 from ..domain.explanation_duty_check import judge_explanation
 from ..domain.explanation_duty_check.ledger import check_ledger, map_rubric_fidelity
+from ..domain.persona_explanation import choose_profile
 from ..domain.persona_explanation import generate_persona_explanation as generate_persona
 from ..domain.persona_explanation.profiles import PROFILES_FILE
 from ..domain.product_page import fetch_product_page
@@ -118,14 +119,27 @@ def generate_persona_explanation(state: State, runtime: Runtime[Context]) -> dic
     persona: dict[str, Any] = dict(state.get("persona_explanation") or {})
     cards = state.get("evidence_cards") or {}
     feedback = (state.get("verification") or {}).get("feedback") or []
+    classification = state.get("classification") or {}
+    # The reader is chosen once per review; a retry explains for the same reader.
+    if not persona.get("profile") or not persona.get("selection"):
+        persona.update(
+            choose_profile(
+                ctx,
+                product_type=classification.get("product_type"),
+                cards=cards.get("cards") or [],
+                data_dir=ctx.data_dir,
+                rubric_dir=ctx.rubric_dir,
+            )
+        )
     persona.update(
         generate_persona(
             cards.get("sources") or [],
             cards.get("cards") or [],
-            state.get("classification") or {},
+            classification,
             ctx,
             feedback,
             profiles_path=Path(ctx.rubric_dir) / PROFILES_FILE,
+            profile=persona["profile"],
         )
     )
     return {"persona_explanation": persona}

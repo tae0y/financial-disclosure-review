@@ -60,6 +60,9 @@ class PersonaExplanation(TypedDict, total=False):
     status: Any
     reason: Any
     profile: Any
+    # How the reader was chosen (uuid / attributes / agent / default / fallback) and the
+    # selection agent's trace; kept so a retry explains for the same reader.
+    selection: Any
     fact_ledger: Any
     units: Any
     html: Any

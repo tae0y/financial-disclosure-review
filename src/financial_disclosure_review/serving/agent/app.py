@@ -80,6 +80,7 @@ def create_app(settings: AgentSettings | None = None) -> FastAPI:
                         detail=request.detail,
                         max_calls=request.max_calls,
                         max_usd=request.max_usd,
+                        persona=request.persona,
                     )
                 )
             except Exception as error:  # surfaced to the gateway, which records it on the job
