@@ -24,7 +24,7 @@ from ..domain.verification import verify
 from ..knowledge.build_cases import CASE_CORPUS_FILE
 from ..knowledge.linking import link_reference_cases
 from ..knowledge.reference import RISK_KINDS_FILE
-from ..knowledge.rubrics import rubric_bindings
+from ..knowledge.rubrics import rubric_bindings, rubric_labels
 from ..llm.client import ask
 from .retry import MAX_LOOPS, RETRY_KEYS, escalation, plan_retry
 
@@ -312,6 +312,7 @@ def report_for(state: Mapping[str, Any], ctx: Context, stop: Mapping[str, Any]) 
             previous_cost=report.get("cost"),
             cards=state.get("evidence_cards") or {},
             references=state.get("reference_cases") or {},
+            labels=rubric_labels(ctx.db_path),
         )
     )
     return report

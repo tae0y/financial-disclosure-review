@@ -46,30 +46,47 @@ draft unpublished. The reading changes what the reviewer is told, not what the t
 
 ## Sections of the markdown
 
+The markdown is short on purpose (replaced 2026-09-30): it is what a requester is sent.
+`domain/report/markdown.py` renders it; the other Report fields keep the detail.
+
 Frontmatter first (`ai-generated: true`, `human-review: false`), so a generated report can never
-be mistaken for a reviewed one. Then: 담당자 조치 목록, 검토 요약, 확인이 필요한 항목, 표시방법
-상세, 설명의무 상세(원문·독자 맞춤 설명·의미 차이 한 줄에), 독자 맞춤 설명 결과(프로필, 단위, 사실
-원장 대조, 판정 대상이 아닌 운영 통제), 자동 검증 결과, 비용과 소요시간, 한계와 가정, 페이지 수집
-agent 기록(상태·중단 사유·조사 공백·행동 로그), 증거 카드와 조사 공백, 참고 사례(판정에 사용하지
-않음). The last three are appended so earlier section numbers stay stable.
+be mistaken for a reviewed one. Then the page (product, verdict and publish decision, URL, types)
+with header notes only where they explain the verdict: why a review stopped, an incomplete
+collection, a failed verification, hidden text no control could reveal. Then four sections:
+
+1. 표시방법 — every item, as its rubric question and legal basis (not its code), verdict, reason.
+2. 설명의무 (원문) — explanation-duty twins (설명NN/FNN) read as one topic with the worse verdict;
+   passes are a count, and only 부적합·판정 불가 topics are listed with question, basis and reason.
+3. 쉬운말 초안 — the reader, how many units fell back to the original, and each explained line of
+   the assembled draft in page order as 원문 → 쉬운말 (lines kept as they were are left out).
+4. 쉬운말 초안의 설명의무 — the same table for the draft, then the meaning changes that are not
+   merely informational.
+
+The question is the asking sentence of the rubric `criterion`; the basis names each cited
+document once (`rubric_sources.doc` through `knowledge.rubrics.DOC_NAMES`) with its first article
+and a count of the rest. Both come from `rubric_labels(db_path)`; with no DB the code stands in.
+
+Cost, limits and assumptions, the action list, findings, agent runs, evidence cards and reference
+links are not in the markdown. They stay in `report.cost`, `report.limits`, `report.actions`,
+`report.findings` and `report.summary` (the API returns them), and the markdown's last line says
+so. Unreachable hidden text is both a header note and a `limits` entry.
 
 A `BudgetError` raised after collection no longer ends the thread without a report:
 `graph.build.invoke_to_report` (used by the CLI and the API worker) builds the report from the
 last checkpoint, with `summary.interrupted_at` naming the node that did not finish, and writes it
-back as `end_report`. The header also carries one `에이전트 실행` line and `summary.agent_runs`
-(the same object in the API summary): for the page agent, the case-linking agent and the reader
-selection, whether the model loop ran (`agent`) or how the step was settled without it (`reuse`,
-`skipped`, `default`, ...), with turns, tool calls and stop reason (audit 2026-09-29, R2, R5).
+back as `end_report`. `summary.agent_runs` records, for the page agent, the case-linking agent
+and the reader selection, whether the model loop ran (`agent`) or how the step was settled
+without it (`reuse`, `skipped`, `default`, ...), with turns, tool calls and stop reason (audit
+2026-09-29, R2, R5).
 
 Collection comes first in the status: a page with no collected html reads `수집 실패` or `조사
 불충분`, never a classification problem, and an open evidence gap keeps a clean run from reading
-`검토 완료`. A checkpoint written before the persona explanation (`plain_language`) still
-renders through the legacy branch of section 6.
+`검토 완료`. A checkpoint written before the persona explanation (`plain_language`) renders its
+accepted blocks as the draft.
 
-Two of those sections exist to stop the report from overclaiming. 자동 검증 결과 repeats that the
-verification only checked citation validity and cross-module contradictions, and 한계와 가정
-carries the display node's own stated assumptions (px→pt, the contrast threshold) plus the
-unmeasurable-image limits, on every run.
+`report.limits` exists to stop the report from overclaiming: it repeats that the verification
+only checked citation validity and cross-module contradictions, and carries the display node's
+own stated assumptions (px→pt, the contrast threshold) plus the unmeasurable-image limits.
 
 ## Why the retry policy is passed in
 

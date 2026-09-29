@@ -5,6 +5,7 @@ from typing import Any
 
 from ...core.duty_codes import duty_topic
 from ...core.usage import current
+from .markdown import render_markdown
 
 STATUS_PASSED = "검토 완료"
 STATUS_REVIEW = "사람 검토 필요"
@@ -35,35 +36,11 @@ def severity(module: str, binding: str | None, page_type: str | None) -> tuple[s
     return SEVERITY_VIOLATION, binding or "구속력 미상"
 
 
-def _table(rows: list[list[str]], header: list[str]) -> list[str]:
-    if not rows:
-        return ["(해당 항목 없음)", ""]
-    escaped = [[str(cell).replace("|", "\\|").replace("\n", " ") for cell in row] for row in rows]
-    return [
-        "| " + " | ".join(header) + " |",
-        "|" + "|".join(["---"] * len(header)) + "|",
-        *["| " + " | ".join(row) + " |" for row in escaped],
-        "",
-    ]
-
-
 def _codes(codes: list[str], limit: int = 12) -> str:
     """항목 코드 목록. 너무 길면 앞쪽만 보여 주고 나머지는 건수로 적습니다."""
     shown = [c for c in codes[:limit] if c]
     rest = len(codes) - len(shown)
     return ", ".join(shown) + (f" 외 {rest}건" if rest > 0 else "")
-
-
-def _unjudged(rows: Any) -> int:
-    return sum(1 for row in rows or [] if row.get("verdict") == "판정 불가")
-
-
-def _step_costs(by_step: Mapping[str, Any]) -> str:
-    """Where the calls went, most expensive first, e.g. `ExplanationJudgments 4회 $0.0612`."""
-    return ", ".join(
-        f"{step} {entry.get('calls', 0)}회 ${float(entry.get('usd', 0)):.4f}"
-        for step, entry in sorted(by_step.items(), key=lambda kv: -float(kv[1].get("usd", 0)))
-    )
 
 
 def _clip(text: str, limit: int = 120) -> str:
@@ -238,17 +215,6 @@ RUN_LABELS = {
 }
 
 
-def _agent_runs_line(runs: Mapping[str, Mapping[str, Any]]) -> str:
-    parts = []
-    for key, (label, settled) in RUN_LABELS.items():
-        run = runs[key]
-        if run["ran"] == "agent":
-            parts.append(f"{label} agent {run['turns']}턴({run['stop_reason'] or '-'})")
-        else:
-            parts.append(f"{label} {settled.get(run['ran'], run['ran'])}")
-    return "- 에이전트 실행: " + " · ".join(parts)
-
-
 def _collection_action(page: Mapping[str, Any]) -> str:
     """One reviewer line naming why collection stopped; empty when the agent finished cleanly."""
     status = page.get("status")
@@ -406,8 +372,11 @@ def build_report(
     *,
     cards: Mapping[str, Any] | None = None,
     references: Mapping[str, Any] | None = None,
+    labels: Mapping[str, Mapping[str, str]] | None = None,
 ) -> dict:
-    """The Report fields; `stop` is why the run ended, `previous_cost` carries cost on rebuild."""
+    """The Report fields; `stop` is why the run ended, `previous_cost` carries cost on rebuild.
+
+    `labels` maps rubric codes to their question and legal basis for the markdown."""
     stop = stop or {}
     findings = _findings(display, duty, plain, bindings, classification.get("page_type"))
     status, decision, actions = _status(classification, display, verification, findings, stop, page)
@@ -460,6 +429,9 @@ def build_report(
     summary["agent_runs"] = agent_runs(page, references, plain.get("selection") or {})
     limits = _limits(display, plain, duty)
     limits += _card_limits(cards, duty)
+    unreachable = _unreachable_limit(page)
+    if unreachable:
+        limits.append(unreachable)
     return {
         "status": status,
         "decision": decision,
@@ -468,114 +440,18 @@ def build_report(
         "findings": findings,
         "limits": limits,
         "cost": cost,
-        "markdown": _markdown(
+        "markdown": render_markdown(
             page,
             classification,
             display,
             plain,
             duty,
-            verification,
-            stop,
             status,
             decision,
-            actions,
-            summary,
-            findings,
-            limits,
-            cost,
-            cards,
-            references,
+            _notes(status, actions, page, verification, stop, unreachable),
+            labels,
         ),
     }
-
-
-def _selection_lines(selection: Mapping[str, Any], profile: Mapping[str, Any]) -> list[str]:
-    """How the reader was chosen, and who the reader is, when the dataset path ran."""
-    if not selection:
-        return []
-    how = {
-        "uuid": "지정한 uuid",
-        "attributes": "지정한 속성",
-        "agent": "자유 문장 → 선택 agent",
-        "default": "상품유형 기본 조건",
-        "fallback": "대체(조건 완화 또는 기존 프로필)",
-    }.get(str(selection.get("decided_by")), str(selection.get("decided_by")))
-    lines = [
-        f"- 독자 선택: {how}, 조건 {selection.get('filters') or '{}'},"
-        f" 일치 {selection.get('match_count', 0)}행"
-        + (f", 중단 사유 {selection['stop_reason']}" if selection.get("stop_reason") else "")
-        + (f" ({_clip(str(selection['reason']), 160)})" if selection.get("reason") else "")
-    ]
-    attributes = profile.get("attributes") or {}
-    if attributes.get("financial_familiarity"):
-        source = (
-            "요청 문장" if attributes.get("familiarity_source") == "request" else "행 속성 추정"
-        )
-        lines.append(f"- 금융 익숙도: {attributes['financial_familiarity']} ({source})")
-    reader = attributes.get("reader")
-    if reader:
-        lines.append(f"- 독자 개요(합성 페르소나): {_clip(str(reader), 200)}")
-    return lines
-
-
-def _collection_section(page: Mapping[str, Any]) -> list[str]:
-    """What the page agent did, why it stopped, and which evidence gaps stayed open."""
-    coverage = page.get("coverage") or {}
-    trace = page.get("agent_trace") or []
-    unreachable = [
-        g
-        for g in coverage.get("gaps") or []
-        if g.get("kind") == "hidden_text" and g.get("status") == "unresolved"
-    ]
-    lines = [
-        "## 10. 페이지 수집 agent 기록",
-        "",
-        f"- 상태: {page.get('status') or '(기록 없음)'},"
-        f" 중단 사유: {page.get('stop_reason') or '-'}",
-        *([f"- 오류: {_clip(str(page['error']), 300)}"] if page.get("error") else []),
-        f"- 조사 범위(전 → 후): {coverage.get('before') or '-'} → {coverage.get('after') or '-'}",
-        "- `조사 불충분`은 누락의 증거가 아닙니다. 보이지 않은 조건은 위반이 아니라 조사 공백으로"
-        " 남깁니다.",
-        *(
-            [
-                "- 한계: 열 수 있는 컨트롤을 모두 시도해도 보이지 않은"
-                f" 숨김 글 {len(unreachable)}건은 상태 판단에서 제외했습니다."
-                " 이 글에 조건·예외가 있다면 이 검토는 확인하지 못했습니다."
-            ]
-            if unreachable
-            else []
-        ),
-        "",
-    ]
-    lines += _table(
-        [
-            [
-                gap.get("id", ""),
-                gap.get("kind", ""),
-                gap.get("status", ""),
-                _clip(str(gap.get("detail", "")), 100),
-                _clip(str(gap.get("closed_by") or ""), 60),
-            ]
-            for gap in coverage.get("gaps") or []
-        ],
-        ["공백", "종류", "상태", "내용", "닫은 행동"],
-    )
-    lines += _table(
-        [
-            [
-                str(step.get("turn", "")),
-                step.get("tool", ""),
-                _clip(str(step.get("args") or ""), 70),
-                _clip(str((step.get("rationale") or {}).get("gap_id") or ""), 20),
-                ("거부: " + _clip(str(step.get("blocked_reason", "")), 50))
-                if step.get("blocked")
-                else ("새 증거" if step.get("new_evidence") else "-"),
-            ]
-            for step in trace
-        ],
-        ["턴", "도구", "인자", "대상 공백", "결과"],
-    )
-    return lines
 
 
 def _card_limits(cards: Mapping[str, Any], duty: Mapping[str, Any]) -> list[str]:
@@ -613,104 +489,6 @@ def _card_limits(cards: Mapping[str, Any], duty: Mapping[str, Any]) -> list[str]
 
 def _squash(text: str) -> str:
     return "".join((text or "").split())
-
-
-def _cards_section(cards: Mapping[str, Any]) -> list[str]:
-    if not cards:
-        return []
-    reason = f" ({_clip(str(cards['reason']), 120)})" if cards.get("reason") else ""
-    lines = [
-        "## 11. 증거 카드와 조사 공백",
-        "",
-        f"- 상태: {cards.get('status', '-')}{reason}, 카드 {len(cards.get('cards') or [])}건,"
-        f" 검증 탈락 {len(cards.get('rejected') or [])}건",
-        "- 카드는 원문 인용과 출처(`dom-N`)가 코드로 재확인된 사실 단위이며, 법률 판단이 아닙니다.",
-        "",
-    ]
-    lines += _table(
-        [
-            [
-                card.get("id", ""),
-                card.get("kind", ""),
-                _clip(card.get("quote", ""), 70),
-                _clip(", ".join(card.get("qualifiers") or []), 40),
-                _clip(", ".join(card.get("exceptions") or []), 40),
-                card.get("source_id", ""),
-                card.get("visibility", ""),
-            ]
-            for card in cards.get("cards") or []
-        ],
-        ["카드", "종류", "인용", "조건", "예외", "출처", "가시성"],
-    )
-    lines += _table(
-        [
-            [
-                str(gap.get("id") or "-"),
-                str(gap.get("kind", "")),
-                str(gap.get("status", "")),
-                ", ".join(gap.get("card_ids") or []),
-            ]
-            for gap in cards.get("coverage_gaps") or []
-        ],
-        ["공백", "종류", "상태", "관련 카드"],
-    )
-    return lines
-
-
-def _references_section(references: Mapping[str, Any]) -> list[str]:
-    if not references:
-        return []
-    method = references.get("method") or {}
-    reason = f" ({_clip(str(references['reason']), 120)})" if references.get("reason") else ""
-    lines = [
-        "## 12. 참고 사례 (판정에 사용하지 않음)",
-        "",
-        "- 아래 사례는 비슷한 표시 유형을 찾아 참고로만 연결한 것입니다. 이 검토의 적합·부적합"
-        " 판정은 사례와 무관하게 루브릭과 페이지 인용으로만 정해졌습니다.",
-        f"- 상태: {references.get('status', '-')}{reason},"
-        f" 후보 {len(references.get('candidates') or [])}건,"
-        + (
-            f" 연결 agent(검색 {method.get('searches', 0)}회, 읽기 {method.get('reads', 0)}회,"
-            f" 중단 사유 {references.get('stop_reason') or '-'}),"
-            if method.get("linking") == "agent"
-            else f" 임계값 {method.get('threshold', '-')},"
-        )
-        + f" 사례 출처 {method.get('cases_from', '-')}",
-        *(
-            [
-                "- 연결은 agent가 제안하고, 코드가 페이지 인용과 사례 인용을 원문에서 다시 찾아"
-                " 확인한 것만 남겼습니다."
-            ]
-            if method.get("linking") == "agent"
-            else []
-        ),
-        "",
-    ]
-    lines += _table(
-        [
-            [
-                link.get("case_id", ""),
-                ", ".join(link.get("card_ids") or []),
-                _clip(link.get("page_quote", ""), 60),
-                _clip(link.get("case_quote") or link.get("case_quote_note", ""), 60),
-                _clip("; ".join(link.get("material_difference") or []), 80),
-                (link.get("page_only_detectability") or "")
-                + (f" — {link['page_only_note']}" if link.get("page_only_note") else ""),
-                link.get("official_url", ""),
-            ]
-            for link in references.get("links") or []
-        ],
-        [
-            "사례",
-            "카드",
-            "페이지 인용",
-            "사례 인용",
-            "중요한 차이",
-            "페이지 단독 판단",
-            "공식 출처",
-        ],
-    )
-    return lines
 
 
 def _limits(
@@ -751,280 +529,44 @@ def _limits(
     return limits
 
 
-def _markdown(
+def _unreachable_limit(page: Mapping[str, Any]) -> str:
+    """Hidden text no control could reveal is a limitation, not a lower status (decision A4)."""
+    unreachable = [
+        g
+        for g in (page.get("coverage") or {}).get("gaps") or []
+        if g.get("kind") == "hidden_text" and g.get("status") == "unresolved"
+    ]
+    if not unreachable:
+        return ""
+    return (
+        f"열 수 있는 컨트롤을 모두 시도해도 보이지 않은 숨김 글 {len(unreachable)}건은"
+        " 상태 판단에서 제외했습니다. 이 글에 조건·예외가 있다면 이 검토는 확인하지 못했습니다."
+    )
+
+
+def _notes(
+    status: str,
+    actions: list[str],
     page: Mapping[str, Any],
-    classification: Mapping[str, Any],
-    display: Mapping[str, Any],
-    plain: Mapping[str, Any],
-    duty: Mapping[str, Any],
     verification: Mapping[str, Any],
     stop: Mapping[str, Any],
-    status: str,
-    decision: str,
-    actions: list[str],
-    summary: Mapping[str, Any],
-    findings: list[dict],
-    limits: list[str],
-    cost: Mapping[str, Any],
-    cards: Mapping[str, Any] | None = None,
-    references: Mapping[str, Any] | None = None,
-) -> str:
-    product = page.get("product") or {}
-    lines: list[str] = [
-        "---",
-        "ai-generated: true",
-        "human-review: false",
-        "---",
-        "",
-        "# 금융상품 판매화면 검토 결과",
-        "",
-        f"- 판정: **{status}**",
-        f"- 조치 방침: {decision}",
-        f"- 대상 화면: {page.get('url', '')}",
-        f"- 상품명: {product.get('product_name', '(확인 불가)')}",
-        # 범위 밖·판정 불가로 끝난 검토는 화면유형이 정해지지 않은 채로 남습니다. 담당자가 읽는
-        # 문서에 `None`이 그대로 찍히면 값이 빠진 것인지 오류인지 구분되지 않으므로 말로 적습니다.
-        f"- 상품유형/화면유형: {classification.get('product_type') or '(확인 불가)'}"
-        f" / {classification.get('page_type') or '(해당 없음)'}",
-        f"- 분류 근거: {_clip(str(classification.get('reason', '')), 300)}",
-        f"- 페이지 수집: {page.get('status') or '(기록 없음)'} ({page.get('stop_reason') or '-'})",
-        _agent_runs_line(summary["agent_runs"]),
-        "",
-        "## 1. 담당자 조치 목록",
-        "",
-    ]
-    lines += [f"{n}. {action}" for n, action in enumerate(actions, 1)] or ["조치 사항 없음"]
-    lines += [
-        "",
-        "## 2. 검토 요약",
-        "",
-        *_table(
-            [
-                [
-                    "표시방법",
-                    str(summary["display_items"]),
-                    str(summary["display_violations"]),
-                    str(summary["display_unjudged"]),
-                ],
-                [
-                    "설명의무(원문)",
-                    f"{summary['duty_items_applied']}/{summary['duty_items_total']}",
-                    str(summary["duty_violations_original"]),
-                    str(_unjudged(duty.get("original"))),
-                ],
-                [
-                    f"설명의무({EXPLANATION})",
-                    f"{summary['duty_items_applied']}/{summary['duty_items_total']}",
-                    str(summary["duty_violations_plain"]),
-                    str(_unjudged(duty.get("plain"))),
-                ],
-                [
-                    EXPLANATION,
-                    str(summary["plain_blocks"] + summary["plain_rejected"]),
-                    str(summary["plain_rejected"]),
-                    str(summary["fidelity_diffs"]),
-                ],
-            ],
-            ["검토 영역", "검토 항목", "위반·반려", "판정 불가·차이"],
-        ),
-        *(
-            [
-                f"부적합 {summary['violations'] + summary['shortfalls']}건 중 위반"
-                f" {summary['violations']}건, 권고 미충족 {summary['shortfalls']}건입니다. 광고"
-                " 규정과 협회 표시 규정은 공개 상품 페이지(광고)에 직접 적용되어 위반으로 읽고,"
-                " 설명의무 항목은 계약 권유 단계의 의무를 광고 화면에 준용한 것이어서 권고"
-                " 미충족으로 읽습니다.",
-                "",
-            ]
-            if summary["violations"] + summary["shortfalls"]
-            else []
-        ),
-        "## 3. 확인이 필요한 항목",
-        "",
-        *_table(
-            [
-                [
-                    row["code"],
-                    row["target"],
-                    str(row["verdict"]),
-                    f"{row['severity']}({row['basis']})" if row.get("severity") else "-",
-                    _clip(row["reason"], 160),
-                    _clip(" / ".join(row["quotes"]), 80),
-                ]
-                for row in findings
-            ],
-            ["항목", "대상", "판정", "구분", "사유", "인용"],
-        ),
-        "## 4. 표시방법 검토 상세",
-        "",
-        *_table(
-            [
-                [
-                    row.get("code", ""),
-                    str(row.get("verdict", "")),
-                    ", ".join(row.get("block_ids") or []),
-                    _clip(row.get("reason", ""), 200),
-                ]
-                for row in display.get("items") or []
-            ],
-            ["항목", "판정", "근거 블록", "사유"],
-        ),
-        f"## 5. 설명의무 검토 상세 (원문 대비 {EXPLANATION})",
-        "",
-    ]
-    plain_by_code = {row.get("code"): row for row in duty.get("plain") or []}
-    fidelity_by_code = {row.get("code"): row for row in duty.get("fidelity") or []}
-    lines += _table(
-        [
-            [
-                row.get("code", ""),
-                str(row.get("condition_status", "")),
-                str(row.get("verdict", "")),
-                str((plain_by_code.get(row.get("code")) or {}).get("verdict", "-")),
-                str((fidelity_by_code.get(row.get("code")) or {}).get("kind", "-")),
-                _clip(row.get("quote", ""), 80),
-            ]
-            for row in sorted(
-                duty.get("original") or [],
-                key=lambda r: (duty_topic(r.get("code", "")), r.get("code", "")[:1] == "F"),
-            )
-        ],
-        ["항목", "조건", "원문 판정", f"{EXPLANATION} 판정", "의미 차이", "원문 인용"],
-    )
-    lines += [
-        "- F01–F19·F21·F22는 같은 의무를 담은 설명 코드(설명01–19·27·28)와 한 주제입니다."
-        " 표에는 둘 다 남기고, 조치 목록에서는 같은 판정이면 한 번만 셉니다.",
-        "",
-    ]
-    lines += [f"## 6. {EXPLANATION} 결과", ""]
-    if "units" in plain:
-        profile = plain.get("profile") or {}
-        lines += [
-            f"- 상태: {plain.get('status', '-')}"
-            + (f" ({_clip(str(plain['reason']), 120)})" if plain.get("reason") else ""),
-            f"- 독자 프로필: {profile.get('id', '-')} v{profile.get('version', '-')}"
-            f" ({profile.get('source', '-')}, {profile.get('review_status', '-')},"
-            f" {profile.get('status', '-')})",
-            *_selection_lines(plain.get("selection") or {}, profile),
-            "- 원문 사실(exact_fact)은 설명 옆에 그대로 남습니다."
-            " 위험 개념에는 비유를 쓰지 않습니다.",
-            "",
-        ]
-        lines += _table(
-            [
-                [
-                    unit.get("unit_id", ""),
-                    ", ".join(unit.get("source_ids") or []),
-                    _clip(unit.get("exact_fact", ""), 70),
-                    _clip(unit.get("explanation", ""), 90),
-                    _clip(unit.get("analogy", ""), 40) or "-",
-                    unit.get("status", ""),
-                ]
-                for unit in plain.get("units") or []
-            ],
-            ["단위", "출처", "원 사실", "설명", "비유", "상태"],
+    unreachable: str,
+) -> list[str]:
+    """Header lines for the markdown: why a review did not reach a verdict, or what qualifies it.
+
+    A judged page lists its items in the tables, so only the lines that are not per-item go up
+    top: an incomplete collection, a failed verification, and unreachable hidden text."""
+    if status not in (STATUS_PASSED, STATUS_REVIEW):
+        return [f"사유: {action}" for action in actions]
+    notes = []
+    collection = _collection_action(page)
+    if collection:
+        notes.append(f"수집: {collection}")
+    if verification and not verification.get("passed"):
+        notes.append(
+            f"자동 검증: 미통과({stop.get('reason') or '사유 미기재'})"
+            + (f" — {stop['detail']}" if stop.get("detail") else "")
         )
-        ledger = duty.get("ledger") or []
-        if ledger:
-            lines += ["### 사실 원장 대조", ""]
-            lines += _table(
-                [
-                    [
-                        row.get("fact_id", ""),
-                        row.get("kind", ""),
-                        _clip(str(row.get("value", "")), 50),
-                        str(row.get("verdict", "")),
-                        str(row.get("decided_by", "")),
-                    ]
-                    for row in ledger
-                ],
-                ["사실", "종류", "값", "보존", "판단 주체"],
-            )
-        controls = plain.get("controls") or {}
-        if controls:
-            lines += [
-                "### 운영 통제 (판정 대상 아님)",
-                "",
-                f"- 화면: {', '.join(controls.get('ui') or [])}",
-                f"- 거버넌스: {', '.join(controls.get('governance') or [])}",
-                "",
-            ]
-    else:
-        lines += _table(
-            [
-                [
-                    row.get("source_id", ""),
-                    _clip(row.get("source_quote", ""), 90),
-                    _clip(row.get("text", ""), 90),
-                ]
-                for row in plain.get("accepted_blocks") or []
-            ],
-            ["블록", "원문", "쉬운말"],
-        )
-        term_refs = plain.get("term_refs") or []
-        if term_refs:
-            lines += ["### 용어 풀이", ""]
-            lines += _table(
-                [
-                    [
-                        row.get("term", ""),
-                        row.get("source_id", ""),
-                        _clip(row.get("gloss", ""), 120),
-                    ]
-                    for row in term_refs
-                ],
-                ["용어", "블록", "풀이"],
-            )
-    lines += [
-        "## 7. 자동 검증 결과",
-        "",
-        f"- 통과: {verification.get('passed')}",
-        f"- 실패 모듈: {verification.get('failed_modules') or '없음'}",
-        f"- 검증 루프: {verification.get('loop_count')}회 (최대 {stop.get('max_loops', '-')}회)",
-        f"- 중단 사유: {stop.get('reason') or '없음(통과)'}"
-        + (f" — {stop['detail']}" if stop.get("detail") else ""),
-        f"- 재시도 이력: {verification.get('retry_history') or '없음'}",
-        "",
-    ]
-    lines += [f"- {_clip(reason, 240)}" for reason in (verification.get("reasons") or [])]
-    lines += [
-        "",
-        "## 8. 비용과 소요시간",
-        "",
-        (
-            "아래 수치는 **원래 검토 실행**에서 기록된 값입니다. 이 문서는 체크포인트에서 모델"
-            " 호출 없이 다시 만들었고, 다시 만드는 데 든 비용은 없습니다."
-            if cost.get("carried_forward")
-            else "아래 수치는 **이 문서를 만든 실행**에서 발생한 것입니다."
-        ),
-        "",
-        f"- 모델 호출 {cost.get('calls')}회, 입력 {cost.get('input_tokens'):,} tokens,"
-        f" 출력 {cost.get('output_tokens'):,} tokens",
-        f"- 비용 ${cost.get('usd')} (약 {cost.get('krw')}원, {cost.get('usd_krw')}원/$ 가정)",
-        f"- 소요시간 {cost.get('elapsed_seconds')}초",
-        f"- 상한: {cost.get('caps')}",
-        *(
-            [
-                "- 이 문서는 모델 호출 없이 만들어졌습니다(녹음 재생 또는 체크포인트 재생성)."
-                " 원래 검토의 비용은 이 문서에 기록되지 않았습니다."
-            ]
-            if not cost.get("calls")
-            else []
-        ),
-        *([f"- 단계별: {_step_costs(cost['by_step'])}"] if cost.get("by_step") else []),
-        "",
-        "## 9. 한계와 가정",
-        "",
-    ]
-    lines += [f"- {limit}" for limit in limits]
-    lines += ["", *_collection_section(page)]
-    lines += _cards_section(cards or {})
-    lines += _references_section(references or {})
-    lines += [
-        "---",
-        "",
-        "이 문서는 자동 검토 결과입니다(ai-generated). 게시 여부의 최종 판단은 컴플라이언스"
-        " 담당자가 합니다.",
-        "",
-    ]
-    return "\n".join(lines)
+    if unreachable:
+        notes.append(f"한계: {unreachable}")
+    return notes

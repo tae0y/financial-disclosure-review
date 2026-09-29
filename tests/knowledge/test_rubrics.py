@@ -3,7 +3,13 @@
 import pytest
 
 from financial_disclosure_review.knowledge.build import build_rubric_db, rubric_schema_problems
-from financial_disclosure_review.knowledge.rubrics import item_scope, load_rubric
+from financial_disclosure_review.knowledge.rubrics import (
+    item_scope,
+    load_rubric,
+    rubric_basis,
+    rubric_labels,
+    rubric_question,
+)
 from tests.helpers import FIXTURE_DIR
 
 
@@ -54,3 +60,28 @@ def test_the_schema_check_reports_a_missing_field():
     item = {"code": "X01", "group": "E. 표시방법"}
     problems = rubric_schema_problems([item], "page_types")
     assert problems and "missing" in problems[0]
+
+
+def test_the_question_is_the_sentence_that_asks():
+    criterion = (
+        "모든 상품은 요약을 맨 앞에 두어야 합니다(신용카드는 리볼빙 포함. 리스는 불이익 포함)."
+        " 요약을 맨 앞에 두었는가? (리볼빙 위험성 포함)"
+    )
+    assert rubric_question(criterion) == "요약을 맨 앞에 두었는가?"
+
+
+def test_a_criterion_without_a_question_is_kept_whole():
+    assert rubric_question("연회비를 표시해야 합니다.") == "연회비를 표시해야 합니다."
+
+
+def test_labels_carry_the_question_and_basis_and_an_absent_db_gives_none(db_path, tmp_path):
+    labels = rubric_labels(db_path)
+    assert len(labels) == 17
+    assert all(label["question"].endswith("?") for label in labels.values())
+    assert all(label["basis"] for label in labels.values())
+    assert rubric_labels(tmp_path / "absent.sqlite") == {}
+
+
+def test_the_basis_names_each_document_once_with_its_first_article():
+    sources = [("kfcpa", "제19조제1항"), ("fsc_rule", "제13조"), ("fsc_rule", "제14조")]
+    assert rubric_basis(sources) == "금소법 제19조제1항; 금소 감독규정 제13조 외 1"
