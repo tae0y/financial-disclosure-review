@@ -20,7 +20,7 @@ _RANK = {"부적합": 0, "판정 불가": 1, PASS: 2}
 _CONDITION_PREFIX = re.compile(r"^applies_condition[^.]*\.\s*")
 _HELD_PREFIX = re.compile(r"^[^.]*\(성립\)\.\s*")
 FOOTER = (
-    "비용, 한계와 가정, 수집·사례 연결 기록은 API 응답의 report 필드(cost, limits, summary)에"
+    "비용, 한계와 가정, 수집 기록은 API 응답의 report 필드(cost, limits, summary)에"
     " 있습니다. 게시 여부의 최종 판단은 컴플라이언스 담당자가 합니다."
 )
 
