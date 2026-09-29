@@ -59,6 +59,7 @@ def test_retrieve_reads_the_corpus_yaml_when_the_db_has_no_cases(tmp_path, monke
     script = [
         [{"name": "search_cases", "args": {"query": "최소 이자율만 강조", "card_ids": ["c1"]}}],
         [{"name": "finish", "args": {"reason": "맞는 사례 없음"}}],
+        [{"name": "finish", "args": {"reason": "맞는 사례 없음"}}],
     ]
     real = linking.link_reference_cases
     monkeypatch.setattr(
@@ -90,7 +91,7 @@ def test_retrieve_reads_the_corpus_yaml_when_the_db_has_no_cases(tmp_path, monke
     assert refs["status"] in ("완료", "해당 사례 없음")
     assert refs["candidates"], "the revolving card must at least be scored against the corpus"
     assert refs["stop_reason"] == "finished"
-    assert [t["tool"] for t in refs["agent_trace"]] == ["search_cases", "finish"]
+    assert [t["tool"] for t in refs["agent_trace"]] == ["search_cases", "finish", "finish"]
 
 
 def test_display_items_carry_the_cards_their_quotes_overlap(monkeypatch):

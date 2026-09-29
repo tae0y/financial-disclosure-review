@@ -37,6 +37,17 @@ from .reference import (
 from .search import search as vector_search
 
 MAX_TURNS = 8
+# Cards that make a concrete claim a regulator case could be about. A first `finish` while some
+# of them were never searched (or while nothing was read) is sent back once with their ids.
+CONCRETE_KINDS = {
+    "rate_claim",
+    "fee_claim",
+    "benefit_claim",
+    "eligibility",
+    "condition",
+    "exception",
+    "warning",
+}
 MAX_LINKS = 5
 MAX_TOP_K = 10
 RESULT_LIMIT = 12_000
@@ -66,6 +77,8 @@ Rules:
 - material_difference: how the page differs from the case (different product, the page does state the condition elsewhere, and so on). Code adds the case's own caveats.
 - product_basis 유추 means the case comes from another sector with the same advertising type, not from this product type.
 - page_only_detectability partial, review_required or out_of_scope means the page alone cannot settle the pattern; say what else would be needed in material_difference.
+- Link only when the card itself shows the problem the case names (a missing or hidden condition, a rate shown without its range, a softened risk, unconditional wording, ...) or wording the case explicitly allows or forbids. A card that states a condition, rate or risk clearly is not a link to a case about hiding or omitting it.
+- Cover the page: search every group of concrete cards (rates/fees, benefits with their conditions and exceptions, warnings), several searches per turn. Read the promising hits before deciding. A first finish while concrete cards were never searched is sent back with their ids.
 - Only cases returned by search_cases and read with read_case in this run can be linked. At most one link per case, at most 5 links.
 - You have a limited number of model turns. Call several independent tools in one turn. Call finish when done."""  # noqa: E501
 
@@ -141,6 +154,8 @@ class LinkRun:
         self.searches = self.reads = 0
         self.searched: set[str] = set()
         self.read: set[str] = set()
+        self.cited_cards: set[str] = set()
+        self.nudged = False
         self.candidates: dict[str, dict[str, Any]] = {}
         self.links: list[dict[str, Any]] = []
 
@@ -159,6 +174,28 @@ class LinkRun:
             return self.read_case(parsed.case_id)
         if isinstance(parsed, ProposeLink):
             return self.propose_link(parsed)
+        return self.finish()
+
+    def finish(self) -> dict:
+        """End the loop, unless concrete cards were never searched or nothing was read: then
+        send it back once, naming what is left (the same one-time nudge the page agent gets)."""
+        unsearched = [
+            cid
+            for cid, card in self.cards.items()
+            if card.get("kind") in CONCRETE_KINDS and cid not in self.cited_cards
+        ]
+        if not self.nudged and (unsearched or (self.searches and not self.reads)):
+            self.nudged = True
+            return {
+                "finished": False,
+                "nudge": (
+                    "not finished: search the concrete cards never cited in a search"
+                    " (group them), read the promising hits, then finish. Finish again to"
+                    " stop anyway."
+                ),
+                "unsearched_card_ids": unsearched[:40],
+                "cases_read": self.reads,
+            }
         return {"finished": True}
 
     def _text_verified(self, case_id: str) -> bool:
@@ -189,6 +226,7 @@ class LinkRun:
         if args.risk_kind and args.risk_kind not in RISK_KINDS:
             return _blocked(f"risk_kind must be one of {list(RISK_KINDS)} or empty")
         card_ids = list(dict.fromkeys(args.card_ids))
+        self.cited_cards.update(card_ids)
         query = " ".join(
             [args.query.strip(), *(card_query_text(self.cards[cid]) for cid in card_ids)]
         ).strip()

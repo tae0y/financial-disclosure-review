@@ -188,3 +188,13 @@ Both `link_reference_cases` and `retrieve_reference_cases` (given `corpus_path`)
 from the DB when its case tables exist, otherwise straight from `assets/case_corpus.yaml` (validated with `case_schema_problems`, no
 embedding). BM25 needs only the case text, and building the DB tables embeds every case, a paid
 step. `method.cases_from` records which source was used.
+
+## Covering the page (added after B4 round 1, 2026-09-29)
+
+The first gold run scored 3/14 recall and 3/6 false links: the agent often searched once, read
+nothing and finished. Two changes followed. The first `finish` is sent back once when a concrete
+card (`rate_claim`, `fee_claim`, `benefit_claim`, `eligibility`, `condition`, `exception`,
+`warning`) was never cited in a search, or when nothing was read; the reply lists the
+unsearched card ids. A second `finish` always stops. The prompt now also says a card that states
+a condition, rate or risk clearly is not a link to a case about hiding or omitting it.
+

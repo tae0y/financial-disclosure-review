@@ -6,6 +6,7 @@ is called unless a test turns `case_rerank` on against that absent DB.
 """
 
 import hashlib
+import json
 
 import pytest
 import yaml
@@ -190,7 +191,10 @@ def test_an_unavailable_case_source_is_unjudgeable(paths, tmp_path):
 
 
 def test_search_read_propose_finish_yields_a_validated_link(paths):
-    result, chat = _run(paths, [[SEARCH_DISCOUNT], [READ_ANALOG], [PROPOSE_ANALOG], [FINISH]])
+    # c2/c3 were never searched, so the first finish is sent back once; the second one stops.
+    result, chat = _run(
+        paths, [[SEARCH_DISCOUNT], [READ_ANALOG], [PROPOSE_ANALOG], [FINISH], [FINISH]]
+    )
     assert result["status"] == "완료"
     assert result["stop_reason"] == "finished"
     assert "case_link" not in chat.system_prompt  # the prompt is prose, not the meter label
@@ -223,7 +227,13 @@ def test_search_read_propose_finish_yields_a_validated_link(paths):
     assert analog["card_ids"] == ["c1"] and analog["score"] > 0
 
     trace = result["agent_trace"]
-    assert [t["tool"] for t in trace] == ["search_cases", "read_case", "propose_link", "finish"]
+    assert [t["tool"] for t in trace] == [
+        "search_cases",
+        "read_case",
+        "propose_link",
+        "finish",
+        "finish",
+    ]
     assert not any(t["blocked"] for t in trace)
     assert all(len(t["result"]) <= 12_001 for t in trace)
 
@@ -402,3 +412,15 @@ def test_the_same_script_gives_the_same_trace(paths):
     second, _ = _run(paths, script)
     assert first["agent_trace"] == second["agent_trace"]
     assert first == second
+
+
+def test_a_first_finish_with_unsearched_concrete_cards_is_sent_back_once(paths):
+    """B4 1회차(2026-09-29): 검색 1회·읽기 0회로 끝낸 페이지가 있어 재현율이 3/14였습니다."""
+    result, chat = _run(paths, [[SEARCH_DISCOUNT], [FINISH], [FINISH]])
+    first, second = [t for t in result["agent_trace"] if t["tool"] == "finish"]
+    nudge = json.loads(first["result"])
+    assert nudge["finished"] is False
+    assert set(nudge["unsearched_card_ids"]) == {"c2", "c3"}
+    assert nudge["cases_read"] == 0
+    assert json.loads(second["result"])["finished"] is True
+    assert result["stop_reason"] == "finished"
