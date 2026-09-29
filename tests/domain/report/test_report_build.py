@@ -592,3 +592,15 @@ def test_the_report_says_how_the_reader_was_chosen():
     assert "독자 선택: 자유 문장 → 선택 agent" in markdown
     assert "일치 55912행" in markdown
     assert "74세 남성" in markdown
+
+
+def test_agent_links_report_their_search_and_stop():
+    references = {
+        "status": "완료",
+        "method": {"linking": "agent", "searches": 3, "reads": 2, "cases_from": "db"},
+        "stop_reason": "finished",
+        "candidates": [{"case_id": "case.x"}],
+        "links": [],
+    }
+    markdown = report(references=references)["markdown"]
+    assert "연결 agent(검색 3회, 읽기 2회, 중단 사유 finished)" in markdown

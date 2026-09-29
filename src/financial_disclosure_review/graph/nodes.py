@@ -22,8 +22,8 @@ from ..domain.product_page import fetch_product_page
 from ..domain.report import build_report
 from ..domain.verification import verify
 from ..knowledge.build_cases import CASE_CORPUS_FILE
+from ..knowledge.linking import link_reference_cases
 from ..knowledge.reference import RISK_KINDS_FILE
-from ..knowledge.reference import retrieve_reference_cases as retrieve_cases
 from ..knowledge.rubrics import rubric_bindings
 from ..llm.client import ask
 from .retry import MAX_LOOPS, RETRY_KEYS, escalation, plan_retry
@@ -59,14 +59,15 @@ def retrieve_reference_cases(state: State, runtime: Runtime[Context]) -> dict:
     ctx = runtime.context
     refs: dict[str, Any] = dict(state.get("reference_cases") or {})
     rubric_dir = Path(ctx.rubric_dir)
+    # A bounded agent searches, reads and proposes links; code validates every quote.
     refs.update(
-        retrieve_cases(
+        link_reference_cases(
             (state.get("evidence_cards") or {}).get("cards") or [],
             state.get("classification") or {},
             ctx.db_path,
+            ctx=ctx,
             risk_kinds_path=rubric_dir / RISK_KINDS_FILE,
             corpus_path=rubric_dir / CASE_CORPUS_FILE,
-            rerank=ctx.case_rerank,
         )
     )
     return {"reference_cases": refs}

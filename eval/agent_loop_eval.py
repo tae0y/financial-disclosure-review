@@ -135,7 +135,7 @@ def markdown(rows: list[dict[str, Any]], total: dict[str, Any]) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     parser.add_argument("--checkpoints", required=True)
     parser.add_argument("--thread", action="append", required=True)
     args = parser.parse_args()

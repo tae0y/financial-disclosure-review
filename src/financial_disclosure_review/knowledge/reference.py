@@ -12,7 +12,9 @@ reorders candidates that already cleared the threshold — it never adds a candi
 
 Threshold: `DEFAULT_THRESHOLD` was set on real page cards, not on the synthetic paraphrase set
 in `tests/fixtures/reference_links.synthetic.json` (which only checks that a case paraphrase finds
-its own case). See `docs/agent-node-specs/reference_cases.md` §Threshold for the measurements.
+its own case). See `docs/agent-node-specs/reference_cases.md` for the measurements. The
+linking agent (`knowledge.linking`) reuses this module's case source, BM25 and case caveats as
+its search tool.
 """
 
 import math
@@ -89,7 +91,7 @@ def _corpus_cases(corpus_path: str | Path, product_types: tuple[str, ...]) -> li
     ]
 
 
-def _load_cases(
+def load_case_source(
     db_path: str | Path, corpus_path: str | Path | None, product_types: tuple[str, ...]
 ) -> tuple[list[dict], str]:
     """Cases from the DB, else from the corpus yaml; the second value names the source used."""
@@ -104,7 +106,8 @@ def _load_cases(
             raise RuntimeError(f"{db_error}; {corpus_error}") from corpus_error
 
 
-def _load_risk_kinds(path: str | Path) -> dict[str, dict[str, Any]]:
+def load_risk_kinds(path: str | Path) -> dict[str, dict[str, Any]]:
+    """`{case_id: {risk_kinds, text_verified}}` from the curated risk-kind file."""
     data = yaml.safe_load(Path(path).read_text()) or {}
     cases = data.get("cases")
     return cases if isinstance(cases, dict) else {}
@@ -126,12 +129,12 @@ def _bigrams(text: str) -> list[str]:
     return [compact[i : i + 2] for i in range(len(compact) - 1)]
 
 
-def _tokens(text: str) -> list[str]:
+def bm25_tokens(text: str) -> list[str]:
     """Korean-friendly BM25 tokens: character bigrams plus whole number tokens."""
     return _bigrams(text) + _number_tokens(text)
 
 
-class _BM25:
+class BM25:
     """Okapi BM25 over a small, in-memory set of case documents. No index is persisted."""
 
     def __init__(self, docs: Mapping[str, list[str]], k1: float = 1.5, b: float = 0.75) -> None:
@@ -169,7 +172,8 @@ class _BM25:
         return total
 
 
-def _case_doc(case: Mapping[str, Any]) -> str:
+def case_doc(case: Mapping[str, Any]) -> str:
+    """What BM25 scores a case on: its issue, signal and source text."""
     return " ".join([case.get("issue", ""), case.get("mvp_signal", ""), case.get("text", "")])
 
 
@@ -183,7 +187,8 @@ def _slot_text(card: Mapping[str, Any], slot: str) -> str:
     return " ".join(card.get("numbers") or [])
 
 
-def _card_query_text(card: Mapping[str, Any]) -> str:
+def card_query_text(card: Mapping[str, Any]) -> str:
+    """A card's claim, qualifier, exception and number slots as one query string."""
     return " ".join(filter(None, (_slot_text(card, slot) for slot in SLOTS)))
 
 
@@ -191,17 +196,18 @@ def _card_risk_kind(card: Mapping[str, Any]) -> str | None:
     return CARD_KIND_RISK_KIND.get(str(card.get("kind") or ""))
 
 
-def _sentences(text: str) -> list[str]:
+def split_sentences(text: str) -> list[str]:
+    """Case text split at sentence ends and blank lines."""
     parts = re.split(r"(?<=[.!?다음])\s*\n+|\n{2,}|(?<=[.!?])\s+", (text or "").strip())
     return [p.strip() for p in parts if p.strip()]
 
 
 def _best_case_quote(case_text: str, card: Mapping[str, Any]) -> str:
     """The sentence of `case_text` with the most bigram overlap with the card's slot text."""
-    sentences = _sentences(case_text)
+    sentences = split_sentences(case_text)
     if not sentences:
         return ""
-    query = set(_bigrams(_card_query_text(card)))
+    query = set(_bigrams(card_query_text(card)))
     if not query:
         return ""
     best, best_overlap = "", 0
@@ -222,7 +228,8 @@ def _same_pattern(card: Mapping[str, Any], case: Mapping[str, Any]) -> str:
     )
 
 
-def _material_difference(case: Mapping[str, Any], slot_scores: Mapping[str, float]) -> list[str]:
+def case_material_difference(case: Mapping[str, Any]) -> list[str]:
+    """Differences that follow from the case's own fields: 유추, a non-위반사례 record, subtype."""
     diffs: list[str] = []
     if case.get("product_basis") == "유추":
         diffs.append(
@@ -233,6 +240,11 @@ def _material_difference(case: Mapping[str, Any], slot_scores: Mapping[str, floa
     subtype = case.get("product_subtype")
     if subtype:
         diffs.append(f"사례 상품: {subtype} (페이지 상품과 정확히 같은 상품인지 확인 필요)")
+    return diffs
+
+
+def _material_difference(case: Mapping[str, Any], slot_scores: Mapping[str, float]) -> list[str]:
+    diffs = case_material_difference(case)
     for slot in ("qualifier", "exception", "number"):
         if slot_scores.get(slot, 0.0) <= 0:
             diffs.append(f"{slot} 슬롯: 사례에 대응하는 카드 근거 없음")
@@ -303,7 +315,7 @@ def retrieve_reference_cases(
     product_type = classification.get("product_type") or ""
     product_types = (product_type,) if product_type else ()
     try:
-        cases, source = _load_cases(db_path, corpus_path, product_types)
+        cases, source = load_case_source(db_path, corpus_path, product_types)
         method["cases_from"] = source
     except (FileNotFoundError, RuntimeError) as error:
         return {
@@ -316,7 +328,7 @@ def retrieve_reference_cases(
 
     risk_path = risk_kinds_path or default_risk_kinds_path()
     try:
-        risk_map = _load_risk_kinds(risk_path)
+        risk_map = load_risk_kinds(risk_path)
     except FileNotFoundError as error:
         return {
             "status": "판정 불가",
@@ -336,8 +348,8 @@ def retrieve_reference_cases(
         }
 
     cases_by_id = {case["case_id"]: case for case in cases}
-    docs = {cid: _tokens(_case_doc(case)) for cid, case in cases_by_id.items()}
-    bm25 = _BM25(docs)
+    docs = {cid: bm25_tokens(case_doc(case)) for cid, case in cases_by_id.items()}
+    bm25 = BM25(docs)
 
     # A case scores as its best single card, never a sum over cards: a long page with many cards
     # must not push every case over the threshold by volume alone. `card_ids` lists the cards
@@ -350,7 +362,9 @@ def retrieve_reference_cases(
         card_risk = _card_risk_kind(card)
         for cid in cases_by_id:
             case_risk_kinds = list((risk_map.get(cid) or {}).get("risk_kinds") or [])
-            slot_scores = {slot: bm25.score(cid, _tokens(_slot_text(card, slot))) for slot in SLOTS}
+            slot_scores = {
+                slot: bm25.score(cid, bm25_tokens(_slot_text(card, slot))) for slot in SLOTS
+            }
             weighted = sum(SLOT_WEIGHTS[slot] * value for slot, value in slot_scores.items())
             if weighted <= 0:
                 continue  # the boost alone never makes a candidate
@@ -391,9 +405,7 @@ def retrieve_reference_cases(
         for entry in kept:
             best_card = best_card_by_case[entry["case_id"]]
             try:
-                hits = vector_search(
-                    db_path, _card_query_text(best_card), k=len(cases), embed=embed
-                )
+                hits = vector_search(db_path, card_query_text(best_card), k=len(cases), embed=embed)
             except (FileNotFoundError, RuntimeError):
                 hits = []
                 method["rerank"] += " (case_vectors unavailable, order unchanged)"

@@ -580,7 +580,21 @@ def _references_section(references: Mapping[str, Any]) -> list[str]:
         " 판정은 사례와 무관하게 루브릭과 페이지 인용으로만 정해졌습니다.",
         f"- 상태: {references.get('status', '-')}{reason},"
         f" 후보 {len(references.get('candidates') or [])}건,"
-        f" 임계값 {method.get('threshold', '-')}, 사례 출처 {method.get('cases_from', '-')}",
+        + (
+            f" 연결 agent(검색 {method.get('searches', 0)}회, 읽기 {method.get('reads', 0)}회,"
+            f" 중단 사유 {references.get('stop_reason') or '-'}),"
+            if method.get("linking") == "agent"
+            else f" 임계값 {method.get('threshold', '-')},"
+        )
+        + f" 사례 출처 {method.get('cases_from', '-')}",
+        *(
+            [
+                "- 연결은 agent가 제안하고, 코드가 페이지 인용과 사례 인용을 원문에서 다시 찾아"
+                " 확인한 것만 남겼습니다."
+            ]
+            if method.get("linking") == "agent"
+            else []
+        ),
         "",
     ]
     lines += _table(

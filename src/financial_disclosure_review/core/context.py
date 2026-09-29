@@ -41,6 +41,8 @@ class Context:
     max_no_progress: int = 2
     # Reference cases rank by BM25 slot overlap; the paid query-embedding rerank is opt-in.
     case_rerank: bool = False
+    # Model turns of the reference-case linking agent (search, read, propose, finish).
+    case_link_max_turns: int = 8
     # Reader profile id from assets/persona_profiles.yaml; empty picks the file's default.
     persona_profile: str = ""
     # Reader wanted in free text (Korean); a small tool loop turns it into dataset filters.

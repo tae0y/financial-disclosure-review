@@ -47,6 +47,9 @@ class ReferenceCases(TypedDict, total=False):
     method: Any
     candidates: Any
     links: Any
+    # The linking agent's tool calls and why it stopped (finished, max_turns, link_cap, ...).
+    agent_trace: Any
+    stop_reason: Any
 
 
 class DisplayCheck(TypedDict, total=False):

@@ -31,3 +31,20 @@ def no_paid_embeddings(request, monkeypatch):
     from tests.helpers import FakeEmbed
 
     monkeypatch.setattr("financial_disclosure_review.llm.client.embed_texts", FakeEmbed())
+
+
+@pytest.fixture(autouse=True)
+def no_paid_tool_loops(request, monkeypatch):
+    """Free tests never reach a tool-calling model.
+
+    The page agent, the case-linking agent and the persona selection agent build a real
+    `ToolChat` unless a test injects a scripted chat; with the key in `.env` that would spend
+    money. Here a real turn raises instead, which every agent records as a stop reason.
+    """
+    if request.node.get_closest_marker("use_llm"):
+        return
+
+    def refuse(self):
+        raise RuntimeError("free test reached a real tool-calling model")
+
+    monkeypatch.setattr("financial_disclosure_review.llm.client.ToolChat.turn", refuse)
