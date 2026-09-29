@@ -423,7 +423,13 @@ def _selection_lines(selection: Mapping[str, Any], profile: Mapping[str, Any]) -
         + (f", 중단 사유 {selection['stop_reason']}" if selection.get("stop_reason") else "")
         + (f" ({_clip(str(selection['reason']), 160)})" if selection.get("reason") else "")
     ]
-    reader = (profile.get("attributes") or {}).get("reader")
+    attributes = profile.get("attributes") or {}
+    if attributes.get("financial_familiarity"):
+        source = (
+            "요청 문장" if attributes.get("familiarity_source") == "request" else "행 속성 추정"
+        )
+        lines.append(f"- 금융 익숙도: {attributes['financial_familiarity']} ({source})")
+    reader = attributes.get("reader")
     if reader:
         lines.append(f"- 독자 개요(합성 페르소나): {_clip(str(reader), 200)}")
     return lines

@@ -109,8 +109,19 @@ def test_resolve_dataset_profile_has_the_legacy_shape_plus_reader():
         "likely_questions",
         "prohibited_assumptions",
         "analogy_policy",
+        "familiarity_source",
         "reader",
     }
+    assert profile["attributes"]["familiarity_source"] == "row"
+
+
+def test_a_stated_familiarity_wins_over_the_row_estimate():
+    finance_worker = resolve_dataset_profile(row("02"), "리볼빙", TEMPLATE)
+    assert finance_worker["attributes"]["financial_familiarity"] == "높음"
+    stated = resolve_dataset_profile(row("02"), "리볼빙", TEMPLATE, familiarity="낮음")
+    assert stated["attributes"]["financial_familiarity"] == "낮음"
+    assert stated["attributes"]["familiarity_source"] == "request"
+    assert stated["attributes"]["analogy_policy"] != "none"
 
 
 def test_a_template_version_mismatch_makes_the_profile_invalid(tmp_path):

@@ -76,6 +76,7 @@ def test_the_result_has_the_documented_shape(store):
         "stop_reason",
         "trace",
         "reason",
+        "familiarity_hint",
     }
     assert result["seed"] == DEFAULT_SEED
 
@@ -157,6 +158,29 @@ def test_the_agent_chooses_filters_and_code_picks_the_row(store):
     assert json.loads(chat.results[1][1])["count"] == 2
     assert REQUEST in chat.messages[0] and "카드론 금리" in chat.messages[0]
     assert "choose" in chat.system_prompt
+
+
+def test_the_agent_passes_the_readers_stated_familiarity(store):
+    """2026-09-29 F1: '리볼빙을 처음 알아보는 20대 사회초년생'에서 agent가 직업 필터를 더해 회계
+    사무원이 뽑혔고, 행 기반 추정이 익숙도를 '높음'으로 만들었습니다. 요청이 말한 익숙도가
+    우선합니다."""
+    chat = ScriptedChat(
+        [
+            [
+                {
+                    "name": "choose",
+                    "args": {
+                        "filters": {"age_min": 20, "age_max": 29},
+                        "rationale": "20대 사회초년생",
+                        "familiarity_hint": "낮음",
+                    },
+                }
+            ]
+        ]
+    )
+    result = select(store, "리볼빙을 처음 알아보는 20대 사회초년생", chat=chat)
+    assert result["familiarity_hint"] == "낮음"
+    assert "occupation" in chat.system_prompt and "familiarity_hint" in chat.system_prompt
 
 
 def test_values_outside_the_vocabulary_and_malformed_calls_are_refused(store):

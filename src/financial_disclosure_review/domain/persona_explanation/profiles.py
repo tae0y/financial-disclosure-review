@@ -120,7 +120,10 @@ def dataset_profile_version() -> str:
 
 
 def resolve_dataset_profile(
-    row: Mapping[str, Any], product_type: str | None, template_path: str | Path
+    row: Mapping[str, Any],
+    product_type: str | None,
+    template_path: str | Path,
+    familiarity: Literal["낮음", "보통", "높음"] | None = None,
 ) -> dict:
     """The profile of one dataset row, in the shape of resolve_profile plus attributes.reader.
 
@@ -142,5 +145,5 @@ def resolve_dataset_profile(
         "review_status": "ai-drafted",
         "status": "적용",
         "reason": "",
-        "attributes": derive_profile(row, product_type, template),
+        "attributes": derive_profile(row, product_type, template, familiarity),
     }

@@ -209,6 +209,16 @@ The model call goes through `call_ask`. Only structural problems (no units, empt
 that do not exist) trigger the single retry; a second broken answer is kept as is and the unit
 checks revert what cannot be traced, so the graph never stops here.
 
+## Familiarity stated by the reviewer
+
+A reader's familiarity with finance is not a dataset field. When the free-text request states it
+("리볼빙을 처음 알아보는" → 낮음, "금융권 종사자" → 높음), the selection agent passes it as
+`choose.familiarity_hint`; `derive_profile` then uses it instead of the row-based estimate and
+records `familiarity_source: request` (else `row`). Added after the 2026-09-29 F1 run where the
+agent added an occupation filter the request never named, drew a 회계 사무원, and the row rule
+made a first-time revolving reader 높음. The prompt now also forbids occupation filters the
+request does not name.
+
 ## HTML
 
 Every source appears once, in page order. The first source (in page order) of each accepted unit

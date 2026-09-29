@@ -73,10 +73,13 @@ class CountMatches(BaseModel):
 
 class Choose(BaseModel):
     """The final filters for the reader. Refused when a value is not in the dataset or no row
-    matches; code then picks one matching row deterministically."""
+    matches; code then picks one matching row deterministically. familiarity_hint: only when the
+    description itself says how familiar the reader is with finance (e.g. '처음 알아보는' ->
+    낮음, '금융권 종사자' -> 높음); empty otherwise."""
 
     filters: Filters
     rationale: str = Field(min_length=1)
+    familiarity_hint: Literal["", "낮음", "보통", "높음"] = ""
 
 
 TOOLS = [
@@ -161,8 +164,10 @@ def _agent_filters(
     store: PersonaStore,
     chat,
     trace: list[dict],
+    hint: list[str],
 ) -> tuple[Filters | None, Filters | None, str]:
-    """The bounded loop. Returns (chosen, last proposed, stop_reason)."""
+    """The bounded loop. Returns (chosen, last proposed, stop_reason); an accepted choose's
+    familiarity hint is appended to `hint`."""
     chat.system(SELECT_TASK)
     chat.user(
         json.dumps(
@@ -214,6 +219,7 @@ def _agent_filters(
                 proposed = Filters.model_validate(args["filters"])
             if call["name"] == "choose":
                 if result.get("accepted"):
+                    hint.append(str(args.get("familiarity_hint") or ""))
                     return proposed, proposed, "chosen"
                 if result.get("count") == 0:
                     empty_choices += 1
@@ -243,6 +249,7 @@ def select_persona(
     """
     trace: list[dict] = []
     notes: list[str] = []
+    hint: list[str] = []
     try:
         template = load_template(template_path or default_template_path(ctx.rubric_dir))
         defaults = default_filters(product_type, template)
@@ -268,6 +275,7 @@ def select_persona(
             "stop_reason": stop_reason,
             "trace": trace,
             "reason": "; ".join(notes),
+            "familiarity_hint": hint[0] if hint else "",
         }
 
     if ctx.persona_uuid:
@@ -310,7 +318,7 @@ def select_persona(
                 notes.append(f"모델을 준비할 수 없음: {type(error).__name__}")
                 return result("fallback", defaults, "model_error")
         chosen, proposed, stop = _agent_filters(
-            request, product_type, cards_summary, store, chat, trace
+            request, product_type, cards_summary, store, chat, trace, hint
         )
         if chosen is not None:
             return result("agent", chosen, stop)
@@ -379,6 +387,11 @@ def choose_profile(
     if row is None:
         return _legacy(ctx, rubric_dir, f"{selection['reason']}; 기존 프로필 사용")
     return {
-        "profile": resolve_dataset_profile(row, product_type, default_template_path(rubric_dir)),
+        "profile": resolve_dataset_profile(
+            row,
+            product_type,
+            default_template_path(rubric_dir),
+            familiarity=selection.get("familiarity_hint") or None,
+        ),
         "selection": selection,
     }

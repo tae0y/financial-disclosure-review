@@ -51,7 +51,8 @@ Tools: list_values (the real values of one field with row counts), count_matches
 
 Rules:
 - Filter values must be copied exactly from list_values; any other value is refused. occupation_contains takes 1-2 substrings of occupation names (a row matches any one).
-- Use only what the description states or clearly implies (age band, education, occupation, region, household). Do not add attributes the reviewer did not ask for.
+- Use only what the description states or clearly implies (age band, education, occupation, region, household). Do not add attributes the reviewer did not ask for: no occupation filter unless an occupation is named ("사회초년생" is an age/career stage, not an occupation).
+- A reader's familiarity with finance is not a dataset field. When the description states it (e.g. "처음 알아보는" -> 낮음, "금융권 종사자" -> 높음), pass it as choose.familiarity_hint instead of guessing it through occupation filters; otherwise leave it empty.
 - Never infer or filter on income, credit, eligibility or anything the dataset does not hold.
 - If count_matches returns 0, loosen the least essential filter before choosing.
 - You have at most 6 model turns. Call several independent tools in one turn."""

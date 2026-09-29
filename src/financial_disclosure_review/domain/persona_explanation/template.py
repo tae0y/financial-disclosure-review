@@ -109,10 +109,17 @@ def reader_sketch(row: Mapping[str, Any]) -> str:
 
 
 def derive_profile(
-    row: Mapping[str, Any], product_type: str | None, template: PersonaTemplate
+    row: Mapping[str, Any],
+    product_type: str | None,
+    template: PersonaTemplate,
+    familiarity: Level | None = None,
 ) -> dict:
-    """The reading attributes of one row, the same shape as a legacy profile plus `reader`."""
-    level = familiarity_of(row, template)
+    """The reading attributes of one row, the same shape as a legacy profile plus `reader`.
+
+    `familiarity` is what the reviewer's own words said about the reader (the selection
+    agent's hint); it wins over the row-based estimate, which only guesses from schooling, age
+    and occupation. `familiarity_source` records which one was used."""
+    level = familiarity or familiarity_of(row, template)
     questions = (
         template.likely_questions.get(product_type or "") or template.likely_questions["default"]
     )
@@ -122,6 +129,7 @@ def derive_profile(
         "likely_questions": list(questions[level]),
         "prohibited_assumptions": list(template.prohibited_assumptions),
         "analogy_policy": template.analogy_policy[level],
+        "familiarity_source": "request" if familiarity else "row",
         "reader": reader_sketch(row),
     }
 
