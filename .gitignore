@@ -238,6 +238,8 @@ data/live*/
 data/*.sqlite.bak*
 # Local handoff notes for teammates (spec-change announcements); shared outside the repo.
 data/persona-api-change-*.md
+# Everything the zero-cost mock stack (docker/docker-compose.mock.yml) writes.
+data/mock/
 
 # PyPI configuration file
 .pypirc

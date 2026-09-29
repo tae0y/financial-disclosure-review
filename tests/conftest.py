@@ -24,9 +24,10 @@ def no_paid_embeddings(request, monkeypatch):
     """Free tests never reach the embedding API.
 
     `search_cases` runs inside the compiled graph, so any full-graph test would otherwise spend
-    money on a real `embed_texts` call. A test that means to pay marks itself `use_llm`.
+    money on a real `embed_texts` call. A test that means to pay marks itself `use_llm`; one that
+    points the client at the local mock API (the `mock_api` fixture) reaches no paid API either.
     """
-    if request.node.get_closest_marker("use_llm"):
+    if request.node.get_closest_marker("use_llm") or "mock_api" in request.fixturenames:
         return
     from tests.helpers import FakeEmbed
 
@@ -39,9 +40,10 @@ def no_paid_tool_loops(request, monkeypatch):
 
     The page agent, the case-linking agent and the persona selection agent build a real
     `ToolChat` unless a test injects a scripted chat; with the key in `.env` that would spend
-    money. Here a real turn raises instead, which every agent records as a stop reason.
+    money. Here a real turn raises instead, which every agent records as a stop reason. The
+    `mock_api` fixture's tests keep real turns: their base URL is the local mock, their key fake.
     """
-    if request.node.get_closest_marker("use_llm"):
+    if request.node.get_closest_marker("use_llm") or "mock_api" in request.fixturenames:
         return
 
     def refuse(self):
