@@ -105,7 +105,7 @@ project and not kept, so their capture time is unknown beyond "before 2026-09-27
 | R-01 | the short-term-loan pitch at the end of a revolving page | S-14 classified `lottecard-revolving` correctly with a real model, so common rule 2 (another product's name in a pitch is not the subject) holds for that one fixture. Other combinations of pitch wording are unchecked. |
 | R-02 | event, bundle and list pages | there is no fixture for the step-1 "no" path against a real model |
 | R-03 | a real case where the verification call answers yes | knowing how often a mismatch happens needs many pages |
-| R-04 | a cap on the number of calls | the worst case is three calls per page (two classify, one verify). Nothing in the code caps the calls or tokens of a whole run. |
+| R-04 | a cap on the number of calls | the worst case is three calls per page (two classify, one verify). The run meter (`core/usage.py`) caps calls and cost for the whole run; no test drives classification into that cap. |
 
 ## How to run the scenarios
 

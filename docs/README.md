@@ -92,11 +92,11 @@ recorded answers by default. See [evaluation](evaluation.md) for suites and resu
 
 ## Review workflow
 
-- [Agent node specs](agent-node-specs/) — per-node behavior: [product-page discovery](agent-node-specs/product_page.md),
+- [Agent node specs](agent-node-specs/README.md) — the workflow map and a per-node summary, then per-node behavior: [product-page discovery](agent-node-specs/product_page.md),
   [classification](agent-node-specs/classification.md), [display checks](agent-node-specs/display_check.md),
   [evidence cards](agent-node-specs/evidence_cards.md),
   [reader overview](agent-node-specs/persona_explanation.md), [ad disclosure](agent-node-specs/ad_disclosure_check.md),
-  and [reporting](agent-node-specs/report.md). The legacy [plain language](agent-node-specs/plain_language.md)
+  [verification and retry](agent-node-specs/verification.md) and [reporting](agent-node-specs/report.md). The legacy [plain language](agent-node-specs/plain_language.md)
   module is kept only for the plain-contract evaluation suite.
 
 ## Evidence and history
