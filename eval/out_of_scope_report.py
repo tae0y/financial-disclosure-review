@@ -2,7 +2,8 @@
 
 The demo has three scenes. Two of them already have a recorded artifact a presenter can fall
 back on when the venue's network is down: `data/reports/demo-260929.md` for the representative
-case and `eval/results/*-duty-flip-record.*` for the defect-injection case. The exception case —
+case and `eval/results/*-duty-flip-record.*` for the defect-injection case (recorded under the
+explanation-duty criteria, before the 2026-09-30 switch to `disclosure-flip`). The exception case —
 "this screen is not ours to review" — had only the classification suite's JSON, which shows the
 verdict but not the document the requester actually receives.
 

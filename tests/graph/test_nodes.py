@@ -12,8 +12,8 @@ from financial_disclosure_review.graph.nodes import (
     classify_type,
     end_report,
     generate_persona_explanation,
+    judge_ad_disclosure,
     judge_display_method,
-    judge_explanation_duty,
     retry_dispatch,
     verify_answer,
 )
@@ -65,27 +65,27 @@ def test_generate_persona_explanation_without_sources_calls_no_model(monkeypatch
     assert update["persona_explanation"]["status"] == "판정 불가"
 
 
-def test_judge_explanation_duty_needs_a_classification_an_html_and_an_explanation():
-    update = judge_explanation_duty(empty_state(), RUNTIME)
-    assert update["explanation_duty_check"]["items"][0]["reason"].startswith("classification")
-    assert update["explanation_duty_check"]["original"] == []
+def test_judge_ad_disclosure_needs_a_classification_an_html_and_an_explanation():
+    update = judge_ad_disclosure(empty_state(), RUNTIME)
+    assert update["ad_disclosure_check"]["items"][0]["reason"].startswith("classification")
+    assert update["ad_disclosure_check"]["original"] == []
 
     state = state_with(
         classification={"product_type": "리볼빙", "page_type": "업무광고"},
         persona_explanation={"html": "<p>x</p>"},
     )
-    update = judge_explanation_duty(state, RUNTIME)
-    assert "product_page.html" in update["explanation_duty_check"]["items"][0]["reason"]
+    update = judge_ad_disclosure(state, RUNTIME)
+    assert "product_page.html" in update["ad_disclosure_check"]["items"][0]["reason"]
 
     state = state_with(
         classification={"product_type": "리볼빙", "page_type": "업무광고"},
         product_page={"html": "<p>x</p>"},
     )
-    update = judge_explanation_duty(state, RUNTIME)
-    assert "persona_explanation.html" in update["explanation_duty_check"]["items"][0]["reason"]
+    update = judge_ad_disclosure(state, RUNTIME)
+    assert "persona_explanation.html" in update["ad_disclosure_check"]["items"][0]["reason"]
 
 
-def test_judge_explanation_duty_keeps_the_original_side_of_a_previous_round():
+def test_judge_ad_disclosure_keeps_the_original_side_of_a_previous_round():
     previous = {
         "items": [
             {
@@ -101,11 +101,11 @@ def test_judge_explanation_duty_keeps_the_original_side_of_a_previous_round():
     state = state_with(
         classification={"product_type": "리볼빙", "page_type": "업무광고"},
         product_page={"html": "<p>x</p>"},
-        explanation_duty_check=previous,
+        ad_disclosure_check=previous,
     )
-    update = judge_explanation_duty(state, RUNTIME)
-    assert update["explanation_duty_check"]["original"] == previous["original"]
-    assert update["explanation_duty_check"]["plain"] == []
+    update = judge_ad_disclosure(state, RUNTIME)
+    assert update["ad_disclosure_check"]["original"] == previous["original"]
+    assert update["ad_disclosure_check"]["overview"] == []
 
 
 def test_verify_answer_fails_every_module_that_has_no_answer_yet():
@@ -113,8 +113,8 @@ def test_verify_answer_fails_every_module_that_has_no_answer_yet():
     assert set(update) == {"verification"}
     assert update["verification"]["passed"] is False
     assert update["verification"]["failed_modules"] == [
+        "ad_disclosure_check",
         "display_check",
-        "explanation_duty_check",
         "persona_explanation",
     ]
 
@@ -152,11 +152,11 @@ def test_verify_answer_keeps_the_retry_history_of_earlier_rounds():
     state = empty_state()
     state["verification"] = {
         "loop_count": 1,
-        "retry_target": "judge_explanation_duty",
-        "retry_modules": ["explanation_duty_check"],
-        "retry_history": [{"loop": 1, "target": "judge_explanation_duty"}],
+        "retry_target": "judge_ad_disclosure",
+        "retry_modules": ["ad_disclosure_check"],
+        "retry_history": [{"loop": 1, "target": "judge_ad_disclosure"}],
     }
     verification = verify_answer(state, RUNTIME)["verification"]
     assert verification["loop_count"] == 2
-    assert verification["retry_history"] == [{"loop": 1, "target": "judge_explanation_duty"}]
-    assert verification["retry_target"] == "judge_explanation_duty"
+    assert verification["retry_history"] == [{"loop": 1, "target": "judge_ad_disclosure"}]
+    assert verification["retry_target"] == "judge_ad_disclosure"

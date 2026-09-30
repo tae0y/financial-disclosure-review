@@ -1,15 +1,13 @@
-"""Supplementary explanations of the page's facts for one reviewed reader profile."""
+"""A plain-language overview of the page for one reviewed reader profile, shown beside it."""
 
 from .dataset import PersonaStore, ensure_dataset
 from .generate import generate_persona_explanation
-from .ledger import build_fact_ledger
 from .profiles import PROFILE_ALLOWLIST, resolve_dataset_profile, resolve_profile
 from .selection import choose_profile, select_persona
 
 __all__ = [
     "PROFILE_ALLOWLIST",
     "PersonaStore",
-    "build_fact_ledger",
     "choose_profile",
     "ensure_dataset",
     "generate_persona_explanation",

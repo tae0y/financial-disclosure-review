@@ -21,27 +21,26 @@ DISPLAY_OK = {
     ],
     "judgments": {"status": "완료", "assumptions": {"font_size": "px x 0.75"}, "limits": {}},
 }
-PLAIN_OK = {
-    "accepted_blocks": [
-        {"source_id": "b0", "source_quote": "연회비 1만원", "text": "1년에 1만원을 냅니다."}
-    ],
-    "contract_errors": [],
-    "term_refs": [{"term": "연회비", "source_id": "b0", "gloss": "카드를 1년 쓰는 값"}],
+OVERVIEW_OK = {
+    "status": "완료",
+    "overview": ["1년에 1만원을 냅니다."],
+    "problems": [],
+    "html": '<section data-role="overview"><p>1년에 1만원을 냅니다.</p></section>',
 }
-DUTY_OK = {
-    "items": [{"code": "설명01", "applied": True, "condition_status": "성립", "reason": ""}],
+DISCLOSURE_OK = {
+    "items": [{"code": "C01", "applied": True, "condition_status": "성립", "reason": ""}],
     "original": [
         {
-            "code": "설명01",
+            "code": "C01",
             "condition_status": "성립",
             "verdict": "적합",
             "quote": "연회비 1만원",
             "reason": "표기됨",
         }
     ],
-    "plain": [
+    "overview": [
         {
-            "code": "설명01",
+            "code": "C01",
             "condition_status": "성립",
             "verdict": "적합",
             "quote": "1년에 1만원",
@@ -59,8 +58,8 @@ def report(**overrides):
         "page": PAGE,
         "classification": CLASSIFICATION,
         "display": DISPLAY_OK,
-        "plain": PLAIN_OK,
-        "duty": DUTY_OK,
+        "overview": OVERVIEW_OK,
+        "disclosure": DISCLOSURE_OK,
         "verification": PASSED,
         "stop": {"max_loops": 2},
     }
@@ -74,7 +73,8 @@ def test_a_clean_run_is_reported_as_done_and_lists_no_finding():
     assert result["decision"].startswith("담당자 확인 후")
     assert result["findings"] == []
     assert result["summary"]["display_violations"] == 0
-    assert result["summary"]["plain_blocks"] == 1
+    assert result["summary"]["overview_paragraphs"] == 1
+    assert result["summary"]["overview_withheld"] is False
 
 
 def test_the_markdown_carries_the_frontmatter_and_every_section():
@@ -82,9 +82,9 @@ def test_the_markdown_carries_the_frontmatter_and_every_section():
     assert markdown.startswith("---\nai-generated: true\nhuman-review: false\n---")
     headings = [
         "## 1. 표시방법",
-        "## 2. 설명의무 (원문)",
-        "## 3. 쉬운말 초안",
-        "## 4. 쉬운말 초안의 설명의무",
+        "## 2. 광고 의무표시 (원문)",
+        "## 3. 쉬운말 개요",
+        "## 4. 쉬운말 개요의 광고 의무표시",
     ]
     positions = [markdown.index(heading) for heading in headings]
     assert positions == sorted(positions)
@@ -95,10 +95,10 @@ def test_the_markdown_carries_the_frontmatter_and_every_section():
 def test_the_actions_are_grouped_by_target_rather_than_one_line_per_item():
     """항목이 수십 개일 때 조치 목록이 수십 줄이 되지 않아야 합니다."""
     duty = {
-        **DUTY_OK,
+        **DISCLOSURE_OK,
         "original": [
             {
-                "code": f"설명{n:02d}",
+                "code": f"A{n:02d}",
                 "condition_status": "성립",
                 "verdict": "부적합",
                 "quote": "연회비 1만원",
@@ -107,9 +107,9 @@ def test_the_actions_are_grouped_by_target_rather_than_one_line_per_item():
             for n in range(1, 16)
         ],
     }
-    result = report(duty=duty)
+    result = report(disclosure=duty)
     assert len(result["findings"]) == 15
-    grouped = [a for a in result["actions"] if a.startswith("원문 권고 미충족")]
+    grouped = [a for a in result["actions"] if a.startswith("원문 위반")]
     assert len(grouped) == 1, result["actions"]
     assert "15건" in grouped[0]
     assert "외 3건" in grouped[0], "12개까지만 코드로 보여 주고 나머지는 건수로"
@@ -137,10 +137,10 @@ def test_an_unjudged_display_item_becomes_a_human_task_not_a_pass():
 
 def test_a_violation_blocks_the_plain_language_from_being_published():
     duty = {
-        **DUTY_OK,
+        **DISCLOSURE_OK,
         "original": [
             {
-                "code": "설명01",
+                "code": "C01",
                 "condition_status": "성립",
                 "verdict": "부적합",
                 "quote": "연회비 1만원",
@@ -148,27 +148,27 @@ def test_a_violation_blocks_the_plain_language_from_being_published():
             }
         ],
     }
-    result = report(duty=duty)
+    result = report(disclosure=duty)
     assert result["status"] == "사람 검토 필요"
-    assert result["decision"] == "독자 맞춤 설명 자동 게시 불가 — 원문 유지"
-    assert result["summary"]["duty_violations_original"] == 1
+    assert result["decision"] == "쉬운말 개요 자동 게시 불가 — 원문만 게시"
+    assert result["summary"]["disclosure_violations_original"] == 1
 
 
 def test_a_fidelity_difference_is_reported_as_a_finding():
     duty = {
-        **DUTY_OK,
-        "fidelity": [{"code": "설명01", "source_id": "b0", "kind": "누락", "reason": "조건 빠짐"}],
+        **DISCLOSURE_OK,
+        "fidelity": [{"code": "C01", "source_id": "b0", "kind": "누락", "reason": "조건 빠짐"}],
     }
-    result = report(duty=duty)
+    result = report(disclosure=duty)
     assert result["summary"]["fidelity_diffs"] == 1
-    assert any(row["module"] == "explanation_duty_check" for row in result["findings"])
+    assert any(row["module"] == "ad_disclosure_check" for row in result["findings"])
 
 
 def test_a_failed_verification_escalates_with_the_stop_reason():
     failed = {
         "passed": False,
         "reasons": ["수치 근거 없음"],
-        "failed_modules": ["plain_language"],
+        "failed_modules": ["persona_explanation"],
         "feedback": [],
         "loop_count": 2,
     }
@@ -177,7 +177,7 @@ def test_a_failed_verification_escalates_with_the_stop_reason():
         stop={"reason": "재시도 한도 초과", "detail": "2회 모두 미달", "max_loops": 2},
     )
     assert result["status"] == "사람 검토 필요"
-    assert result["decision"] == "독자 맞춤 설명 자동 게시 불가 — 원문 유지"
+    assert result["decision"] == "쉬운말 개요 자동 게시 불가 — 원문만 게시"
     assert "에스컬레이션" in result["actions"][0]
     assert "재시도 한도 초과" in result["markdown"]
 
@@ -190,8 +190,8 @@ def test_an_out_of_scope_page_reports_why_and_stops():
             "reason": "1단계: 목록 페이지",
         },
         display={},
-        plain={},
-        duty={},
+        overview={},
+        disclosure={},
         verification={"passed": False, "failed_modules": ["display_check"], "loop_count": 1},
     )
     assert result["status"] == "검토 대상 아님"
@@ -206,7 +206,7 @@ def test_the_cost_is_reported_from_the_run_meter():
 
     current().record("gpt-5-mini", "DisplayVerdicts", 1_000_000, 100_000)
     result = build_report(
-        PAGE, CLASSIFICATION, DISPLAY_OK, PLAIN_OK, DUTY_OK, PASSED, {"max_loops": 2}
+        PAGE, CLASSIFICATION, DISPLAY_OK, OVERVIEW_OK, DISCLOSURE_OK, PASSED, {"max_loops": 2}
     )
     assert result["cost"]["calls"] == 1
     assert result["cost"]["usd"] == 0.45
@@ -235,7 +235,7 @@ def display_with(code: str, verdict: str = "부적합") -> dict:
 
 def duty_with(code: str) -> dict:
     return {
-        **DUTY_OK,
+        **DISCLOSURE_OK,
         "original": [
             {
                 "code": code,
@@ -257,18 +257,28 @@ def test_a_display_rule_binds_an_ad_page_directly_so_its_failure_is_a_violation(
     assert result["summary"]["violations"] == 1 and result["summary"]["shortfalls"] == 0
 
 
-def test_an_explanation_item_on_an_ad_page_is_applied_by_analogy_so_it_is_a_shortfall():
-    # 설명의무(제19조) is a contract-stage duty; on an ad page it is applied by analogy.
-    result = report(duty=duty_with("F01"), bindings={"F01": "법령"})
-    row = next(f for f in result["findings"] if f["code"] == "F01")
-    assert (row["severity"], row["basis"]) == ("권고 미충족", "설명의무 준용")
-
-
-def test_the_same_item_on_a_solicitation_screen_is_a_violation():
-    screen = {**CLASSIFICATION, "page_type": "권유"}
-    result = report(classification=screen, duty=duty_with("F01"), bindings={"F01": "법령"})
-    row = next(f for f in result["findings"] if f["code"] == "F01")
+def test_a_mandatory_ad_disclosure_binds_an_ad_page_directly_so_its_failure_is_a_violation():
+    # 광고 의무표시(금소법 제22조, 협회 광고규정)는 광고 페이지에 직접 걸리는 의무다.
+    result = report(disclosure=duty_with("C01"), bindings={"C01": "법령"})
+    row = next(f for f in result["findings"] if f["code"] == "C01")
     assert (row["severity"], row["basis"]) == ("위반", "법령")
+
+
+def test_explanation_duty_items_are_listed_for_the_product_documents_not_judged():
+    disclosure = {
+        **DISCLOSURE_OK,
+        "deferred": [
+            {"code": "설명11", "question": "연회비 반환이 설명되어 있는가?"},
+            {"code": "설명16", "question": "청약 철회의 기한·행사방법·효과가 설명되어 있는가?"},
+        ],
+    }
+    result = report(disclosure=disclosure)
+    assert result["status"] == "검토 완료"
+    assert not any(f["code"].startswith("설명") for f in result["findings"])
+    assert any("상품설명서에서 확인: 설명11, 설명16" in a for a in result["actions"])
+    assert result["summary"]["deferred_explanation_items"] == 2
+    assert "## 5. 상품설명서에서 확인할 설명의무 항목" in result["markdown"]
+    assert "- 청약 철회의 기한·행사방법·효과가 설명되어 있는가?" in result["markdown"]
 
 
 def test_a_guideline_never_makes_a_violation():
@@ -311,8 +321,8 @@ def test_a_run_that_made_calls_reports_its_own_cost_not_the_previous_one():
         PAGE,
         CLASSIFICATION,
         DISPLAY_OK,
-        PLAIN_OK,
-        DUTY_OK,
+        OVERVIEW_OK,
+        DISCLOSURE_OK,
         PASSED,
         {"max_loops": 2},
         previous_cost={"calls": 99, "usd": 9.9},
@@ -337,8 +347,8 @@ def test_a_collection_failure_is_reported_as_such_not_as_a_classification_proble
         page=FAILED_PAGE,
         classification={},
         display={},
-        plain={},
-        duty={},
+        overview={},
+        disclosure={},
         verification={},
     )
     assert result["status"] == "수집 실패"
@@ -349,7 +359,15 @@ def test_a_collection_failure_is_reported_as_such_not_as_a_classification_proble
 
 def test_no_accepted_rule_reads_as_an_insufficient_investigation():
     page = {**FAILED_PAGE, "status": "조사 불충분", "stop_reason": "max_turns", "error": ""}
-    result = report(page=page, classification={}, display={}, plain={}, duty={}, verification={})
+    empty: dict = {}
+    result = report(
+        page=page,
+        classification=empty,
+        display=empty,
+        overview=empty,
+        disclosure=empty,
+        verification=empty,
+    )
     assert result["status"] == "조사 불충분"
     assert any("max_turns" in action for action in result["actions"])
 
@@ -456,7 +474,7 @@ def test_cards_are_counted_but_never_change_the_verdict():
 def test_a_pass_that_rests_only_on_hidden_text_is_named_as_a_limit():
     """원문 적합의 인용이 화면에 보이지 않은 문장에만 있으면, 사람이 노출 여부를 확인해야 합니다."""
     result = report(cards=CARDS)
-    assert any("설명01" in limit and "보이지 않았거나" in limit for limit in result["limits"])
+    assert any("C01" in limit and "보이지 않았거나" in limit for limit in result["limits"])
 
 
 PERSONA = {
@@ -469,80 +487,33 @@ PERSONA = {
         "review_status": "ai-drafted",
         "status": "적용",
     },
-    "units": [
-        {
-            "unit_id": "u1",
-            "source_ids": ["dom-0"],
-            "exact_fact": "연회비 1만원",
-            "explanation": "카드를 1년 쓰는 값으로 1만원을 냅니다.",
-            "analogy": "",
-            "status": "accepted",
-            "problems": [],
-        },
-        {
-            "unit_id": "u2",
-            "source_ids": ["dom-1"],
-            "exact_fact": "연체 시 신용평점 하락",
-            "explanation": "",
-            "analogy": "",
-            "status": "reverted",
-            "problems": ["원문에 없는 수치 3"],
-        },
-    ],
+    "overview": ["카드를 1년 쓰는 값으로 1만원을 냅니다."],
+    "problems": [],
+    "html": '<section data-role="overview"><p>카드를 1년 쓰는 값으로 1만원을 냅니다.</p></section>',
     "controls": {"ui": ["AI 생성 고지"], "governance": ["사람 승인"]},
 }
 
 
-def test_the_persona_explanation_is_reported_with_its_units():
-    duty = {
-        **DUTY_OK,
-        "ledger": [
-            {
-                "fact_id": "f1",
-                "kind": "number",
-                "value": "1만원",
-                "verdict": "보존",
-                "decided_by": "code",
-            }
-        ],
-    }
-    result = report(plain=PERSONA, duty=duty)
-    markdown = result["markdown"]
-    assert "카드를 1년 쓰는 값으로 1만원을 냅니다." in markdown
-    assert "원문 유지 1건" in markdown
-    assert result["summary"]["plain_blocks"] == 1
-    assert result["summary"]["plain_rejected"] == 1
-    assert any(f["verdict"] == "원문 대체" and "dom-1" in f["target"] for f in result["findings"])
+def test_the_overview_is_reported_as_its_paragraphs():
+    result = report(overview=PERSONA)
+    assert "카드를 1년 쓰는 값으로 1만원을 냅니다." in result["markdown"]
+    assert result["summary"]["overview_paragraphs"] == 1
+    assert not any(f["verdict"] == "원문 대체" for f in result["findings"])
 
 
-def test_a_duty_and_its_f_twin_with_the_same_verdict_are_one_finding():
-    """감사 P1-7: 데모의 원문 부적합 19건은 실제 11개 주제였습니다."""
-    duty = {
-        "items": [],
-        "original": [
-            {"code": "설명07", "verdict": "부적합", "reason": "연체 불이익 없음", "quote": ""},
-            {"code": "F07", "verdict": "부적합", "reason": "연체 이자율 없음", "quote": ""},
-            {"code": "F20", "verdict": "부적합", "reason": "강조 없음", "quote": ""},
-            {"code": "설명11", "verdict": "판정 불가", "reason": "-", "quote": ""},
-            {"code": "F11", "verdict": "부적합", "reason": "-", "quote": ""},
-        ],
-        "plain": [],
-        "fidelity": [],
-    }
-    result = report(page={**PAGE, "html": "<p>연회비 1만원</p>", "status": "완료"}, duty=duty)
-    codes = [f["code"] for f in result["findings"] if f["module"] == "explanation_duty_check"]
-    assert codes.count("설명07/F07") == 1
-    assert "설명07" not in codes and "F07" not in codes
-    assert "F20" in codes
-    assert "설명11" in codes and "F11" in codes  # different verdicts stay apart
-    assert result["summary"]["duty_violations_original"] == 4
-    assert result["summary"]["duty_topics_violated_original"] == 3
+def test_an_overview_held_back_by_its_checks_is_a_finding_and_a_limit():
+    held = {**PERSONA, "status": "원문 대체", "html": "", "problems": ["원문에 없는 수치: 3"]}
+    result = report(overview=held)
+    assert result["summary"]["overview_withheld"] is True
+    assert result["summary"]["overview_paragraphs"] == 0
+    assert any(f["verdict"] == "원문 대체" and "3" in f["reason"] for f in result["findings"])
+    assert "(싣지 않음: 원문에 없는 수치: 3)" in result["markdown"]
+    assert any("싣지 않았습니다" in limit for limit in result["limits"])
 
 
 def test_the_report_names_the_reader():
     plain = {
-        **PLAIN_OK,
-        "units": [],
+        **OVERVIEW_OK,
         "profile": {
             "id": "nemotron:abc",
             "version": "t1@ada0f5b",
@@ -557,7 +528,7 @@ def test_the_report_names_the_reader():
             "reason": "",
         },
     }
-    markdown = report(plain=plain)["markdown"]
+    markdown = report(overview=plain)["markdown"]
     assert "독자: 74세 남성" in markdown
 
 
@@ -575,7 +546,7 @@ AGENT_PAGE = {
     ],
 }
 AGENT_SELECTION = {
-    **PLAIN_OK,
+    **OVERVIEW_OK,
     "selection": {
         "decided_by": "agent",
         "stop_reason": "chosen",
@@ -589,7 +560,7 @@ AGENT_SELECTION = {
 
 
 def test_each_agent_loop_that_ran_is_summarized_with_turns_and_stop():
-    runs = report(page=AGENT_PAGE, plain=AGENT_SELECTION)["summary"]["agent_runs"]
+    runs = report(page=AGENT_PAGE, overview=AGENT_SELECTION)["summary"]["agent_runs"]
     assert runs["discovery"] == {
         "ran": "agent",
         "turns": 3,
@@ -606,8 +577,8 @@ def test_each_agent_loop_that_ran_is_summarized_with_turns_and_stop():
 
 def test_loops_that_did_not_run_say_so():
     page = {**PAGE, "status": "완료", "stop_reason": "rule_reused", "html": "<p>x</p>"}
-    plain = {**PLAIN_OK, "selection": {"decided_by": "default", "trace": []}}
-    runs = report(page=page, plain=plain)["summary"]["agent_runs"]
+    plain = {**OVERVIEW_OK, "selection": {"decided_by": "default", "trace": []}}
+    runs = report(page=page, overview=plain)["summary"]["agent_runs"]
     assert runs["discovery"]["ran"] == "reuse"
     assert runs["reader_selection"]["ran"] == "default"
     assert all(run["turns"] == 0 for run in runs.values())
@@ -615,26 +586,15 @@ def test_loops_that_did_not_run_say_so():
 
 
 DRAFT = {
-    "status": "완료",
+    **PERSONA,
     "profile": {"attributes": {"reader": "93세 어르신"}},
-    "units": [
-        {"unit_id": "u1", "source_ids": ["dom-1"], "status": "accepted"},
-        {"unit_id": "u2", "source_ids": ["dom-3"], "status": "reverted"},
-    ],
-    "html": (
-        '<p data-source-id="dom-0">연회비</p>'
-        '<section data-unit-id="u1" data-source-ids="dom-1">'
-        '<p data-role="exact-fact"><strong>연회비 1만원</strong></p>'
-        '<p data-role="explanation">1년에 &#x27;1만원&#x27;을 냅니다.</p>'
-        '<p data-role="analogy">회비와 비슷합니다.</p></section>'
-        '<p data-source-id="dom-2">국내전용</p><p data-source-id="dom-3">해외겸용</p>'
-    ),
+    "overview": ["연회비는 1년에 '1만원'이에요.", "늦게 내면 이자가 더 붙어요."],
+    "html": "<section><p>연회비는 1년에 &#x27;1만원&#x27;이에요.</p><p>늦게 내면</p></section>",
 }
 LABELS = {
     "E02": {"question": "의무표시사항은 9포인트 이상인가?", "basis": "여신협회 광고규정 제5조"},
-    "설명01": {"question": "금리가 설명되어 있는가?", "basis": "금소법 제19조제1항"},
-    "설명02": {"question": "상환금액이 설명되어 있는가?", "basis": "금소법 제19조제1항 외 1"},
-    "F02": {"question": "F02 질문은 쓰이지 않아야 합니다?", "basis": "-"},
+    "C01": {"question": "연회비가 표시되어 있는가?", "basis": "여신협회 광고규정 제4조"},
+    "C02": {"question": "연체이자율이 표시되어 있는가?", "basis": "금소법 제22조 외 1"},
 }
 
 
@@ -642,16 +602,12 @@ def _duty_row(code: str, verdict: str, reason: str) -> dict:
     return {"code": code, "condition_status": "", "verdict": verdict, "quote": "", "reason": reason}
 
 
-def test_the_draft_shows_each_explained_line_and_leaves_out_unchanged_ones():
-    markdown = report(plain=DRAFT)["markdown"]
-    draft = markdown[markdown.index("## 3.") : markdown.index("## 4.")]
-    assert "독자: 93세 어르신" in draft
-    assert "원문 유지 1건" in draft
-    assert (
-        "- **원문** 연회비 1만원 → **쉬운말** 1년에 '1만원'을 냅니다. (비유: 회비와 비슷합니다.)"
-        in draft
-    )
-    assert "국내전용" not in draft, "그대로 둔 원문 줄은 싣지 않음"
+def test_the_overview_section_shows_the_reader_and_each_paragraph():
+    markdown = report(overview=DRAFT)["markdown"]
+    section = markdown[markdown.index("## 3.") : markdown.index("## 4.")]
+    assert "독자: 93세 어르신" in section
+    assert "연회비는 1년에 '1만원'이에요." in section
+    assert "늦게 내면 이자가 더 붙어요." in section
 
 
 def test_display_rows_read_as_the_rubric_question_with_its_basis():
@@ -661,39 +617,36 @@ def test_display_rows_read_as_the_rubric_question_with_its_basis():
     assert "| E02 | - | 적합 |" in report()["markdown"], "라벨이 없으면 코드가 대신합니다"
 
 
-def test_duty_lists_only_open_topics_once_with_question_and_basis():
-    duty = {
-        **DUTY_OK,
+def test_disclosures_list_only_open_items_with_question_and_basis():
+    disclosure = {
+        **DISCLOSURE_OK,
         "original": [
-            _duty_row("설명01", "적합", "표기됨"),
-            _duty_row("설명02", "부적합", "applies_condition 없음(해당없음). 상환금액 없음"),
-            _duty_row("F02", "부적합", "상환금액 없음"),
+            _duty_row("C01", "적합", "표기됨"),
+            _duty_row("C02", "부적합", "applies_condition 없음(해당없음). 연체이자율 없음"),
         ],
-        "plain": [
-            _duty_row("설명01", "적합", "유지됨"),
-            _duty_row("설명02", "판정 불가", "할부 개월 수가 존재(성립). 근거 부족"),
-            _duty_row("F02", "판정 불가", "근거 부족"),
+        "overview": [
+            _duty_row("C01", "적합", "유지됨"),
+            _duty_row("C02", "판정 불가", "근거 부족"),
         ],
     }
-    markdown = report(duty=duty, labels=LABELS)["markdown"]
+    markdown = report(disclosure=disclosure, labels=LABELS)["markdown"]
     original = markdown[markdown.index("## 2.") : markdown.index("## 3.")]
-    plain = markdown[markdown.index("## 4.") :]
+    overview = markdown[markdown.index("## 4.") :]
     assert "적합 1건, 확인 필요 1건" in original
-    row = "| 상환금액이 설명되어 있는가? | 금소법 제19조제1항 외 1 | 부적합 | 상환금액 없음 |"
+    row = "| 연체이자율이 표시되어 있는가? | 금소법 제22조 외 1 | 부적합 | 연체이자율 없음 |"
     assert row in original
-    assert "금리가 설명되어 있는가?" not in original, "적합 항목은 건수로만"
-    assert "F02 질문" not in markdown, "F 쌍둥이는 설명 코드 하나로 묶임"
-    assert "| 판정 불가 | 근거 부족 |" in plain
+    assert "연회비가 표시되어 있는가?" not in original, "적합 항목은 건수로만"
+    assert "| 판정 불가 | 근거 부족 |" in overview
 
 
 def test_a_meaning_change_is_listed_but_an_informational_one_is_not():
     duty = {
-        **DUTY_OK,
+        **DISCLOSURE_OK,
         "fidelity": [
-            {"code": "설명05", "kind": "변경", "reason": "반환 시한이 바뀜"},
-            {"code": "설명09", "kind": "판정 불가", "reason": "인용 없음", "informational": True},
+            {"code": "A05", "kind": "변경", "reason": "수수료 조건이 바뀜"},
+            {"code": "A04", "kind": "판정 불가", "reason": "인용 없음", "informational": True},
         ],
     }
-    markdown = report(duty=duty)["markdown"]
-    assert "- 변경: 반환 시한이 바뀜" in markdown
+    markdown = report(disclosure=duty)["markdown"]
+    assert "- 변경 (A05): 수수료 조건이 바뀜" in markdown
     assert "인용 없음" not in markdown

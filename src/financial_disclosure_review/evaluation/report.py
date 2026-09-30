@@ -56,21 +56,22 @@ def render(run: dict) -> str:
             summary_rows.append(
                 [
                     name,
-                    f"{metrics['duty_stable']}/{metrics['duty_items']}",
-                    f"{metrics['repeats']}회 반복 동일 판정 {_pct(metrics['duty_stability'])}"
+                    f"{metrics['disclosure_stable']}/{metrics['disclosure_items']}",
+                    f"{metrics['repeats']}회 반복 동일 판정 {_pct(metrics['disclosure_stability'])}"
                     f" · 분류 {metrics['classification_stable']}/{metrics['classification_cases']}",
-                    f"적합이 오간 항목 {metrics['duty_pass_flips'] or '없음'}"
-                    f" · 흔들림 유형 {metrics.get('duty_unstable_kinds') or '없음'}",
+                    f"적합이 오간 항목 {metrics['disclosure_pass_flips'] or '없음'}"
+                    f" · 흔들림 유형 {metrics.get('disclosure_unstable_kinds') or '없음'}",
                 ]
             )
             for arm, base in metrics.get("baseline", {}).items():
                 summary_rows.append(
                     [
                         f"stability/{arm}",
-                        f"{base['duty_stable']}/{base['duty_items']}",
-                        f"{metrics['repeats']}회 반복 동일 판정 {_pct(base['duty_stability'])}",
-                        f"적합이 오간 항목 {base['duty_pass_flips'] or '없음'}"
-                        f" · 흔들림 유형 {base.get('duty_unstable_kinds') or '없음'}",
+                        f"{base['disclosure_stable']}/{base['disclosure_items']}",
+                        f"{metrics['repeats']}회 반복 동일 판정"
+                        f" {_pct(base['disclosure_stability'])}",
+                        f"적합이 오간 항목 {base['disclosure_pass_flips'] or '없음'}"
+                        f" · 흔들림 유형 {base.get('disclosure_unstable_kinds') or '없음'}",
                     ]
                 )
         elif name.startswith("classification"):
@@ -82,7 +83,7 @@ def render(run: dict) -> str:
                     f"오분류: {metrics['wrong'] or '없음'}",
                 ]
             )
-        elif name.startswith("duty-flip"):
+        elif name.startswith("disclosure-flip"):
             summary_rows.append(
                 [
                     name,
@@ -191,7 +192,7 @@ def render(run: dict) -> str:
     arms = {
         entry["result"]["arm"]: entry["metrics"]
         for entry in run["suites"]
-        if entry["result"]["suite"].startswith("duty-flip")
+        if entry["result"]["suite"].startswith("disclosure-flip")
     }
     if len(arms) > 1:
         lines += [
@@ -279,7 +280,7 @@ def render(run: dict) -> str:
             lines += [
                 f"- 반복 횟수: {result['repeats']}회 (1회차는 다른 스위트가 쓰는 녹음, 2회차부터"
                 " 새로 녹음)",
-                f"- 설명의무 기준 페이지: `{result['base_html']}`",
+                f"- 광고 의무표시 기준 페이지: `{result['base_html']}`",
                 "",
             ]
             lines += _table(
@@ -293,20 +294,20 @@ def render(run: dict) -> str:
                     for row in result["classification"]
                 ],
             )
-            for arm, duty in [
-                ("pipeline", result["duty"]),
+            for arm, rows_ in [
+                ("pipeline", result["disclosure"]),
                 *(result.get("baseline") or {}).items(),
             ]:
-                lines += [f"설명의무 반복 판정 — `{arm}`", ""]
+                lines += [f"광고 의무표시 반복 판정 — `{arm}`", ""]
                 lines += _table(
-                    ["설명의무 항목", "회차별 판정", "동일"],
+                    ["광고 의무표시 항목", "회차별 판정", "동일"],
                     [
                         [
                             row["code"],
                             " / ".join(map(str, row["verdicts"])),
                             "O" if row["stable"] else "X",
                         ]
-                        for row in duty
+                        for row in rows_
                         if not row["stable"]
                     ]
                     or [["(모두 동일)", "-", "O"]],
@@ -326,7 +327,7 @@ def render(run: dict) -> str:
                     for row in result["rows"]
                 ],
             )
-        elif result["suite"].startswith("duty-flip"):
+        elif result["suite"].startswith("disclosure-flip"):
             base = result["base"]
             lines += [
                 f"- 기준 페이지: `{base['html']}` (본문 {base['visible_chars']:,}자,"

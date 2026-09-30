@@ -22,17 +22,15 @@ STATE = {
     "persona_explanation": {
         "status": "완료",
         "profile": {"id": "nemotron-ko-70s-lowfin"},
-        "units": [
-            {"unit_id": "u1", "status": "accepted"},
-            {"unit_id": "u2", "status": "accepted"},
-            {"unit_id": "u3", "status": "reverted"},
-        ],
-        "html": "<section>독자 맞춤 설명</section>",
+        "overview": ["첫 문단", "둘째 문단"],
+        "problems": [],
+        "html": "<section>쉬운말 개요</section>",
     },
-    "explanation_duty_check": {
+    "ad_disclosure_check": {
         "items": [{"code": "E-01", "applied": True}, {"code": "E-02", "applied": False}],
         "original": [{"code": "E-01", "verdict": "적합"}],
-        "plain": [{"code": "E-01", "verdict": "적합"}],
+        "overview": [{"code": "E-01", "verdict": "적합"}],
+        "deferred": [{"code": "설명16", "question": "청약 철회?"}],
         "fidelity": [{"code": "E-01", "kind": "축약"}],
     },
     "verification": {"passed": False, "failed_modules": ["display_check"], "loop_count": 1},
@@ -59,8 +57,8 @@ def test_summary_reports_page_size_instead_of_the_page() -> None:
 
 def test_full_detail_still_withholds_the_source_page() -> None:
     view = summarize(STATE, Detail.full)
-    assert view["persona_explanation"]["html"] == "<section>독자 맞춤 설명</section>"
-    assert view["explanation_duty_check"]["fidelity"] == [{"code": "E-01", "kind": "축약"}]
+    assert view["persona_explanation"]["html"] == "<section>쉬운말 개요</section>"
+    assert view["ad_disclosure_check"]["fidelity"] == [{"code": "E-01", "kind": "축약"}]
     assert "html" not in view["product_page"]
     assert "x" * 1000 not in _flat(view)
 
@@ -70,11 +68,12 @@ def test_summary_counts_what_a_caller_polls_for() -> None:
     assert view["display_check"]["status"] == "부적합"
     assert view["display_check"]["item_count"] == 2
     assert [row["verdict"] for row in view["display_check"]["verdicts"]] == ["적합", "부적합"]
-    assert view["persona_explanation"]["accepted_units"] == 2
-    assert view["persona_explanation"]["reverted_units"] == 1
+    assert view["persona_explanation"]["paragraphs"] == 2
+    assert view["persona_explanation"]["problems"] == []
+    assert view["ad_disclosure_check"]["deferred_explanation_items"] == 1
     assert view["persona_explanation"]["profile"] == "nemotron-ko-70s-lowfin"
-    assert view["explanation_duty_check"]["applied"] == 1
-    assert view["explanation_duty_check"]["fidelity_differences"] == 1
+    assert view["ad_disclosure_check"]["applied"] == 1
+    assert view["ad_disclosure_check"]["fidelity_differences"] == 1
     assert view["verification"]["passed"] is False
 
 
@@ -82,7 +81,7 @@ def test_summary_omits_the_item_rows_that_full_adds() -> None:
     summary, full = summarize(STATE), summarize(STATE, Detail.full)
     assert "items" not in summary["display_check"]
     assert "items" in full["display_check"]
-    assert "fidelity" not in summary["explanation_duty_check"]
+    assert "fidelity" not in summary["ad_disclosure_check"]
 
 
 def test_an_empty_state_summarizes_without_raising() -> None:

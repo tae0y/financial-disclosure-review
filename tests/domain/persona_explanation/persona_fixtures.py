@@ -1,15 +1,17 @@
-"""Loaders and a scripted fake ask shared by the persona explanation and ledger-check tests."""
+"""Loaders and a scripted fake ask shared by the persona overview tests."""
 
 import json
+import tempfile
+from functools import cache
 from pathlib import Path
 
-from bs4 import BeautifulSoup
-
 from financial_disclosure_review.core.context import Context
+from financial_disclosure_review.knowledge.build import build_rubric_db
 from tests.helpers import FIXTURE_DIR, FakeAsk
 
 PERSONA_DIR = FIXTURE_DIR / "persona"
-PROFILES = Path(__file__).resolve().parents[3] / "assets" / "persona_profiles.yaml"
+ASSETS = Path(__file__).resolve().parents[3] / "assets"
+PROFILES = ASSETS / "persona_profiles.yaml"
 CLASSIFICATION = {"product_type": "신용카드", "page_type": "상품광고", "reason": "테스트"}
 LOWFIN = "nemotron-ko-70s-lowfin"
 FIRSTCARD = "nemotron-ko-20s-firstcard"
@@ -20,8 +22,16 @@ def load_persona_fixture(name: str) -> dict:
     return json.loads((PERSONA_DIR / f"{name}.json").read_text(encoding="utf-8"))
 
 
+@cache
+def _reference_db() -> str:
+    """The rubric DB built once from assets, so the overview sees the real disclosure items."""
+    path = Path(tempfile.mkdtemp()) / "reference.sqlite"
+    build_rubric_db(ASSETS, path)
+    return str(path)
+
+
 def fake_ctx() -> Context:
-    return Context(model="fake")
+    return Context(model="fake", db_path=_reference_db())
 
 
 class ScriptedAsk(FakeAsk):
@@ -39,15 +49,3 @@ class ScriptedAsk(FakeAsk):
 
 def scripted_ask(*answers: dict) -> ScriptedAsk:
     return ScriptedAsk(answers)
-
-
-def top_level_ids(html: str) -> list[str]:
-    """data-source-id of each top-level <p>, or unit:<id> for each <section>, in document order."""
-    soup = BeautifulSoup(html, "html.parser")
-    ids = []
-    for el in soup.find_all(recursive=False):
-        if el.name == "section":
-            ids.append(f"unit:{el['data-unit-id']}")
-        else:
-            ids.append(str(el["data-source-id"]))
-    return ids

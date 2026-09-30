@@ -10,7 +10,7 @@ from financial_disclosure_review.core.text import locate_quote, visible_text
 from financial_disclosure_review.evaluation.cassette import Cassette, CassetteMissError, call_key
 from financial_disclosure_review.evaluation.defects import longest_unused_sentence, remove_quote
 from financial_disclosure_review.evaluation.metrics import metrics_for
-from financial_disclosure_review.evaluation.suites import run_duty_flip, run_plain_contract
+from financial_disclosure_review.evaluation.suites import run_disclosure_flip, run_plain_contract
 
 HTML = """<!doctype html><html lang="ko"><body><main>
 <p>연회비는 국내전용 20,000원이며 해외겸용은 25,000원입니다.</p>
@@ -141,7 +141,7 @@ def test_a_deleted_disclosure_is_detected_and_a_neutral_delete_flips_nothing(tmp
         {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
         for code in FakeDutyAsk.QUOTES
     ]
-    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, product_type: items)
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, classification: items)
     html_path = tmp_path / "page.html"
     html_path.write_text(HTML, encoding="utf-8")
     config = {
@@ -150,7 +150,8 @@ def test_a_deleted_disclosure_is_detected_and_a_neutral_delete_flips_nothing(tmp
         "prefer_codes": ["F11", "F15"],
     }
 
-    result = run_duty_flip(Context(model="fake"), fake_cassette(tmp_path), config, max_flips=2)
+    cassette = fake_cassette(tmp_path)
+    result = run_disclosure_flip(Context(model="fake"), cassette, config, max_flips=2)
     metrics = metrics_for(result)
 
     assert metrics["injected"] == 2
@@ -180,7 +181,7 @@ def test_both_arms_judge_the_same_deletions_chosen_from_what_both_passed(tmp_pat
         {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
         for code in FakeDutyAsk.QUOTES
     ]
-    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, product_type: items)
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, classification: items)
     html_path = tmp_path / "page.html"
     html_path.write_text(HTML, encoding="utf-8")
     config = {
@@ -193,7 +194,7 @@ def test_both_arms_judge_the_same_deletions_chosen_from_what_both_passed(tmp_pat
     deletions = {
         arm: [
             (row["case"], row["removed_quote"])
-            for row in run_duty_flip(Context(model="fake"), cassette, config, arm=arm)["rows"]
+            for row in run_disclosure_flip(Context(model="fake"), cassette, config, arm=arm)["rows"]
         ]
         for arm in ("pipeline", "ablation")
     }
@@ -232,7 +233,7 @@ def test_a_miss_resting_on_another_sentence_on_the_page_is_named(tmp_path, monke
         {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
         for code in ("F11", "F15")
     ]
-    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, product_type: items)
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, classification: items)
     html_path = tmp_path / "page.html"
     html_path.write_text(HTML, encoding="utf-8")
     config = {
@@ -242,7 +243,7 @@ def test_a_miss_resting_on_another_sentence_on_the_page_is_named(tmp_path, monke
     }
     cassette = Cassette(tmp_path / "fallback.json", mode="live", ask=FallbackAsk())
 
-    metrics = metrics_for(run_duty_flip(Context(model="fake"), cassette, config, max_flips=2))
+    metrics = metrics_for(run_disclosure_flip(Context(model="fake"), cassette, config, max_flips=2))
 
     assert metrics["missed"] == ["F15"]
     assert metrics["missed_with_evidence_on_page"] == ["F15"]
@@ -255,7 +256,7 @@ class ForgetfulAsk(FakeDutyAsk):
 
     def __call__(self, model, schema, task, effort="low", **data):
         answer = super().__call__(model, schema, task, effort, **data)
-        if schema.__name__ == "ExplanationJudgments" and self.NEUTRAL not in data["text"]:
+        if schema.__name__ == "DisclosureJudgments" and self.NEUTRAL not in data["text"]:
             answer["items"] = answer["items"][:1]
         return answer
 
@@ -267,7 +268,7 @@ def test_a_variant_the_arm_cannot_judge_is_recorded_as_a_failure_not_a_crash(tmp
         {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
         for code in FakeDutyAsk.QUOTES
     ]
-    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, product_type: items)
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, classification: items)
     html_path = tmp_path / "page.html"
     html_path.write_text(HTML, encoding="utf-8")
     config = {
@@ -277,7 +278,7 @@ def test_a_variant_the_arm_cannot_judge_is_recorded_as_a_failure_not_a_crash(tmp
     }
     cassette = Cassette(tmp_path / "forgetful.json", mode="live", ask=ForgetfulAsk())
 
-    result = run_duty_flip(Context(model="fake"), cassette, config, max_flips=2)
+    result = run_disclosure_flip(Context(model="fake"), cassette, config, max_flips=2)
     metrics = metrics_for(result)
 
     neutral = result["rows"][-1]
@@ -483,7 +484,7 @@ def test_the_stability_suite_names_an_item_whose_answer_moves_between_rounds(tmp
         {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
         for code in ("F11", "F07")
     ]
-    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, product_type: items)
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, classification: items)
     monkeypatch.setattr(
         suites, "classify_page", lambda page, model, ask: {"product_type": "신용카드"}
     )
@@ -501,9 +502,9 @@ def test_the_stability_suite_names_an_item_whose_answer_moves_between_rounds(tmp
     metrics = metrics_for(result)
 
     assert metrics["classification_stable"] == 1
-    assert metrics["duty_items"] == 2 and metrics["duty_stable"] == 1
-    assert metrics["duty_pass_flips"] == ["F11"]
-    assert metrics["duty_unstable"] == [
+    assert metrics["disclosure_items"] == 2 and metrics["disclosure_stable"] == 1
+    assert metrics["disclosure_pass_flips"] == ["F11"]
+    assert metrics["disclosure_unstable"] == [
         {"code": "F11", "verdicts": ["적합", "판정 불가", "판정 불가"]}
     ]
 
@@ -539,7 +540,7 @@ def test_the_stability_suite_repeats_the_ablation_arm_as_a_baseline(tmp_path, mo
         {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
         for code in ("F11", "F07")
     ]
-    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, product_type: items)
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, classification: items)
     monkeypatch.setattr(
         suites, "classify_page", lambda page, model, ask: {"product_type": "신용카드"}
     )
@@ -558,14 +559,14 @@ def test_the_stability_suite_repeats_the_ablation_arm_as_a_baseline(tmp_path, mo
     )
     metrics = metrics_for(result)
 
-    assert metrics["duty_stable"] == 2
+    assert metrics["disclosure_stable"] == 2
     baseline = metrics["baseline"]["ablation"]
-    assert baseline["duty_items"] == 2 and baseline["duty_stable"] == 1
-    assert baseline["duty_unstable"] == [
+    assert baseline["disclosure_items"] == 2 and baseline["disclosure_stable"] == 1
+    assert baseline["disclosure_unstable"] == [
         {"code": "F11", "verdicts": ["부적합", "판정 불가", "판정 불가"]}
     ]
-    assert baseline["duty_unstable_kinds"] == {"부적합↔판정 불가": 1}
-    assert metrics["duty_unstable_kinds"] == {}
+    assert baseline["disclosure_unstable_kinds"] == {"부적합↔판정 불가": 1}
+    assert metrics["disclosure_unstable_kinds"] == {}
 
 
 @pytest.mark.parametrize("arm", ["pipeline", "keyword"])

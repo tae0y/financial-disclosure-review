@@ -2,19 +2,18 @@
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from langgraph.runtime import Runtime
 
 from ..core.context import Context
 from ..core.state import State
-from ..core.text import norm, visible_text
+from ..core.text import norm
 from ..core.threads import run_in_thread
+from ..domain.ad_disclosure_check import judge_disclosure, judge_original
 from ..domain.classification import classify_page
 from ..domain.display_check import judge_display
 from ..domain.evidence_cards import extract_evidence_cards as extract_cards
-from ..domain.explanation_duty_check import judge_explanation, judge_original
-from ..domain.explanation_duty_check.ledger import check_ledger, map_rubric_fidelity
 from ..domain.persona_explanation import choose_profile
 from ..domain.persona_explanation import generate_persona_explanation as generate_persona
 from ..domain.persona_explanation.profiles import PROFILES_FILE
@@ -22,7 +21,6 @@ from ..domain.product_page import fetch_product_page
 from ..domain.report import build_report
 from ..domain.verification import verify
 from ..knowledge.rubrics import rubric_bindings, rubric_labels
-from ..llm.client import ask
 from .retry import MAX_LOOPS, RETRY_KEYS, escalation, plan_retry
 
 
@@ -91,35 +89,15 @@ def judge_display_method(state: State, runtime: Runtime[Context]) -> dict:
     return {"display_check": check}
 
 
-def mark_mandatory(
-    sources: list[dict[str, Any]], display: Mapping[str, Any]
-) -> list[dict[str, Any]]:
-    """Flag the source lines display_check labelled as 의무표시, so the explanation keeps them
-    emphasised (audit P2-12). Matching is by normalised text containment either way."""
-    judgments = display.get("judgments") or {}
-    wanted = set((judgments.get("labels") or {}).get("mandatory") or [])
-    texts = [
-        norm(b.get("text") or "")
-        for b in judgments.get("blocks") or []
-        if b.get("id") in wanted and len(norm(b.get("text") or "")) >= 6
-    ]
-
-    def hit(text: str) -> bool:
-        line = norm(text)
-        return any(t in line or (len(line) >= 6 and line in t) for t in texts)
-
-    return [{**s, "mandatory": True} if texts and hit(s.get("text", "")) else s for s in sources]
-
-
 def generate_persona_explanation(state: State, runtime: Runtime[Context]) -> dict:
-    """A supplementary explanation for one reviewed reader profile; never a verdict."""
+    """A plain overview for one reviewed reader profile, shown beside the page; never a verdict."""
     print("[generate_persona_explanation]")
     ctx = runtime.context
     persona: dict[str, Any] = dict(state.get("persona_explanation") or {})
     cards = state.get("evidence_cards") or {}
     feedback = (state.get("verification") or {}).get("feedback") or []
     classification = state.get("classification") or {}
-    # The reader is chosen once per review; a retry explains for the same reader.
+    # The reader is chosen once per review; a retry writes for the same reader.
     if not persona.get("profile") or not persona.get("selection"):
         persona.update(
             choose_profile(
@@ -130,10 +108,9 @@ def generate_persona_explanation(state: State, runtime: Runtime[Context]) -> dic
                 rubric_dir=ctx.rubric_dir,
             )
         )
-    sources = mark_mandatory(list(cards.get("sources") or []), state.get("display_check") or {})
     persona.update(
         generate_persona(
-            sources,
+            list(cards.get("sources") or []),
             cards.get("cards") or [],
             classification,
             ctx,
@@ -145,27 +122,27 @@ def generate_persona_explanation(state: State, runtime: Runtime[Context]) -> dic
     return {"persona_explanation": persona}
 
 
-def judge_explanation_original(state: State, runtime: Runtime[Context]) -> dict:
-    """The original side of explanation duty, beside the persona explanation it does not read.
+def judge_disclosure_original(state: State, runtime: Runtime[Context]) -> dict:
+    """The original side of the ad-disclosure check, beside the overview it does not read.
 
-    `judge_explanation_duty` reuses these rows; without them (a rerun from an older checkpoint,
-    or nothing to judge yet) it judges the original side itself.
+    `judge_ad_disclosure` reuses these rows; without them (a rerun from an older checkpoint, or
+    nothing to judge yet) it judges the original side itself.
     """
-    print("[judge_explanation_original]")
+    print("[judge_disclosure_original]")
     classification = state.get("classification") or {}
     page = state.get("product_page") or {}
     if not classification.get("product_type") or not classification.get("page_type"):
         return {}
     if not page.get("html"):
         return {}
-    check: dict[str, Any] = dict(state.get("explanation_duty_check") or {})
+    check: dict[str, Any] = dict(state.get("ad_disclosure_check") or {})
     check.update(judge_original(page, classification, runtime.context))
-    return {"explanation_duty_check": check}
+    return {"ad_disclosure_check": check}
 
 
-def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
-    print("[judge_explanation_duty]")
-    check: dict[str, Any] = dict(state.get("explanation_duty_check") or {})
+def judge_ad_disclosure(state: State, runtime: Runtime[Context]) -> dict:
+    print("[judge_ad_disclosure]")
+    check: dict[str, Any] = dict(state.get("ad_disclosure_check") or {})
     page: dict[str, Any] = dict(state.get("product_page") or {})
     persona: dict[str, Any] = dict(state.get("persona_explanation") or {})
     classification = state.get("classification") or {}
@@ -185,16 +162,14 @@ def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
         check.update(
             items=blocked("classification이 비어 있음; classify_type을 먼저 실행해야 함"),
             original=[],
-            plain=[],
-            ledger=[],
+            overview=[],
             fidelity=[],
         )
     elif not page.get("html"):
         check.update(
             items=blocked("product_page.html이 비어 있음"),
             original=[],
-            plain=[],
-            ledger=[],
+            overview=[],
             fidelity=[],
         )
     elif not persona.get("html"):
@@ -205,39 +180,24 @@ def judge_explanation_duty(state: State, runtime: Runtime[Context]) -> dict:
                 " generate_persona_explanation을 먼저 실행해야 함"
             ),
             original=check.get("original") or [],
-            plain=[],
-            ledger=[],
+            overview=[],
             fidelity=[],
         )
     else:
         feedback = (state.get("verification") or {}).get("feedback") or []
-        judged = judge_explanation(
-            page,
-            {"html": persona["html"]},
-            classification,
-            runtime.context,
-            # An empty original side (every item ruled out) is a result, not a missing one.
-            check.get("original") if check.get("items") else None,
-            check.get("items") or None,
-            feedback=feedback,
-        )
-        # Rubric-level differences are tied to the units they came from; one tied to an accepted
-        # unit (e.g. a warning whose cause the explanation changed) fails verification.
-        rubric_fidelity = map_rubric_fidelity(
-            judged.get("fidelity") or [], persona.get("units") or []
-        )
-        ledger = check_ledger(
-            persona.get("fact_ledger") or [],
-            persona.get("units") or [],
-            visible_text(page["html"]),
-            visible_text(persona["html"]),
-            runtime.context.model,
-            ask,
-        )
         check.update(
-            {**judged, "ledger": ledger["ledger"], "fidelity": rubric_fidelity + ledger["fidelity"]}
+            judge_disclosure(
+                page,
+                {"html": persona["html"]},
+                classification,
+                runtime.context,
+                # An empty original side (every item ruled out) is a result, not a missing one.
+                check.get("original") if check.get("items") else None,
+                check.get("items") or None,
+                feedback=feedback,
+            )
         )
-    return {"explanation_duty_check": check}
+    return {"ad_disclosure_check": check}
 
 
 def verify_answer(state: State, runtime: Runtime[Context]) -> dict:
@@ -253,7 +213,7 @@ def verify_answer(state: State, runtime: Runtime[Context]) -> dict:
                 state.get("product_page") or {},
                 state.get("display_check") or {},
                 state.get("persona_explanation") or {},
-                state.get("explanation_duty_check") or {},
+                state.get("ad_disclosure_check") or {},
                 int(previous.get("loop_count") or 0),
             ),
         }
@@ -267,11 +227,6 @@ def retry_dispatch(state: State) -> dict:
     return {"verification": verification}
 
 
-def _explanation_of(state: State) -> dict[str, Any]:
-    legacy: dict[str, Any] = dict(state).get("plain_language") or {}  # type: ignore[assignment]
-    return dict(state.get("persona_explanation") or legacy)
-
-
 def report_for(state: Mapping[str, Any], ctx: Context, stop: Mapping[str, Any]) -> dict:
     """The Report for whatever State holds; `stop` says why the run ended where it did."""
     report: dict[str, Any] = dict(state.get("report") or {})
@@ -280,9 +235,8 @@ def report_for(state: Mapping[str, Any], ctx: Context, stop: Mapping[str, Any]) 
             state["product_page"],
             state.get("classification") or {},
             state.get("display_check") or {},
-            # A checkpoint from before the persona explanation still has `plain_language`.
-            _explanation_of(cast(State, state)),
-            state.get("explanation_duty_check") or {},
+            state.get("persona_explanation") or {},
+            state.get("ad_disclosure_check") or {},
             state.get("verification") or {},
             stop,
             bindings=rubric_bindings(ctx.db_path),

@@ -3,7 +3,6 @@
 from collections.abc import Mapping
 from typing import Any
 
-from ...core.duty_codes import duty_topic
 from ...core.usage import current
 from .markdown import render_markdown
 
@@ -16,23 +15,20 @@ STATUS_INSUFFICIENT = "조사 불충분"
 # product_page.status values written by the page-evidence agent.
 PAGE_COMPLETE = "완료"
 
-PUBLISH_BLOCKED = "독자 맞춤 설명 자동 게시 불가 — 원문 유지"
-PUBLISH_ALLOWED = "담당자 확인 후 독자 맞춤 설명 게시 가능"
-EXPLANATION = "독자 맞춤 설명"
+PUBLISH_BLOCKED = "쉬운말 개요 자동 게시 불가 — 원문만 게시"
+PUBLISH_ALLOWED = "담당자 확인 후 쉬운말 개요 게시 가능"
+EXPLANATION = "쉬운말 개요"
 
 SEVERITY_VIOLATION = "위반"
 SEVERITY_SHORTFALL = "권고 미충족"
-AD_PAGE_TYPES = ("상품광고", "업무광고")
 # Rubric `binding` levels that bind a page directly when the rule is about that kind of page.
 DIRECT_BINDINGS = ("법령", "협회 자율규제")
 
 
-def severity(module: str, binding: str | None, page_type: str | None) -> tuple[str, str]:
-    """How 부적합 reads: direct bindings are 위반; explanation duty by 준용 is 권고 미충족."""
+def severity(binding: str | None) -> tuple[str, str]:
+    """How 부적합 reads: a direct binding is 위반, a guideline-level one 권고 미충족."""
     if binding and binding not in DIRECT_BINDINGS:
         return SEVERITY_SHORTFALL, binding
-    if module == "explanation_duty_check" and page_type in AD_PAGE_TYPES:
-        return SEVERITY_SHORTFALL, "설명의무 준용"
     return SEVERITY_VIOLATION, binding or "구속력 미상"
 
 
@@ -48,54 +44,16 @@ def _clip(text: str, limit: int = 120) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def _accepted(plain: Mapping[str, Any]) -> list[dict]:
-    """Accepted explanation units, or a legacy checkpoint's accepted plain-language blocks."""
-    if "units" in plain:
-        return [u for u in plain.get("units") or [] if u.get("status") == "accepted"]
-    return list(plain.get("accepted_blocks") or [])
-
-
-def _reverted(plain: Mapping[str, Any]) -> list[dict]:
-    """Units that fell back to the original line (legacy: plain-language contract errors)."""
-    if "units" in plain:
-        return [
-            {
-                "source_id": ",".join(u.get("source_ids") or []),
-                "reason": "; ".join(u.get("problems") or []),
-            }
-            for u in plain.get("units") or []
-            if u.get("status") == "reverted"
-        ]
-    return list(plain.get("contract_errors") or [])
-
-
-def _merge_twins(found: list[dict]) -> list[dict]:
-    """One row per explanation-duty topic: a 설명 code and its F twin with the same verdict on the
-    same side read as `설명07/F07`, so a reviewer does not act on the same duty twice."""
-    merged: list[dict] = []
-    by_key: dict[tuple, dict] = {}
-    for row in found:
-        if row["module"] != "explanation_duty_check":
-            merged.append(row)
-            continue
-        key = (duty_topic(row["code"]), row["verdict"], row["target"])
-        first = by_key.get(key)
-        if first is None:
-            by_key[key] = row
-            merged.append(row)
-            continue
-        codes = sorted({*first["code"].split("/"), row["code"]}, key=lambda c: c[0] == "F")
-        first["code"] = "/".join(codes)
-        first["quotes"] = list(dict.fromkeys(first["quotes"] + row["quotes"]))
-    return merged
+def _withheld(overview: Mapping[str, Any]) -> list[str]:
+    """The code-check problems that kept the overview off the page; empty when it is shown."""
+    return list(overview.get("problems") or [])
 
 
 def _findings(
     display: Mapping[str, Any],
-    duty: Mapping[str, Any],
-    plain: Mapping[str, Any],
+    disclosure: Mapping[str, Any],
+    overview: Mapping[str, Any],
     bindings: Mapping[str, str] | None = None,
-    page_type: str | None = None,
 ) -> list[dict]:
     """Every row a reviewer must check; a 부적합 row also carries its `severity` and `basis`."""
     bindings = bindings or {}
@@ -112,12 +70,12 @@ def _findings(
                     "quotes": row.get("quotes") or [],
                 }
             )
-    for side, label in (("original", "원문"), ("plain", EXPLANATION)):
-        for row in duty.get(side) or []:
+    for side, label in (("original", "원문"), ("overview", EXPLANATION)):
+        for row in disclosure.get(side) or []:
             if row.get("verdict") in ("부적합", "판정 불가"):
                 found.append(
                     {
-                        "module": "explanation_duty_check",
+                        "module": "ad_disclosure_check",
                         "code": row.get("code", ""),
                         "verdict": row.get("verdict"),
                         "target": label,
@@ -127,31 +85,28 @@ def _findings(
                 )
     for row in found:
         if row["verdict"] == "부적합":
-            row["severity"], row["basis"] = severity(
-                row["module"], bindings.get(row["code"]), page_type
-            )
-    found = _merge_twins(found)
-    for row in duty.get("fidelity") or []:
-        where = ",".join(row.get("source_ids") or []) or row.get("source_id", "")
+            row["severity"], row["basis"] = severity(bindings.get(row["code"]))
+    for row in disclosure.get("fidelity") or []:
         found.append(
             {
-                "module": "explanation_duty_check",
+                "module": "ad_disclosure_check",
                 "code": row.get("code", ""),
                 "verdict": f"의미 차이({row.get('kind', '')})"
                 + (" [정보]" if row.get("informational") else ""),
-                "target": f"{EXPLANATION} {where}".strip(),
+                "target": EXPLANATION,
                 "reason": row.get("reason", ""),
                 "quotes": [row["quote"]] if row.get("quote") else [],
             }
         )
-    for row in _reverted(plain):
+    problems = _withheld(overview)
+    if problems:
         found.append(
             {
                 "module": "persona_explanation",
-                "code": row.get("marker", "") or "원문 대체",
+                "code": "원문 대체",
                 "verdict": "원문 대체",
-                "target": f"{EXPLANATION} {row.get('source_id', '')}",
-                "reason": row.get("reason", ""),
+                "target": EXPLANATION,
+                "reason": "; ".join(problems),
                 "quotes": [],
             }
         )
@@ -304,7 +259,7 @@ def _judged_status(
             + _clip(str((display.get("judgments") or {}).get("reason", "")), 160)
         )
     # 항목을 한 줄씩 나열하면 조치 목록이 수십 줄이 됩니다. 담당자가 화면 단위로 일하므로
-    # 대상(표시방법·원문·쉬운말)별로 묶고 코드만 보여 줍니다.
+    # 대상(표시방법·원문·쉬운말 개요)별로 묶고 코드만 보여 줍니다.
     levels = sorted(
         {(row["target"], row.get("severity", SEVERITY_VIOLATION)) for row in violations}
     )
@@ -324,9 +279,8 @@ def _judged_status(
             f"{EXPLANATION}이 원문과 어긋난 항목 {len(diffs)}건 확인: "
             f"{_codes(sorted({f['code'] for f in diffs}))}"
         )
-    replaced = [f for f in findings if f["verdict"] == "원문 대체"]
-    if replaced:
-        actions.append(f"{EXPLANATION} 검사에서 원문으로 되돌린 단위 {len(replaced)}건 확인")
+    if any(f["verdict"] == "원문 대체" for f in findings):
+        actions.append(f"{EXPLANATION}가 코드 검사를 통과하지 못해 싣지 않음: 사유 확인")
     if unjudged:
         by_target = sorted({row["target"] for row in unjudged})
         actions.append(
@@ -354,8 +308,8 @@ def build_report(
     page: Mapping[str, Any],
     classification: Mapping[str, Any],
     display: Mapping[str, Any],
-    plain: Mapping[str, Any],
-    duty: Mapping[str, Any],
+    overview: Mapping[str, Any],
+    disclosure: Mapping[str, Any],
     verification: Mapping[str, Any],
     stop: Mapping[str, Any] | None = None,
     bindings: Mapping[str, str] | None = None,
@@ -368,14 +322,20 @@ def build_report(
 
     `labels` maps rubric codes to their question and legal basis for the markdown."""
     stop = stop or {}
-    findings = _findings(display, duty, plain, bindings, classification.get("page_type"))
+    findings = _findings(display, disclosure, overview, bindings)
     status, decision, actions = _status(classification, display, verification, findings, stop, page)
+    deferred = disclosure.get("deferred") or []
+    if deferred and status in (STATUS_PASSED, STATUS_REVIEW):
+        actions.append(
+            f"설명의무 {len(deferred)}개 항목은 광고 페이지로 판정하지 않음 — 상품설명서에서"
+            f" 확인: {_codes([row.get('code', '') for row in deferred])}"
+        )
     cost = current().summary()
     if not cost.get("calls") and previous_cost and previous_cost.get("calls"):
         cost = {**previous_cost, "carried_forward": True}
     product = page.get("product") or {}
-    duty_items = duty.get("items") or []
-    applied = [row for row in duty_items if row.get("applied")]
+    disclosure_items = disclosure.get("items") or []
+    applied = [row for row in disclosure_items if row.get("applied")]
     summary = {
         "url": page.get("url"),
         "product_name": product.get("product_name"),
@@ -388,24 +348,18 @@ def build_report(
         "display_unjudged": sum(
             1 for row in display.get("items") or [] if row.get("verdict") == "판정 불가"
         ),
-        "duty_items_applied": len(applied),
-        "duty_items_total": len(duty_items),
-        "duty_violations_original": sum(
-            1 for row in duty.get("original") or [] if row.get("verdict") == "부적합"
+        "disclosure_items_applied": len(applied),
+        "disclosure_items_total": len(disclosure_items),
+        "disclosure_violations_original": sum(
+            1 for row in disclosure.get("original") or [] if row.get("verdict") == "부적합"
         ),
-        "duty_violations_plain": sum(
-            1 for row in duty.get("plain") or [] if row.get("verdict") == "부적합"
+        "disclosure_violations_overview": sum(
+            1 for row in disclosure.get("overview") or [] if row.get("verdict") == "부적합"
         ),
-        "duty_topics_violated_original": len(
-            {
-                duty_topic(row.get("code", ""))
-                for row in duty.get("original") or []
-                if row.get("verdict") == "부적합"
-            }
-        ),
-        "fidelity_diffs": len(duty.get("fidelity") or []),
-        "plain_blocks": len(_accepted(plain)),
-        "plain_rejected": len(_reverted(plain)),
+        "deferred_explanation_items": len(deferred),
+        "fidelity_diffs": len(disclosure.get("fidelity") or []),
+        "overview_paragraphs": len(overview.get("overview") or []) if overview.get("html") else 0,
+        "overview_withheld": bool(_withheld(overview)),
         "verification_passed": verification.get("passed"),
         "verification_loops": verification.get("loop_count"),
         "findings": len(findings),
@@ -415,9 +369,9 @@ def build_report(
     cards = cards or {}
     summary["evidence_cards"] = len(cards.get("cards") or [])
     summary["interrupted_at"] = stop.get("interrupted_at") or ""
-    summary["agent_runs"] = agent_runs(page, plain.get("selection") or {})
-    limits = _limits(display, plain, duty)
-    limits += _card_limits(cards, duty)
+    summary["agent_runs"] = agent_runs(page, overview.get("selection") or {})
+    limits = _limits(display, overview, disclosure)
+    limits += _card_limits(cards, disclosure)
     unreachable = _unreachable_limit(page)
     if unreachable:
         limits.append(unreachable)
@@ -433,8 +387,8 @@ def build_report(
             page,
             classification,
             display,
-            plain,
-            duty,
+            overview,
+            disclosure,
             status,
             decision,
             _notes(status, actions, page, verification, stop, unreachable),
@@ -443,7 +397,7 @@ def build_report(
     }
 
 
-def _card_limits(cards: Mapping[str, Any], duty: Mapping[str, Any]) -> list[str]:
+def _card_limits(cards: Mapping[str, Any], disclosure: Mapping[str, Any]) -> list[str]:
     """Limits the evidence cards reveal: open gaps, and passes that rest only on unseen text."""
     limits = []
     gaps = [
@@ -461,7 +415,7 @@ def _card_limits(cards: Mapping[str, Any], duty: Mapping[str, Any]) -> list[str]
     shaky = sorted(
         {
             row.get("code", "")
-            for row in duty.get("original") or []
+            for row in disclosure.get("original") or []
             if row.get("verdict") == "적합"
             and row.get("quote")
             and any(_squash(row["quote"]) in _squash(text) for text in unseen)
@@ -481,12 +435,12 @@ def _squash(text: str) -> str:
 
 
 def _limits(
-    display: Mapping[str, Any], plain: Mapping[str, Any], duty: Mapping[str, Any]
+    display: Mapping[str, Any], overview: Mapping[str, Any], disclosure: Mapping[str, Any]
 ) -> list[str]:
     judgments = display.get("judgments") or {}
     limits = [
-        "이 검토는 공개된 광고성 화면을 대상으로 하며, 청약 단계 설명화면은 범위에 없습니다."
-        " 설명의무 기준은 준용해 품질 기준으로 적용했습니다.",
+        "이 검토는 공개된 광고 페이지를 광고 의무표시 기준으로 판정합니다. 설명의무는 청약 단계"
+        " 상품설명서·설명화면의 의무라서 판정하지 않고 확인할 항목 목록으로만 제공합니다.",
         "자동 검증은 인용 근거의 존재와 모듈 간 모순만 확인합니다. 통과가 법률 준수를 보증하지"
         " 않습니다.",
     ]
@@ -498,22 +452,22 @@ def _limits(
         text = (judgments.get("assumptions") or {}).get(key)
         if text:
             limits.append("가정: " + _clip(str(text), 300))
-    if _reverted(plain):
-        limits.append(
-            f"{EXPLANATION} {len(_reverted(plain))}개 단위는 검사를 통과하지 못해 원문 문장으로"
-            " 되돌렸습니다."
-        )
-    profile = plain.get("profile") or {}
+    if _withheld(overview):
+        limits.append(f"{EXPLANATION}는 코드 검사를 통과하지 못해 싣지 않았습니다.")
+    profile = overview.get("profile") or {}
     if profile:
         limits.append(
-            f"{EXPLANATION}은 독자 프로필 {profile.get('id', '-')} v{profile.get('version', '-')}"
-            f"({profile.get('review_status', '-')}, {profile.get('status', '-')}) 기준의 보조"
-            " 설명이며, 원문을 대신하거나 독자의 자격·혜택·상환액을 판단하지 않습니다."
+            f"{EXPLANATION}는 독자 프로필 {profile.get('id', '-')} v{profile.get('version', '-')}"
+            f"({profile.get('review_status', '-')}, {profile.get('status', '-')}) 기준으로 원문"
+            " 옆에 붙는 보조 요약이며, 원문을 대신하거나 독자의 자격·혜택·상환액을 판단하지"
+            " 않습니다."
         )
-    unresolved = [row for row in duty.get("original") or [] if row.get("verdict") == "판정 불가"]
+    unresolved = [
+        row for row in disclosure.get("original") or [] if row.get("verdict") == "판정 불가"
+    ]
     if unresolved:
         limits.append(
-            f"설명의무 원문 판정 불가 {len(unresolved)}건은 조건 성립 여부가 불명확합니다."
+            f"광고 의무표시 원문 판정 불가 {len(unresolved)}건은 조건 성립 여부가 불명확합니다."
         )
     return limits
 

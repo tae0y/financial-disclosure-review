@@ -45,26 +45,27 @@ class DisplayCheck(TypedDict, total=False):
 
 
 class PersonaExplanation(TypedDict, total=False):
-    """A supplementary reader-tailored explanation; never a legal rewrite or verdict."""
+    """A reader-tailored plain overview shown beside the page; never a rewrite or a verdict."""
 
     status: Any
     reason: Any
     profile: Any
     # How the reader was chosen (uuid / attributes / agent / default / fallback) and the
-    # selection agent's trace; kept so a retry explains for the same reader.
+    # selection agent's trace; kept so a retry writes for the same reader.
     selection: Any
-    fact_ledger: Any
-    units: Any
+    overview: Any
+    problems: Any
     html: Any
     controls: Any
 
 
-class ExplanationDutyCheck(TypedDict, total=False):
+class AdDisclosureCheck(TypedDict, total=False):
     items: Any
     original: Any
-    plain: Any  # verdicts on the persona explanation side; name kept for API compatibility
-    ledger: Any
+    overview: Any
     fidelity: Any
+    # Explanation-duty items for the product type, left to the product documents; not judged.
+    deferred: Any
 
 
 class Verification(TypedDict, total=False):
@@ -95,7 +96,7 @@ class State(TypedDict):
     evidence_cards: EvidenceCards
     display_check: DisplayCheck
     persona_explanation: PersonaExplanation
-    explanation_duty_check: ExplanationDutyCheck
+    ad_disclosure_check: AdDisclosureCheck
     verification: Verification
     report: Report
 

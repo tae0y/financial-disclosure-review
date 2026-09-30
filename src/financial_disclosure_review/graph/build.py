@@ -11,9 +11,9 @@ from .nodes import (
     end_report,
     extract_evidence_cards,
     generate_persona_explanation,
+    judge_ad_disclosure,
+    judge_disclosure_original,
     judge_display_method,
-    judge_explanation_duty,
-    judge_explanation_original,
     preprocess_product_page,
     report_for,
     retry_dispatch,
@@ -35,8 +35,8 @@ def build_review_graph(checkpointer=None):
     builder.add_node("extract_evidence_cards", extract_evidence_cards)
     builder.add_node("judge_display_method", judge_display_method)
     builder.add_node("generate_persona_explanation", generate_persona_explanation)
-    builder.add_node("judge_explanation_original", judge_explanation_original)
-    builder.add_node("judge_explanation_duty", judge_explanation_duty)
+    builder.add_node("judge_disclosure_original", judge_disclosure_original)
+    builder.add_node("judge_ad_disclosure", judge_ad_disclosure)
     builder.add_node("verify_answer", verify_answer)
     builder.add_node("retry_dispatch", retry_dispatch)
     builder.add_node("end_report", end_report)
@@ -53,15 +53,15 @@ def build_review_graph(checkpointer=None):
         {"extract_evidence_cards": "extract_evidence_cards", "end_report": "end_report"},
     )
     # LangGraph runs a step's nodes together and waits for all of them, so the original side of
-    # explanation duty (page only) runs beside the persona explanation. A node that two finished
-    # nodes point to runs once. A retry re-enters at the persona explanation alone, which is why
-    # the original side has plain edges instead of a join.
+    # the ad-disclosure check (page only) runs beside the persona overview. A node that two
+    # finished nodes point to runs once. A retry re-enters at the persona overview alone, which
+    # is why the original side has plain edges instead of a join.
     builder.add_edge("extract_evidence_cards", "judge_display_method")
     builder.add_edge("judge_display_method", "generate_persona_explanation")
-    builder.add_edge("judge_display_method", "judge_explanation_original")
-    builder.add_edge("generate_persona_explanation", "judge_explanation_duty")
-    builder.add_edge("judge_explanation_original", "judge_explanation_duty")
-    builder.add_edge("judge_explanation_duty", "verify_answer")
+    builder.add_edge("judge_display_method", "judge_disclosure_original")
+    builder.add_edge("generate_persona_explanation", "judge_ad_disclosure")
+    builder.add_edge("judge_disclosure_original", "judge_ad_disclosure")
+    builder.add_edge("judge_ad_disclosure", "verify_answer")
     builder.add_conditional_edges(
         "verify_answer",
         route_after_verify,
@@ -72,7 +72,7 @@ def build_review_graph(checkpointer=None):
         route_after_retry,
         {
             "generate_persona_explanation": "generate_persona_explanation",
-            "judge_explanation_duty": "judge_explanation_duty",
+            "judge_ad_disclosure": "judge_ad_disclosure",
             "end_report": "end_report",
         },
     )

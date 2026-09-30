@@ -19,7 +19,7 @@ def classification_metrics(result: dict) -> dict:
     }
 
 
-def duty_flip_metrics(result: dict) -> dict:
+def disclosure_flip_metrics(result: dict) -> dict:
     rows = result["rows"]
     injected = [row for row in rows if row["kind"] == "결함 주입" and row["landed"]]
     detected = [row for row in injected if row.get("detected")]
@@ -76,25 +76,25 @@ def plain_contract_metrics(result: dict) -> dict:
     }
 
 
-def _duty_agreement(duty: list[dict]) -> dict:
-    stable = [row for row in duty if row["stable"]]
+def _disclosure_agreement(rows_: list[dict]) -> dict:
+    stable = [row for row in rows_ if row["stable"]]
     return {
-        "duty_items": len(duty),
-        "duty_stable": len(stable),
-        "duty_stability": rate(len(stable), len(duty)),
+        "disclosure_items": len(rows_),
+        "disclosure_stable": len(stable),
+        "disclosure_stability": rate(len(stable), len(rows_)),
         # An item that is 적합 in one round and not in another is the costly kind of instability:
         # the reviewer's to-do list would differ from run to run.
-        "duty_pass_flips": [
+        "disclosure_pass_flips": [
             row["code"]
-            for row in duty
+            for row in rows_
             if "적합" in row["verdicts"] and len(set(row["verdicts"])) > 1
         ],
-        "duty_unstable": [
-            {"code": row["code"], "verdicts": row["verdicts"]} for row in duty if not row["stable"]
+        "disclosure_unstable": [
+            {"code": row["code"], "verdicts": row["verdicts"]} for row in rows_ if not row["stable"]
         ],
         # Descriptive only, split after the first comparison was seen: which verdicts an unstable
         # item moved between. 판정 불가 hands the item to a person; 적합↔부적합 contradicts itself.
-        "duty_unstable_kinds": _kinds(row["verdicts"] for row in duty if not row["stable"]),
+        "disclosure_unstable_kinds": _kinds(row["verdicts"] for row in rows_ if not row["stable"]),
     }
 
 
@@ -119,9 +119,9 @@ def stability_metrics(result: dict) -> dict:
         "classification_cases": len(classification),
         "classification_stable": sum(1 for row in classification if row["stable"]),
         "classification_unstable": [row["case"] for row in classification if not row["stable"]],
-        **_duty_agreement(result["duty"]),
+        **_disclosure_agreement(result["disclosure"]),
         "baseline": {
-            arm: _duty_agreement(rows) for arm, rows in (result.get("baseline") or {}).items()
+            arm: _disclosure_agreement(rows) for arm, rows in (result.get("baseline") or {}).items()
         },
     }
 
@@ -149,7 +149,7 @@ def display_flip_metrics(result: dict) -> dict:
 
 METRICS = {
     "classification": classification_metrics,
-    "duty-flip": duty_flip_metrics,
+    "disclosure-flip": disclosure_flip_metrics,
     "plain-contract": plain_contract_metrics,
     "stability": stability_metrics,
     "display-flip": display_flip_metrics,

@@ -103,7 +103,7 @@ class RerunRequest(BaseModel):
         description=(
             "A graph node name: preprocess_product_page, classify_type, extract_evidence_cards, "
             "judge_display_method, generate_persona_explanation, "
-            "judge_explanation_duty, verify_answer, end_report."
+            "judge_ad_disclosure, verify_answer, end_report."
         ),
     )
     model: str | None = None

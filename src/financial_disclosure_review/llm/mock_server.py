@@ -180,6 +180,8 @@ def structured_answer(name: str, schema: dict, data: dict) -> Any:
             "page_subject": "mock",
             "confidence": "high",
         }
+    if name == "OverviewDraft":  # one paragraph lifted from the page, so its code checks pass
+        return {"paragraphs": [quote]}
     return fill_quotes(mirror_items(synth(schema, schema), schema, data), quote)
 
 

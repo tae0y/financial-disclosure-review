@@ -83,20 +83,20 @@ def print_summary(state: dict) -> None:
         print(f"  {row['code']}: {row['verdict']} | {row['reason']}")
 
     persona = state.get("persona_explanation") or {}
-    units = persona.get("units") or []
     print(
         "persona_explanation:",
         persona.get("status"),
         f"profile={(persona.get('profile') or {}).get('id')}",
-        f"{sum(u.get('status') == 'accepted' for u in units)} units kept,",
-        f"{sum(u.get('status') == 'reverted' for u in units)} sent back to the original",
+        f"{len(persona.get('overview') or [])} overview paragraphs,",
+        f"problems={persona.get('problems') or []}",
     )
-    duty = state.get("explanation_duty_check") or {}
-    applied = [row for row in duty.get("items") or [] if row.get("applied")]
+    disclosure = state.get("ad_disclosure_check") or {}
+    applied = [row for row in disclosure.get("items") or [] if row.get("applied")]
     print(
-        "explanation_duty_check:",
-        f"{len(applied)}/{len(duty.get('items') or [])} items applied,",
-        f"{len(duty.get('fidelity') or [])} fidelity differences",
+        "ad_disclosure_check:",
+        f"{len(applied)}/{len(disclosure.get('items') or [])} items applied,",
+        f"{len(disclosure.get('fidelity') or [])} fidelity differences,",
+        f"{len(disclosure.get('deferred') or [])} explanation-duty items deferred",
     )
     verification = state.get("verification") or {}
     print(

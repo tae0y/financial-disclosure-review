@@ -60,9 +60,9 @@ def plain_items_report(
                 {
                     "code": code,
                     "verdict": "판정 불가",
-                    "reason": "원문 설명의무·의무표시 항목의 '예/아니오'는"
-                    " judge_explanation_duty가 이후에 판정함; 이 노드는 관련 문구를 모델에"
-                    " 안내만 하고 결과를 스스로 검증하지 않음",
+                    "reason": "원문 의무표시 항목의 '예/아니오'는 judge_ad_disclosure가"
+                    " 광고 의무표시 기준으로 판정함; 이 노드는 관련 문구를 모델에 안내만 하고"
+                    " 결과를 스스로 검증하지 않음",
                 }
             )
         elif code in PLAIN_TERM_CODES:

@@ -59,8 +59,8 @@ def test_a_failure_with_actionable_feedback_goes_back_to_the_owning_node():
 
 def test_a_failure_with_no_requested_change_is_not_retried():
     v = verification(
-        failed_modules=["explanation_duty_check"],
-        feedback=[feedback_for("explanation_duty_check", change="")],
+        failed_modules=["ad_disclosure_check"],
+        feedback=[feedback_for("ad_disclosure_check", change="")],
     )
     assert retryable_modules(v) == []
     assert should_retry(v) is False
@@ -88,8 +88,8 @@ def test_the_loop_stops_at_the_cap():
 
 def test_the_earliest_failed_node_is_the_target_so_the_rest_follows_by_edges():
     v = verification(
-        failed_modules=["explanation_duty_check", "persona_explanation"],
-        feedback=[feedback_for("persona_explanation"), feedback_for("explanation_duty_check")],
+        failed_modules=["ad_disclosure_check", "persona_explanation"],
+        feedback=[feedback_for("persona_explanation"), feedback_for("ad_disclosure_check")],
     )
     assert plan_retry(v)["retry_target"] == "generate_persona_explanation"
 

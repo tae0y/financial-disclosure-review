@@ -41,16 +41,16 @@ def _context(
 
 
 def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[str, Any]:
-    """A compact view of final State; `full` adds rows and explanation HTML, never page HTML."""
+    """A compact view of final State; `full` adds rows and overview HTML, never page HTML."""
     page = state.get("product_page") or {}
     display = state.get("display_check") or {}
     persona = state.get("persona_explanation") or {}
-    duty = state.get("explanation_duty_check") or {}
+    disclosure = state.get("ad_disclosure_check") or {}
     verification = state.get("verification") or {}
     classification = state.get("classification") or {}
     cards = state.get("evidence_cards") or {}
 
-    applied = [row for row in duty.get("items") or [] if row.get("applied")]
+    applied = [row for row in disclosure.get("items") or [] if row.get("applied")]
     view: dict[str, Any] = {
         "agent_runs": agent_runs(page, persona.get("selection") or {}),
         "product_page": {
@@ -96,18 +96,15 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
             "status": persona.get("status"),
             "profile": (persona.get("profile") or {}).get("id"),
             "reader_chosen_by": (persona.get("selection") or {}).get("decided_by"),
-            "accepted_units": sum(
-                1 for u in persona.get("units") or [] if u.get("status") == "accepted"
-            ),
-            "reverted_units": sum(
-                1 for u in persona.get("units") or [] if u.get("status") == "reverted"
-            ),
+            "paragraphs": len(persona.get("overview") or []) if persona.get("html") else 0,
+            "problems": persona.get("problems") or [],
             "html_chars": len(persona.get("html") or ""),
         },
-        "explanation_duty_check": {
+        "ad_disclosure_check": {
             "applied": len(applied),
-            "item_count": len(duty.get("items") or []),
-            "fidelity_differences": len(duty.get("fidelity") or []),
+            "item_count": len(disclosure.get("items") or []),
+            "fidelity_differences": len(disclosure.get("fidelity") or []),
+            "deferred_explanation_items": len(disclosure.get("deferred") or []),
         },
         "verification": {
             "passed": verification.get("passed"),
@@ -122,14 +119,10 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
         view["display_check"]["items"] = display.get("items") or []
         view["evidence_cards"]["rows"] = cards.get("cards") or []
         view["persona_explanation"]["html"] = persona.get("html")
-        view["persona_explanation"]["units"] = persona.get("units") or []
-        view["persona_explanation"]["fact_ledger"] = persona.get("fact_ledger") or []
+        view["persona_explanation"]["overview"] = persona.get("overview") or []
         view["persona_explanation"]["selection"] = persona.get("selection") or {}
-        view["explanation_duty_check"]["items"] = duty.get("items") or []
-        view["explanation_duty_check"]["original"] = duty.get("original") or []
-        view["explanation_duty_check"]["plain"] = duty.get("plain") or []
-        view["explanation_duty_check"]["fidelity"] = duty.get("fidelity") or []
-        view["explanation_duty_check"]["ledger"] = duty.get("ledger") or []
+        for key in ("items", "original", "overview", "fidelity", "deferred"):
+            view["ad_disclosure_check"][key] = disclosure.get(key) or []
     return view
 
 

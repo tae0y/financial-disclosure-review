@@ -36,8 +36,10 @@ class MissingTokenError(RuntimeError):
 
 
 DESCRIPTION = """\
-Reviews a Korean financial-product web page against the explanation duty (설명의무) and the
-display-method rules (표시방법), and rewrites its explanation in plain Korean.
+Reviews a Korean card-company advertising page against the mandatory ad disclosures
+(광고 의무표시) and the display-method rules (표시방법), and writes a short plain-Korean overview
+to show beside it. Explanation-duty (설명의무) items are listed for the product documents, not
+judged, because they bind the contract-stage explanation rather than an advertisement.
 
 **A review takes minutes, so nothing here returns one.** The page is rendered in a real browser and
 judged over a series of model calls. Cloudflare closes a response that has produced nothing for

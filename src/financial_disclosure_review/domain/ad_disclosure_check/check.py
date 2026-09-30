@@ -1,14 +1,15 @@
-"""Entry point of explanation_duty_check: judge original vs plain-language, record differences."""
+"""Entry point of ad_disclosure_check: judge the page and its overview, record differences."""
 
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ...core.context import Context
 from ...core.text import locate_quote, visible_text
+from ...knowledge.rubrics import item_scope
 from ...llm.client import ask, call_ask
-from .prompts import EXPLANATION_ORIGINAL_TASK, EXPLANATION_PLAIN_TASK, FIDELITY_TASK
-from .rubric import explanation_scope, load_explanation_items
-from .schema import ExplanationJudgments, FidelityDiffs, PlainJudgments
+from .prompts import DISCLOSURE_ORIGINAL_TASK, DISCLOSURE_OVERVIEW_TASK, FIDELITY_TASK
+from .rubric import deferred_explanation_items, load_disclosure_items
+from .schema import DisclosureJudgments, FidelityDiffs, OverviewJudgments
 
 
 def _quote_ok(verdict: str, quote: str, text: str) -> str:
@@ -33,14 +34,14 @@ def _feedback_notes(feedback: Sequence[Mapping[str, Any]]) -> dict:
     return {"previous_feedback": notes} if notes else {}
 
 
-def judge_plain_side(
+def judge_overview_side(
     to_judge: list[dict],
-    plain_text: str,
+    overview_text: str,
     model: str,
     ask,
     feedback: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict]:
-    """to_judge 코드들을 쉬운말 text만 보고 판단한다(원문과 비교하지 않음)."""
+    """to_judge 코드들을 쉬운말 개요 text만 보고 판단한다(원문과 비교하지 않음)."""
     wanted = [i["code"] for i in to_judge]
     evidence = [{"code": i["code"], "criterion": i["criterion"]} for i in to_judge]
 
@@ -52,7 +53,7 @@ def judge_plain_side(
         for j in answer["items"]:
             if not j["reason"].strip():
                 problems.append(f"{j['code']}: 근거 없음")
-            problem = _quote_ok(j["verdict"], j["quote"], plain_text)
+            problem = _quote_ok(j["verdict"], j["quote"], overview_text)
             if problem:
                 problems.append(f"{j['code']}: {problem}")
         return problems
@@ -60,7 +61,7 @@ def judge_plain_side(
     def salvage(answer: dict, problems: list[str]) -> dict:
         bad = {p.split(":", 1)[0].strip() for p in problems}
         if not bad <= set(wanted):
-            raise RuntimeError(f"judge_plain failed twice: {'; '.join(problems)[:400]}")
+            raise RuntimeError(f"judge_overview failed twice: {'; '.join(problems)[:400]}")
         note = "; ".join(problems)[:150]
         return {
             "items": [
@@ -79,14 +80,14 @@ def judge_plain_side(
     answer = call_ask(
         ask,
         model,
-        PlainJudgments,
-        EXPLANATION_PLAIN_TASK,
+        OverviewJudgments,
+        DISCLOSURE_OVERVIEW_TASK,
         check,
         "low",
         salvage,
         by_code=True,
         items=evidence,
-        text=plain_text,
+        text=overview_text,
         **_feedback_notes(feedback),
     )
     return [
@@ -101,23 +102,23 @@ def norm_quote(quote: str) -> str:
 
 def fidelity_candidates(
     original_rows: Sequence[Mapping[str, Any]],
-    plain_rows: Sequence[Mapping[str, Any]],
+    overview_rows: Sequence[Mapping[str, Any]],
     to_judge_codes: list[str],
 ) -> list[dict]:
-    """to_judge 코드 중 원문·쉬운말 판정이나 인용이 달라 모델 검토가 필요한 후보만 추린다."""
-    plain_by_code = {r["code"]: r for r in plain_rows}
+    """to_judge 코드 중 원문·개요 판정이나 인용이 달라 모델 검토가 필요한 후보만 추린다."""
+    overview_by_code = {r["code"]: r for r in overview_rows}
     to_judge_set = set(to_judge_codes)
     candidates = []
     for o in original_rows:
         if o["code"] not in to_judge_set:
             continue
-        p = plain_by_code.get(o["code"]) or {
+        p = overview_by_code.get(o["code"]) or {
             "verdict": "판정 불가",
             "quote": "",
-            "reason": "쉬운말 판정 없음",
+            "reason": "개요 판정 없음",
         }
         if o["verdict"] != p["verdict"] or norm_quote(o["quote"]) != norm_quote(p["quote"]):
-            candidates.append({"code": o["code"], "original": o, "plain": p})
+            candidates.append({"code": o["code"], "original": o, "overview": p})
     return candidates
 
 
@@ -127,7 +128,7 @@ def judge_fidelity_rows(candidates: list[dict], model: str, ask) -> list[dict]:
         {
             "code": c["code"],
             "original": {"verdict": c["original"]["verdict"], "quote": c["original"]["quote"]},
-            "plain": {"verdict": c["plain"]["verdict"], "quote": c["plain"]["quote"]},
+            "overview": {"verdict": c["overview"]["verdict"], "quote": c["overview"]["quote"]},
         }
         for c in candidates
     ]
@@ -155,15 +156,16 @@ def judge_fidelity_rows(candidates: list[dict], model: str, ask) -> list[dict]:
     answer = call_ask(
         ask, model, FidelityDiffs, FIDELITY_TASK, check, "low", salvage, items=evidence
     )
-    quotes = {c["code"]: (c["original"]["quote"], c["plain"]["quote"]) for c in candidates}
+    quotes = {c["code"]: (c["original"]["quote"], c["overview"]["quote"]) for c in candidates}
     return [
         {
             "code": f["code"],
-            "source_id": "",
             "kind": f["kind"],
             "reason": f["reason"],
             "original_quote": quotes.get(f["code"], ("", ""))[0],
             "quote": quotes.get(f["code"], ("", ""))[1],
+            # A 판정 불가 comparison names no concrete fix, so it goes to a person, not a retry.
+            "informational": f["kind"] == "판정 불가",
         }
         for f in answer["items"]
         if f["kind"] != "변화없음"
@@ -238,8 +240,8 @@ def judge_original_side(
     answer = call_ask(
         ask,
         model,
-        ExplanationJudgments,
-        EXPLANATION_ORIGINAL_TASK,
+        DisclosureJudgments,
+        DISCLOSURE_ORIGINAL_TASK,
         check,
         "medium",
         salvage,
@@ -288,12 +290,12 @@ def _original_rows(
 def judge_original(
     page: Mapping[str, Any], classification: Mapping[str, Any], ctx: Context, ask=ask
 ) -> dict:
-    """The original side of a first round: scope every rubric item, judge the in-scope ones on
-    the page alone. It reads neither the explanation nor feedback, so it can run beside them."""
-    product_type = classification.get("product_type")
+    """The original side of a first round: scope every disclosure item, judge the in-scope ones
+    on the page alone, and list the explanation-duty items left to the product documents. It
+    reads neither the overview nor feedback, so it can run beside them."""
     in_scope, items_rows = [], []
-    for item in load_explanation_items(ctx.db_path):
-        why = explanation_scope(item, product_type)
+    for item in load_disclosure_items(ctx.db_path):
+        why = item_scope(item, classification)
         if why:
             items_rows.append(
                 {
@@ -311,12 +313,16 @@ def judge_original(
     if in_scope:
         judged = judge_original_side(in_scope, visible_text(page["html"]), ctx.model, ask)
     judged_items, original_rows = _original_rows(in_scope, judged)
-    return {"items": items_rows + judged_items, "original": original_rows}
+    return {
+        "items": items_rows + judged_items,
+        "original": original_rows,
+        "deferred": deferred_explanation_items(ctx.db_path, classification.get("product_type")),
+    }
 
 
-def judge_explanation(
+def judge_disclosure(
     page: Mapping[str, Any],
-    plain: Mapping[str, Any],
+    overview: Mapping[str, Any],
     classification: Mapping[str, Any],
     ctx: Context,
     previous_original: Sequence[Mapping[str, Any]] | None,
@@ -325,16 +331,17 @@ def judge_explanation(
     *,
     feedback: Sequence[Mapping[str, Any]] = (),
 ) -> dict:
-    """원문과 쉬운말을 같은 기준으로 판정하고 차이를 기록; 재시도 시 지적된 코드만 다시 판정한다."""
-    all_items = load_explanation_items(ctx.db_path)
-    plain_text = visible_text(plain["html"])
+    """원문과 개요를 같은 기준으로 판정하고 차이를 기록; 재시도 시 지적된 코드만 다시 판정한다."""
+    all_items = load_disclosure_items(ctx.db_path)
+    overview_text = visible_text(overview["html"])
     own = [
         f
         for f in feedback
-        if f.get("module") == "explanation_duty_check" and f.get("requested_change")
+        if f.get("module") == "ad_disclosure_check" and f.get("requested_change")
     ]
     original_feedback = [f for f in own if f.get("target") == "original" and f.get("code")]
-    plain_feedback = [f for f in own if f.get("target") == "plain"]
+    overview_feedback = [f for f in own if f.get("target") == "overview"]
+    deferred = None
 
     if previous_items is not None and previous_original is not None:
         items_rows, original_rows = list(previous_items), list(previous_original)
@@ -357,6 +364,7 @@ def judge_explanation(
     else:
         first = judge_original(page, classification, ctx, ask)
         items_rows, original_rows = first["items"], first["original"]
+        deferred = first["deferred"]
 
     to_judge_codes = [
         i["code"]
@@ -366,16 +374,21 @@ def judge_explanation(
     to_judge = [i for i in all_items if i["code"] in to_judge_codes]
     unclear_rows = [r for r in original_rows if r["code"] not in to_judge_codes]
 
-    plain_rows = unclear_rows + (
-        judge_plain_side(to_judge, plain_text, ctx.model, ask, plain_feedback) if to_judge else []
+    overview_rows = unclear_rows + (
+        judge_overview_side(to_judge, overview_text, ctx.model, ask, overview_feedback)
+        if to_judge
+        else []
     )
 
-    candidates = fidelity_candidates(original_rows, plain_rows, to_judge_codes)
+    candidates = fidelity_candidates(original_rows, overview_rows, to_judge_codes)
     fidelity_rows = judge_fidelity_rows(candidates, ctx.model, ask) if candidates else []
 
-    return {
+    result = {
         "items": items_rows,
         "original": original_rows,
-        "plain": plain_rows,
+        "overview": overview_rows,
         "fidelity": fidelity_rows,
     }
+    if deferred is not None:
+        result["deferred"] = deferred
+    return result

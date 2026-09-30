@@ -13,12 +13,12 @@ from .report import render
 from .suites import (
     load_cases,
     run_classification,
-    run_duty_flip,
+    run_disclosure_flip,
     run_plain_contract,
     run_stability,
 )
 
-SUITES = ("classification", "duty-flip", "display-flip", "plain-contract", "stability")
+SUITES = ("classification", "disclosure-flip", "display-flip", "plain-contract", "stability")
 
 LIMITS = [
     "표본이 작습니다. 분류 6건, 결함 주입 3건과 대조군 1건, 표시방법 2개 페이지에 주입 4건과 대조군"
@@ -33,8 +33,9 @@ LIMITS = [
     " 키워드 기준선도 6건을 모두 맞혀, 이 평가셋은 두 방식의 차이를 드러내기에 쉽습니다.",
     "쉬운말 계약 케이스는 손으로 만든 문장쌍입니다. 실제 모델이 만들어 내는 오류 분포와 같지"
     " 않을 수 있습니다.",
-    "같은 입력을 세 번 판정하면 설명의무 항목의 약 28%가 다른 답을 냅니다(stability 스위트,"
-    " 한 번 호출하는 축소 구성은 약 21%). 한 번의 실행 결과를 확정 판정으로 읽으면 안 됩니다.",
+    "같은 입력을 세 번 판정하면 설명의무 항목의 약 28%가 다른 답을 냈습니다(2026-09 stability"
+    " 스위트, 한 번 호출하는 축소 구성은 약 21%). 광고 의무표시 기준으로 바꾼 뒤에는 다시 재야"
+    " 합니다. 한 번의 실행 결과를 확정 판정으로 읽으면 안 됩니다.",
 ]
 
 
@@ -90,13 +91,13 @@ def _run_suites(
         results.append(run_classification(ctx, cassette, _fixtures()))
         if "ablation" in arms:
             results.append(run_classification(ctx, cassette, _fixtures(), arm="keyword"))
-    if "duty-flip" in suites:
-        config = load_cases(root / "cases" / "duty_flip.json")
+    if "disclosure-flip" in suites:
+        config = load_cases(root / "cases" / "disclosure_flip.json")
         config["base_html"] = str(
             (Path(__file__).resolve().parents[3] / config["base_html"]).resolve()
         )
         for arm in arms:
-            results.append(run_duty_flip(ctx, cassette, config, arm=arm, max_flips=max_flips))
+            results.append(run_disclosure_flip(ctx, cassette, config, arm=arm, max_flips=max_flips))
     if "display-flip" in suites:
         config = load_cases(root / "cases" / "display_flip.json")
         repo = Path(__file__).resolve().parents[3]
@@ -109,7 +110,7 @@ def _run_suites(
         if "ablation" in arms:
             results.append(run_plain_contract(ctx, cassette, cases["cases"], arm="mechanical"))
     if "stability" in suites:
-        config = load_cases(root / "cases" / "duty_flip.json")
+        config = load_cases(root / "cases" / "disclosure_flip.json")
         config["base_html"] = str(
             (Path(__file__).resolve().parents[3] / config["base_html"]).resolve()
         )

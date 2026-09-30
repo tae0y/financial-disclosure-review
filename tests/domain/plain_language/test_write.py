@@ -230,7 +230,7 @@ def test_feedback_addressed_to_another_module_is_filtered_out(ctx, blocks, block
     fee = block_ids["fee"]
     other = [
         {
-            "module": "explanation_duty_check",
+            "module": "ad_disclosure_check",
             "code": "X",
             "source_id": fee,
             "reason": "n/a",

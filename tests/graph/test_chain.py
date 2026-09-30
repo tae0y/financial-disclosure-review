@@ -1,6 +1,7 @@
 """The downstream nodes wired together: evidence cards (given) -> generate_persona_explanation ->
-judge_explanation_duty -> verify_answer -> route_after_verify, with every model call faked."""
+judge_ad_disclosure -> verify_answer -> route_after_verify, with every model call faked."""
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -9,24 +10,25 @@ from langgraph.runtime import Runtime
 
 from financial_disclosure_review.core.context import Context
 from financial_disclosure_review.core.state import State
-from financial_disclosure_review.domain.evidence_cards import page_sources
-from financial_disclosure_review.domain.explanation_duty_check.ledger import LedgerSemantics
-from financial_disclosure_review.domain.explanation_duty_check.schema import (
-    ExplanationJudgments,
+from financial_disclosure_review.domain.ad_disclosure_check.schema import (
+    DisclosureJudgments,
     FidelityDiffs,
-    PlainJudgments,
+    OverviewJudgments,
 )
-from financial_disclosure_review.domain.persona_explanation.schema import PersonaUnitDrafts
+from financial_disclosure_review.domain.evidence_cards import page_sources
+from financial_disclosure_review.domain.persona_explanation.schema import OverviewDraft
 from financial_disclosure_review.domain.plain_language.contract import strip_ws
 from financial_disclosure_review.graph import nodes
 from financial_disclosure_review.graph.nodes import (
     generate_persona_explanation,
-    judge_explanation_duty,
+    judge_ad_disclosure,
     verify_answer,
 )
 from financial_disclosure_review.graph.routes import route_after_verify
 from financial_disclosure_review.knowledge.build import build_rubric_db
-from tests.helpers import FIXTURE_DIR, state_with
+from tests.helpers import state_with
+
+ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
 FIXTURE_HTML = """
 <html><body>
@@ -83,7 +85,7 @@ EVIDENCE = {"status": "완료", "sources": SOURCES, "cards": CARDS}
 @pytest.fixture(scope="module")
 def runtime(tmp_path_factory) -> Runtime[Context]:
     path = tmp_path_factory.mktemp("reference") / "reference.sqlite"
-    build_rubric_db(FIXTURE_DIR / "rubric", path)
+    build_rubric_db(ASSETS, path)
     # An empty data dir: no persona dataset, so the node uses the legacy yaml profile.
     data_dir = tmp_path_factory.mktemp("data")
     context = Context(model="fake", db_path=str(path), data_dir=str(data_dir))
@@ -109,32 +111,18 @@ def upstream_display_check(status: str = "완료") -> dict:
 
 
 def persona_ask(invent: bool = False, seen: list | None = None):
-    """generate_persona_explanation에 주입할 가짜 ask. 카드마다 원문 줄을 exact_fact로 옮기고
-    수치를 그대로 둔 설명을 돌려준다. invent=True면 연회비 설명에 원문에 없는 금액을 넣는다."""
+    """generate_persona_explanation에 주입할 가짜 ask. 원문 수치를 그대로 둔 두 문단 개요를
+    돌려준다. invent=True면 연회비 문장에 원문에 없는 금액을 넣는다."""
 
     def fake(model, schema, task, effort="low", **data):
-        assert schema is PersonaUnitDrafts, schema
+        assert schema is OverviewDraft, schema
         if seen is not None:
             seen.append(data.get("previous_feedback") or [])
-        fee = "카드를 쓰는 값으로 매년 1만원이 부과됩니다."
+        fee = "초록카드는 연회비가 국내전용 1만원이고 매년 부과돼요."
         return {
-            "items": [
-                {
-                    "card_ids": ["c1"],
-                    "source_ids": [CARDS[0]["source_id"]],
-                    "exact_fact": FEE_LINE,
-                    "explanation": fee.replace("1만원", "12만원") if invent else fee,
-                    "analogy": "",
-                    "persona_question_answered": "이 카드를 쓰면 돈이 언제, 얼마나 나가나요?",
-                },
-                {
-                    "card_ids": ["c2"],
-                    "source_ids": [CARDS[1]["source_id"]],
-                    "exact_fact": LATE_LINE,
-                    "explanation": "돈을 늦게 내면 최고 연 20%의 연체이자가 붙을 수 있습니다.",
-                    "analogy": "",
-                    "persona_question_answered": "모르고 지나치면 손해 보는 조건이 있나요?",
-                },
+            "paragraphs": [
+                fee.replace("1만원", "12만원") if invent else fee,
+                "돈을 늦게 내면 최고 연 20%의 연체이자율이 적용될 수 있어요.",
             ]
         }
 
@@ -142,12 +130,12 @@ def persona_ask(invent: bool = False, seen: list | None = None):
 
 
 def explanation_ask(condition_status: str = "불성립"):
-    """judge_explanation에 주입할 가짜 ask. applies_condition이 없는 항목은 입력 text에서 뽑은
+    """judge_disclosure에 주입할 가짜 ask. applies_condition이 없는 항목은 입력 text에서 뽑은
     실제 인용으로 적합 처리하고, 있는 항목은 condition_status('불성립' 정상 제외 또는 '불명확'
     판정 불가)로 남긴다. 원문/설명문 양쪽에 같은 규칙을 적용하므로 fidelity 후보는 생기지 않는다."""
 
     def fake(model, schema, task, effort="low", **data):
-        if schema is ExplanationJudgments:
+        if schema is DisclosureJudgments:
             quote = strip_ws(data["text"])[:12]
             return {
                 "items": [
@@ -169,7 +157,7 @@ def explanation_ask(condition_status: str = "불성립"):
                     for item in data["items"]
                 ]
             }
-        if schema is PlainJudgments:
+        if schema is OverviewJudgments:
             quote = strip_ws(data["text"])[:12]
             return {
                 "items": [
@@ -189,8 +177,6 @@ def explanation_ask(condition_status: str = "불성립"):
                     for item in data["items"]
                 ]
             }
-        if schema is LedgerSemantics:
-            raise AssertionError("every ledger value is in the explanation; no model call")
         raise AssertionError(f"unexpected schema in the chain test: {schema}")
 
     return fake
@@ -206,7 +192,7 @@ def run_chain(
     display_status: str | None = "완료",
     explanation_fake=None,
 ) -> dict:
-    from financial_disclosure_review.domain.explanation_duty_check import judge_explanation
+    from financial_disclosure_review.domain.ad_disclosure_check import judge_disclosure
     from financial_disclosure_review.domain.persona_explanation import (
         generate_persona_explanation as generate,
     )
@@ -221,11 +207,11 @@ def run_chain(
     )
     monkeypatch.setattr(
         nodes,
-        "judge_explanation",
-        lambda page, plain, cls, ctx, previous_original, previous_items, *, feedback=(): (
-            judge_explanation(
+        "judge_disclosure",
+        lambda page, overview, cls, ctx, previous_original, previous_items, *, feedback=(): (
+            judge_disclosure(
                 page,
-                plain,
+                overview,
                 cls,
                 ctx,
                 previous_original,
@@ -235,7 +221,6 @@ def run_chain(
             )
         ),
     )
-    monkeypatch.setattr(nodes, "ask", explanation_fake)
     state = state_with(
         product_page=PAGE,
         classification=CLASSIFICATION if classification is None else classification,
@@ -243,7 +228,7 @@ def run_chain(
         display_check=upstream_display_check(display_status) if display_status else {},
     )
     state.update(generate_persona_explanation(state, runtime))  # type: ignore[typeddict-item]
-    state.update(judge_explanation_duty(state, runtime))  # type: ignore[typeddict-item]
+    state.update(judge_ad_disclosure(state, runtime))  # type: ignore[typeddict-item]
     state.update(verify_answer(state, runtime))  # type: ignore[typeddict-item]
     return dict(state)
 
@@ -253,30 +238,31 @@ def test_the_happy_path_fills_every_key_and_passes(monkeypatch, runtime):
 
     persona = result["persona_explanation"]
     assert persona["status"] == "완료", persona["reason"]
-    assert [u["status"] for u in persona["units"]] == ["accepted", "accepted"]
+    assert len(persona["overview"]) == 2 and persona["problems"] == []
     assert persona["profile"]["status"] == "적용"
-    duty = result["explanation_duty_check"]
-    assert set(duty) == {"items", "original", "plain", "ledger", "fidelity"}
-    assert duty["ledger"] and all(row["decided_by"] == "code" for row in duty["ledger"])
-    assert all(row["verdict"] == "보존" for row in duty["ledger"])
-    excluded = [row for row in duty["items"] if not row["applied"]]
-    assert excluded, "조건이 성립하지 않는 항목이 하나도 없으면 이 시나리오가 의미가 없음"
+    disclosure = result["ad_disclosure_check"]
+    assert set(disclosure) == {"items", "original", "overview", "fidelity", "deferred"}
+    assert not any(row["code"].startswith(("설명", "F")) for row in disclosure["items"])
+    excluded = [row for row in disclosure["items"] if not row["applied"]]
+    assert excluded, "적용되지 않는 항목이 하나도 없으면 이 시나리오가 의미가 없음"
+    assert any(row["code"] == "설명16" for row in disclosure["deferred"])
     assert result["verification"]["passed"] is True, result["verification"]
     assert routed(result) == "end_report"
 
 
-def test_an_invented_number_reverts_the_unit_and_the_original_line_stays(monkeypatch, runtime):
-    """지어낸 금액이 있는 단위는 원문 줄로 되돌립니다. 되돌린 단위는 원문이 그대로 보이므로
-    검증 실패가 아니며, 보고서의 확인 항목으로만 남습니다."""
+def test_an_invented_number_holds_the_overview_back_and_asks_for_a_new_one(monkeypatch, runtime):
+    """지어낸 금액이 있는 개요는 싣지 않고, 검증이 그 문제를 고쳐 다시 쓰라고 요청합니다."""
     result = run_chain(monkeypatch, runtime, persona_ask(invent=True))
 
     persona = result["persona_explanation"]
-    fee_unit = next(u for u in persona["units"] if u["card_ids"] == ["c1"])
-    assert fee_unit["status"] == "reverted"
-    assert "12만원" not in persona["html"], "지어낸 수치가 최종 html에 남으면 안 됨"
-    assert "1만원" in persona["html"], "되돌린 줄은 원문 그대로 보여야 함"
-    assert result["verification"]["passed"] is True, result["verification"]
-    assert routed(result) == "end_report"
+    assert persona["status"] == "원문 대체"
+    assert persona["html"] == ""
+    assert any("12" in p for p in persona["problems"])
+    verification = result["verification"]
+    assert "persona_explanation" in verification["failed_modules"]
+    request = next(f for f in verification["feedback"] if f["module"] == "persona_explanation")
+    assert "12" in request["requested_change"]
+    assert routed(result) == "retry_dispatch"
 
 
 def test_an_unclear_condition_is_never_counted_as_a_pass(monkeypatch, runtime):
@@ -284,11 +270,9 @@ def test_an_unclear_condition_is_never_counted_as_a_pass(monkeypatch, runtime):
         monkeypatch, runtime, persona_ask(), explanation_fake=explanation_ask("불명확")
     )
 
-    assert any(
-        row["verdict"] == "판정 불가" for row in result["explanation_duty_check"]["original"]
-    )
+    assert any(row["verdict"] == "판정 불가" for row in result["ad_disclosure_check"]["original"])
     assert result["verification"]["passed"] is False
-    assert "explanation_duty_check" in result["verification"]["failed_modules"]
+    assert "ad_disclosure_check" in result["verification"]["failed_modules"]
     assert routed(result) == "end_report"
 
 
@@ -298,11 +282,11 @@ def test_a_missing_upstream_result_fails_every_module_and_goes_to_a_person(monke
     )
 
     assert result["persona_explanation"]["html"] == ""
-    assert result["explanation_duty_check"]["original"] == []
+    assert result["ad_disclosure_check"]["original"] == []
     assert result["verification"]["passed"] is False
     assert result["verification"]["failed_modules"] == [
+        "ad_disclosure_check",
         "display_check",
-        "explanation_duty_check",
         "persona_explanation",
     ]
     assert routed(result) == "end_report", "고칠 수 있는 피드백이 없으면 재시도하지 않음"
@@ -313,10 +297,10 @@ def test_the_retry_round_hands_the_generator_what_verification_asked_for(monkeyp
     first = run_chain(monkeypatch, runtime, persona_ask())
     request = {
         "module": "persona_explanation",
-        "code": "f1",
-        "source_id": CARDS[0]["source_id"],
-        "reason": "사실 원장 f1 누락",
-        "requested_change": "원문의 수치·조건·예외·불이익을 보존하도록 이 단위를 다시 생성하세요",
+        "code": "C01",
+        "source_id": "",
+        "reason": "연회비가 개요에서 빠짐",
+        "requested_change": "C01 항목의 원문 내용을 개요에 담도록 다시 쓰세요",
         "target": "",
     }
     first["verification"] = {**first["verification"], "feedback": [request]}
@@ -326,7 +310,7 @@ def test_the_retry_round_hands_the_generator_what_verification_asked_for(monkeyp
     generate_persona_explanation(cast(State, first), runtime)
 
     assert seen[-1], "재시도 회차의 설명 생성이 검증 피드백을 받지 못함"
-    assert {entry["source_id"] for entry in seen[-1]} == {CARDS[0]["source_id"]}
+    assert {entry["code"] for entry in seen[-1]} == {"C01"}
 
 
 def test_a_persona_failure_is_routed_back_to_the_generator(monkeypatch, runtime):
@@ -346,34 +330,33 @@ def test_a_persona_failure_is_routed_back_to_the_generator(monkeypatch, runtime)
     assert route_after_retry(state) == "generate_persona_explanation"
 
 
-def test_a_rubric_difference_tied_to_an_accepted_unit_fails_verification(monkeypatch, runtime):
-    """실측 설명06: 경고의 원인을 바꾼 설명 단위가 정보 행으로만 남아 게시 후보가 됐습니다."""
+def test_a_disclosure_the_overview_dropped_fails_verification(monkeypatch, runtime):
+    """원문에 있던 의무표시 내용이 개요에서 빠지면 개요를 다시 쓰게 합니다."""
     first = run_chain(monkeypatch, runtime, persona_ask())
-    unit = next(u for u in first["persona_explanation"]["units"] if u["status"] == "accepted")
     judged_rows = {
-        "items": first["explanation_duty_check"]["items"],
-        "original": first["explanation_duty_check"]["original"],
-        "plain": first["explanation_duty_check"]["plain"],
+        "items": first["ad_disclosure_check"]["items"],
+        "original": first["ad_disclosure_check"]["original"],
+        "overview": first["ad_disclosure_check"]["overview"],
         "fidelity": [
             {
-                "code": "설명06",
-                "source_id": "",
-                "kind": "변경",
-                "reason": "원인이 바뀜",
-                "original_quote": unit["exact_fact"],
-                "quote": unit["explanation"],
+                "code": "C02",
+                "kind": "누락",
+                "reason": "연체이자율이 빠짐",
+                "original_quote": LATE_LINE,
+                "quote": "",
+                "informational": False,
             }
         ],
     }
-    monkeypatch.setattr(nodes, "judge_explanation", lambda *a, **k: judged_rows)
+    monkeypatch.setattr(nodes, "judge_disclosure", lambda *a, **k: judged_rows)
     state = dict(first)
-    state.update(judge_explanation_duty(cast(State, state), runtime))
+    state.update(judge_ad_disclosure(cast(State, state), runtime))
     state.update(verify_answer(cast(State, state), runtime))
     verification = state["verification"]
     assert verification["passed"] is False
     assert "persona_explanation" in verification["failed_modules"]
     request = next(f for f in verification["feedback"] if f["module"] == "persona_explanation")
-    assert request["source_id"] == ",".join(unit["source_ids"])
+    assert request["code"] == "C02"
 
 
 def test_the_reader_is_chosen_from_the_dataset_once_and_kept_on_retry(
@@ -400,38 +383,3 @@ def test_the_reader_is_chosen_from_the_dataset_once_and_kept_on_retry(
     retry_runtime = cast(Runtime[Context], SimpleNamespace(context=retry_ctx))
     again = generate_persona_explanation(cast(State, first), retry_runtime)
     assert again["persona_explanation"]["profile"]["id"] == persona["profile"]["id"]
-
-
-def test_mandatory_disclosure_lines_stay_emphasised_in_the_explanation():
-    """감사 P2-12: 의무표시로 라벨된 줄은 설명 html에서도 강조됩니다."""
-    from financial_disclosure_review.domain.persona_explanation.generate import assemble_html
-    from financial_disclosure_review.graph.nodes import mark_mandatory
-
-    sources = [
-        {"source_id": "dom-1", "text": "커피 10% 할인"},
-        {"source_id": "dom-2", "text": "연체이자율은 약정금리 + 연 3%p입니다."},
-    ]
-    display = {
-        "judgments": {
-            "labels": {"mandatory": ["b7"]},
-            "blocks": [{"id": "b7", "text": "연체이자율은 약정금리 + 연 3%p입니다."}],
-        }
-    }
-    marked = mark_mandatory(sources, display)
-    assert [s.get("mandatory", False) for s in marked] == [False, True]
-    html = assemble_html(marked, [])
-    assert 'data-source-id="dom-2" data-mandatory="true"><strong>' in html
-    assert 'data-source-id="dom-1">커피' in html
-    unit = {
-        "unit_id": "u1",
-        "replaces": "dom-2",
-        "status": "accepted",
-        "source_ids": ["dom-2"],
-        "exact_fact": "연체이자율은 약정금리 + 연 3%p",
-        "explanation": "늦게 내면 이자가 더 붙습니다.",
-        "analogy": "",
-    }
-    assert 'data-mandatory="true"><p data-role="exact-fact"><strong>' in assemble_html(
-        marked, [unit]
-    )
-    assert mark_mandatory(sources, {}) == sources

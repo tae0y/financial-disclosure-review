@@ -1,9 +1,11 @@
-"""Two real dataset readers, same facts: is the code-decided fact ledger the same? (backlog C4)
+"""Two real dataset readers, same page: do both overviews pass, and do they cite the same facts?
 
-For each of the two real lottecard pages, the round-1 evidence cards are explained for two readers
-chosen from the pinned Nemotron-Personas-Korea dataset by explicit attributes (no model call to
-choose): a low-familiarity older reader and a finance-familiar reader. The ledger's code verdict
-(value present in its unit) must not depend on the reader; unit counts and wording may.
+For each of the two real lottecard pages, the round-1 evidence cards are summarised for two
+readers chosen from the pinned Nemotron-Personas-Korea dataset by explicit attributes (no model
+call to choose): a low-familiarity older reader and a finance-familiar reader. Both overviews must
+pass their code checks; wording and length may differ with the reader. The Jaccard of the numbers
+each overview cites shows how far the facts a reader is told depend on who the reader is (backlog
+C4). Until 2026-09-30 this compared fact-ledger verdicts of explanation units.
 
     uv run python eval/persona_pair_eval.py            # replay, $0
     uv run python eval/persona_pair_eval.py --record   # records the persona calls once
@@ -29,16 +31,13 @@ load_dotenv(ROOT / ".env")
 from cards_persona_eval import FIXTURES, persona_metrics  # noqa: E402
 
 from financial_disclosure_review.core.context import Context, default_data_dir  # noqa: E402
-from financial_disclosure_review.core.text import visible_text  # noqa: E402
 from financial_disclosure_review.core.usage import current, start_run  # noqa: E402
 from financial_disclosure_review.domain.evidence_cards import extract_evidence_cards  # noqa: E402
-from financial_disclosure_review.domain.explanation_duty_check.ledger import (  # noqa: E402
-    check_ledger,
-)
 from financial_disclosure_review.domain.persona_explanation import (  # noqa: E402
     choose_profile,
     generate_persona_explanation,
 )
+from financial_disclosure_review.domain.plain_language.contract import number_set  # noqa: E402
 from financial_disclosure_review.evaluation.cassette import Cassette  # noqa: E402
 from financial_disclosure_review.evaluation.run_meta import run_meta  # noqa: E402
 
@@ -67,8 +66,7 @@ def main() -> None:
         page, classification = fixture["page"], fixture["classification"]
         base_ctx = Context(model=args.model)
         cards = extract_evidence_cards(page, classification, base_ctx, ask=cassette.ask)
-        original_text = visible_text(page["html"])
-        rows, verdicts = {}, {}
+        rows, numbers = {}, {}
         for reader, attributes in READERS.items():
             ctx = Context(model=args.model, persona_attributes=attributes)
             chosen = choose_profile(
@@ -86,16 +84,8 @@ def main() -> None:
                 ask=cassette.ask,
                 profile=chosen["profile"],
             )
-            ledger = check_ledger(
-                persona["fact_ledger"],
-                persona["units"],
-                original_text,
-                visible_text(persona["html"]),
-                ctx.model,
-                cassette.ask,
-            )
-            verdicts[reader] = {r["fact_id"]: r["in_explanation"] for r in ledger["ledger"]}
-            metrics = persona_metrics(persona, ledger, cards["cards"])
+            numbers[reader] = number_set(" ".join(persona.get("overview") or []))
+            metrics = persona_metrics(persona)
             rows[reader] = {
                 "profile": chosen["profile"]["id"],
                 "reader": (chosen["profile"].get("attributes") or {}).get("reader", "")[:120],
@@ -103,26 +93,27 @@ def main() -> None:
                     "financial_familiarity"
                 ),
                 "decided_by": chosen["selection"]["decided_by"],
-                **{
-                    k: metrics[k]
-                    for k in ("accepted", "reverted", "ledger_facts", "risk_analogies_kept")
-                },
-                "sample": [
-                    u["explanation"][:120] for u in persona["units"] if u["status"] == "accepted"
-                ][:2],
+                **{k: metrics[k] for k in ("shown", "paragraphs", "chars", "problems")},
+                "numbers": sorted(numbers[reader]),
+                "sample": (persona.get("overview") or [""])[0][:160],
             }
-        a, b = (verdicts[r] for r in READERS)
-        facts = sorted(set(a) | set(b))
-        same = [f for f in facts if a.get(f) == b.get(f)]
+        a, b = (numbers[r] for r in READERS)
         result[name] = {
             "readers": rows,
-            "ledger_code_verdict_same": f"{len(same)}/{len(facts)}",
-            "ledger_differs": [f for f in facts if f not in same],
+            "both_shown": all(row["shown"] for row in rows.values()),
+            "number_jaccard": round(len(a & b) / len(a | b), 3) if a | b else 1.0,
+            "numbers_only_in": {
+                r: sorted(numbers[r] - numbers[o])
+                for r, o in (
+                    (list(READERS)[0], list(READERS)[1]),
+                    (list(READERS)[1], list(READERS)[0]),
+                )
+            },
         }
 
     saved = cassette.save()
     out = {
-        "meta": run_meta("persona_explanation reader pair (cassette)"),
+        "meta": run_meta("persona overview reader pair (cassette)"),
         "mode": mode,
         "model": args.model,
         "pages": result,

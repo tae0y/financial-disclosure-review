@@ -9,19 +9,17 @@ from pydantic import BaseModel
 from ..core.context import Context
 from ..core.text import locate_quote, visible_text
 from ..core.usage import BudgetError
+from ..domain.ad_disclosure_check.check import judge_original_side
+from ..domain.ad_disclosure_check.rubric import load_disclosure_items
 from ..domain.classification import classify_page
 from ..domain.classification.schema import PAGE_TYPE_BY_PRODUCT
-from ..domain.explanation_duty_check.check import (
-    explanation_scope,
-    judge_original_side,
-    load_explanation_items,
-)
 from ..domain.plain_language.contract import verify_block, verify_source_quote
 from ..domain.plain_language.judge import judge_condition_preservation
+from ..knowledge.rubrics import item_scope
 from .cassette import Asks, Cassette, CassetteMissError
 from .defects import longest_unused_sentence, remove_quote
 
-ABLATION_TASK = """당신은 카드회사 상품광고 페이지 원문(text)이 설명의무 기준(items)을 지켰는지
+ABLATION_TASK = """당신은 카드회사 상품광고 페이지 원문(text)이 광고 의무표시 기준(items)을 지켰는지
 판단합니다. items의 각 항목마다 verdict(적합/부적합/판정 불가), quote(근거 문장),
 reason(짧은 근거)을 답합니다."""
 
@@ -104,15 +102,11 @@ def run_classification(
     return {"suite": name, "arm": arm, "rows": rows}
 
 
-# ---------------------------------------------------------------- duty flip
+# ---------------------------------------------------------------- disclosure flip
 
 
-def _in_scope_items(db_path: str, product_type: str) -> list[dict]:
-    return [
-        item
-        for item in load_explanation_items(db_path)
-        if not explanation_scope(item, product_type)
-    ]
+def _in_scope_items(db_path: str, classification: dict) -> list[dict]:
+    return [item for item in load_disclosure_items(db_path) if not item_scope(item, classification)]
 
 
 def _pipeline_verdicts(items: list[dict], text: str, ctx: Context, ask) -> dict:
@@ -187,15 +181,14 @@ def shared_targets(
     return targets
 
 
-def run_duty_flip(
+def run_disclosure_flip(
     ctx: Context, cassette: Cassette, config: dict, arm: str = "pipeline", max_flips: int = 3
 ) -> dict:
     """Deletes one disclosure at a time and checks if the item flips; unlanded cases go unscored."""
     judge = ARMS[arm]
     base_html = Path(config["base_html"]).read_text(encoding="utf-8")
     base_text = visible_text(base_html)
-    product_type = config["classification"]["product_type"]
-    items = _in_scope_items(ctx.db_path, product_type)
+    items = _in_scope_items(ctx.db_path, config["classification"])
     prefer = tuple(config.get("prefer_codes") or ())
 
     raw = {name: fn(items, base_text, ctx, cassette.ask) for name, fn in ARMS.items()}
@@ -274,7 +267,7 @@ def run_duty_flip(
         rows.append(row)
 
     return {
-        "suite": f"duty-flip/{arm}",
+        "suite": f"disclosure-flip/{arm}",
         "arm": arm,
         "base": {
             "html": config["base_html"],
@@ -390,8 +383,8 @@ def run_stability(
 
     base_html = Path(config["base_html"]).read_text(encoding="utf-8")
     base_text = visible_text(base_html)
-    items = _in_scope_items(ctx.db_path, config["classification"]["product_type"])
-    duty = {
+    items = _in_scope_items(ctx.db_path, config["classification"])
+    disclosure = {
         arm: _agreement(
             items,
             [ARMS[arm](items, base_text, ctx, cassette.salted(salt)) for salt in salts],
@@ -403,8 +396,8 @@ def run_stability(
         "repeats": repeats,
         "base_html": config["base_html"],
         "classification": classification,
-        "duty": duty["pipeline"],
-        "baseline": {arm: rows for arm, rows in duty.items() if arm != "pipeline"},
+        "disclosure": disclosure["pipeline"],
+        "baseline": {arm: rows for arm, rows in disclosure.items() if arm != "pipeline"},
     }
 
 

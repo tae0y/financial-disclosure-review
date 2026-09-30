@@ -10,11 +10,10 @@ PRODUCT_HTML = (
     "<p>단기카드대출 이자율은 연 20%입니다.</p>"
     "</body></html>"
 )
-PLAIN_HTML = (
-    "<html><body>"
-    "<p>이 카드는 매년 15000원의 회비를 냅니다.</p>"
-    "<p>돈을 짧게 빌리면 이자가 연 20%입니다.</p>"
-    "</body></html>"
+OVERVIEW_HTML = (
+    '<section data-role="overview">'
+    "<p>이 카드는 매년 15000원의 회비를 냅니다. 돈을 짧게 빌리면 이자가 연 20%입니다.</p>"
+    "</section>"
 )
 
 
@@ -43,32 +42,18 @@ def sound_input() -> dict:
         },
         "persona_explanation": {
             "status": "완료",
-            "units": [
-                {
-                    "unit_id": "u1",
-                    "source_ids": ["dom-0"],
-                    "exact_fact": "이 카드의 연회비는 15000원입니다.",
-                    "explanation": "이 카드는 매년 15000원의 회비를 냅니다.",
-                    "analogy": "",
-                    "status": "accepted",
-                },
-                {
-                    "unit_id": "u2",
-                    "source_ids": ["dom-1"],
-                    "exact_fact": "단기카드대출 이자율은 연 20%입니다.",
-                    "explanation": "돈을 짧게 빌리면 이자가 연 20%입니다.",
-                    "analogy": "",
-                    "status": "accepted",
-                },
+            "overview": [
+                "이 카드는 매년 15000원의 회비를 냅니다. 돈을 짧게 빌리면 이자가 연 20%입니다."
             ],
-            "html": PLAIN_HTML,
+            "problems": [],
+            "html": OVERVIEW_HTML,
         },
-        "explanation_duty_check": {
+        "ad_disclosure_check": {
             "items": ["E02"],
             "original": [
                 {"code": "E02", "verdict": "적합", "quote": "연회비는 15000원", "reason": "기재됨"}
             ],
-            "plain": [
+            "overview": [
                 {
                     "code": "E02",
                     "verdict": "적합",
@@ -87,7 +72,7 @@ def run(state: dict) -> dict:
         state["page"],
         state["display_check"],
         state["persona_explanation"],
-        state["explanation_duty_check"],
+        state["ad_disclosure_check"],
         state["loop_count"],
     )
 
@@ -101,10 +86,10 @@ def test_a_sound_set_of_answers_passes():
 
 def test_a_missing_upstream_module_fails_that_module():
     state = sound_input()
-    state["explanation_duty_check"] = {}
+    state["ad_disclosure_check"] = {}
     result = run(state)
     assert result["passed"] is False
-    assert "explanation_duty_check" in result["failed_modules"]
+    assert "ad_disclosure_check" in result["failed_modules"]
 
 
 def test_a_block_id_that_was_never_measured_fails_display_check():
@@ -115,20 +100,20 @@ def test_a_block_id_that_was_never_measured_fails_display_check():
     assert "display_check" in result["failed_modules"]
 
 
-def test_a_quote_that_is_not_in_the_page_fails_the_explanation_duty_check():
+def test_a_quote_that_is_not_in_the_page_fails_the_disclosure_check():
     state = sound_input()
-    state["explanation_duty_check"]["original"][0]["quote"] = "이 문장은 원문 어디에도 없습니다"
+    state["ad_disclosure_check"]["original"][0]["quote"] = "이 문장은 원문 어디에도 없습니다"
     result = run(state)
     assert result["passed"] is False
-    assert "explanation_duty_check" in result["failed_modules"]
+    assert "ad_disclosure_check" in result["failed_modules"]
 
 
 def test_a_quote_request_names_the_side_it_belongs_to():
-    """The duty check re-judges only the flagged side, so the request must say which one."""
+    """The disclosure check re-judges only the flagged side, so the request must say which one."""
     state = sound_input()
-    state["explanation_duty_check"]["original"][0]["quote"] = "이 문장은 원문 어디에도 없습니다"
+    state["ad_disclosure_check"]["original"][0]["quote"] = "이 문장은 원문 어디에도 없습니다"
     result = run(state)
-    requests = [f for f in result["feedback"] if f["module"] == "explanation_duty_check"]
+    requests = [f for f in result["feedback"] if f["module"] == "ad_disclosure_check"]
     assert requests, result["feedback"]
     assert {f["target"] for f in requests} == {"original"}
     assert all(f["code"] for f in requests)
@@ -143,64 +128,53 @@ def test_a_pass_that_contradicts_the_measurement_fails():
     assert any("모순" in reason for reason in result["reasons"])
 
 
-def test_a_fidelity_gap_is_the_explanations_problem_not_the_duty_checks():
+def test_a_fidelity_gap_is_the_overviews_problem_not_the_disclosure_checks():
     state = sound_input()
-    state["explanation_duty_check"]["fidelity"] = [
+    state["ad_disclosure_check"]["fidelity"] = [
         {
-            "code": "f2",
-            "source_ids": ["dom-1"],
+            "code": "C01",
             "kind": "누락",
-            "reason": "이자율 20%가 설명에서 빠졌습니다",
+            "reason": "연회비가 개요에서 빠졌습니다",
             "informational": False,
         }
     ]
     result = run(state)
     assert result["passed"] is False
     assert "persona_explanation" in result["failed_modules"]
-    assert "explanation_duty_check" not in result["failed_modules"]
-    assert result["feedback"][0]["source_id"] == "dom-1"
+    assert "ad_disclosure_check" not in result["failed_modules"]
+    request = result["feedback"][0]
+    assert request["module"] == "persona_explanation" and request["code"] == "C01"
+    assert "C01" in request["requested_change"]
 
 
 def test_an_informational_fidelity_row_is_reported_but_does_not_fail():
-    """원문으로 되돌린 단위나 출처 없는 루브릭 차이는 재생성으로 고칠 수 없어 정보로만 남깁니다."""
+    """판정 불가 비교는 고칠 내용을 말하지 않으므로 재생성하지 않고 정보로만 남깁니다."""
     state = sound_input()
-    state["explanation_duty_check"]["fidelity"] = [
-        {
-            "code": "f1",
-            "source_ids": ["dom-0"],
-            "kind": "누락",
-            "reason": "r",
-            "informational": True,
-        },
-        {"code": "설명05", "source_ids": [], "kind": "변경", "reason": "r", "informational": True},
+    state["ad_disclosure_check"]["fidelity"] = [
+        {"code": "A04", "kind": "판정 불가", "reason": "r", "informational": True},
     ]
     result = run(state)
     assert result["passed"] is True, result["reasons"]
-    assert sum(reason.startswith("[정보]") for reason in result["reasons"]) == 2
+    assert sum(reason.startswith("[정보]") for reason in result["reasons"]) == 1
 
 
-def test_an_accepted_unit_whose_exact_fact_is_not_in_the_page_fails():
+def test_an_overview_held_back_by_its_checks_asks_for_a_new_draft():
     state = sound_input()
-    state["persona_explanation"]["units"][0]["exact_fact"] = "연회비는 없습니다."
-    result = run(state)
-    assert "persona_explanation" in result["failed_modules"]
-
-
-def test_a_reverted_unit_is_not_rechecked():
-    state = sound_input()
-    state["persona_explanation"]["units"][0].update(
-        exact_fact="원문에 없는 문장", status="reverted"
+    state["persona_explanation"].update(
+        status="원문 대체", html="", problems=["원문에 없는 수치: 24"]
     )
-    assert run(state)["passed"] is True
+    result = run(state)
+    requests = [f for f in result["feedback"] if f["module"] == "persona_explanation"]
+    assert requests and "24" in requests[0]["requested_change"]
 
 
-def test_an_invented_number_in_an_accepted_unit_fails():
+def test_an_invented_number_in_the_overview_fails():
     state = sound_input()
-    state["persona_explanation"]["units"][1]["explanation"] = "이자는 연 25%입니다."
+    state["persona_explanation"]["html"] = "<section><p>이자는 연 25%입니다.</p></section>"
     assert "persona_explanation" in run(state)["failed_modules"]
 
 
-@pytest.mark.parametrize("module", ["display_check", "explanation_duty_check"])
+@pytest.mark.parametrize("module", ["display_check", "ad_disclosure_check"])
 def test_an_unjudgeable_answer_is_never_counted_as_a_pass(module):
     state = sound_input()
     if module == "display_check":
@@ -208,7 +182,7 @@ def test_an_unjudgeable_answer_is_never_counted_as_a_pass(module):
         state["display_check"]["judgments"]["reason"] = "필요한 스냅샷 없음"
         state["display_check"]["items"] = []
     else:
-        state["explanation_duty_check"]["original"][0]["verdict"] = "판정 불가"
+        state["ad_disclosure_check"]["original"][0]["verdict"] = "판정 불가"
     result = run(state)
     assert result["passed"] is False
     assert module in result["failed_modules"]
@@ -224,12 +198,12 @@ def test_a_nonconforming_row_may_cite_nothing_because_the_explanation_is_missing
     """부적합은 '설명이 없다'는 판정이라 인용할 문장이 없습니다. 빈 인용을 실패로 보면 재시도가
     같은 답으로 끝나고 상태가 늘 '사람 검토 필요'가 됩니다(2026-09-28 감사 P0-1)."""
     state = sound_input()
-    state["explanation_duty_check"]["original"][0].update(verdict="부적합", quote="")
+    state["ad_disclosure_check"]["original"][0].update(verdict="부적합", quote="")
     result = run(state)
-    assert "explanation_duty_check" not in result["failed_modules"], result["reasons"]
+    assert "ad_disclosure_check" not in result["failed_modules"], result["reasons"]
 
 
 def test_a_conforming_row_still_needs_a_quote():
     state = sound_input()
-    state["explanation_duty_check"]["original"][0].update(verdict="적합", quote="")
-    assert "explanation_duty_check" in run(state)["failed_modules"]
+    state["ad_disclosure_check"]["original"][0].update(verdict="적합", quote="")
+    assert "ad_disclosure_check" in run(state)["failed_modules"]

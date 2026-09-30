@@ -1,4 +1,4 @@
-"""Evidence cards and the persona explanation on real pages (single structured calls, no agent).
+"""Evidence cards and the persona overview on real pages (single structured calls, no agent).
 
 Named `agentic_eval.py` until 2026-09-29. The audit of that date (A-05) found the name implied
 it measured the agents while it also had a reference-case part; that part is removed along
@@ -14,9 +14,10 @@ cassette, so a recorded run replays for free:
 
 Measured, separately:
 - evidence cards: quote resolution, gold recall, risk-gold recall;
-- persona explanation: accepted/reverted units, fact-ledger coverage, analogies kept on risk
-  cards (must be 0), and whether the ledger check catches a number or condition that a mutated
-  explanation drops or changes.
+- persona overview: status, paragraph and character counts, the code-check problems, and whether
+  those checks catch an overview mutated to invent a number, add a verdict word or run long.
+  (Until 2026-09-30 this measured explanation units and the fact ledger; both were removed when
+  the explanation became a one- or two-paragraph overview beside the page.)
 
 Writes `eval/results/<timestamp>-cards-persona-<mode>.{json,md}` with a `meta` block naming the
 code revision, prompt hashes and gold version.
@@ -24,7 +25,6 @@ code revision, prompt hashes and gold version.
 
 import argparse
 import json
-import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -37,17 +37,14 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(ROOT / ".env")
 
 from financial_disclosure_review.core.context import Context  # noqa: E402
-from financial_disclosure_review.core.text import visible_text  # noqa: E402
 from financial_disclosure_review.core.usage import current, start_run  # noqa: E402
 from financial_disclosure_review.domain.evidence_cards import extract_evidence_cards  # noqa: E402
-from financial_disclosure_review.domain.explanation_duty_check.ledger import (  # noqa: E402
-    check_ledger,
-)
 from financial_disclosure_review.domain.persona_explanation import (  # noqa: E402
     generate_persona_explanation,
 )
 from financial_disclosure_review.domain.persona_explanation.generate import (  # noqa: E402
-    review_unit,
+    MAX_CHARS,
+    overview_problems,
 )
 from financial_disclosure_review.evaluation.cassette import Cassette  # noqa: E402
 from financial_disclosure_review.evaluation.evidence_metrics import card_metrics  # noqa: E402
@@ -55,152 +52,35 @@ from financial_disclosure_review.evaluation.run_meta import run_meta  # noqa: E4
 
 FIXTURES = ("display_lottecard_card_loan", "display_lottecard_loca_classic")
 GOLD = ROOT / "eval" / "fixtures" / "gold" / "evidence_cards.json"
-RISK_KINDS = ("rate_claim", "fee_claim", "warning")
-MUTATIONS_PER_PAGE = 4
 
 
-def _mutate(text: str, value: str, how: str) -> str | None:
-    """The explanation text with one ledger value dropped or changed; None when not applicable."""
-    if value not in text:
-        return None
-    if how == "drop":
-        return text.replace(value, "")
-    digits = re.search(r"\d", value)
-    if not digits:
-        return None
-    bumped = value[: digits.start()] + str((int(digits.group()) + 1) % 10) + value[digits.end() :]
-    return text.replace(value, bumped)
-
-
-def mutation_checks(persona: dict, original_text: str, model: str, ask) -> list[dict]:
-    """Drop or change ledger values of accepted units and ask check_ledger to notice."""
-    accepted = {u["unit_id"] for u in persona.get("units") or [] if u["status"] == "accepted"}
-    explanation = visible_text(persona.get("html") or "")
-    facts = [
-        f
-        for f in persona.get("fact_ledger") or []
-        if set(f.get("unit_ids") or []) & accepted and len(f["value"]) >= 2
+def generation_mutations(persona: dict, sources: list[dict]) -> list[dict]:
+    """Mutate an accepted overview and re-run its code checks, free. Each must be caught."""
+    paragraphs = persona.get("overview") or []
+    if not persona.get("html") or not paragraphs:
+        return []
+    source_text = " ".join(s.get("text", "") for s in sources)
+    variants = [
+        ("invent_number", [*paragraphs[:-1], paragraphs[-1] + " 약 37만원을 돌려받습니다."]),
+        ("verdict_word", [*paragraphs[:-1], paragraphs[-1] + " 이 광고는 위반이 아닙니다."]),
+        ("third_paragraph", [*paragraphs, "추가 문단입니다.", "또 하나의 문단입니다."]),
+        ("too_long", [*paragraphs, "가" * (MAX_CHARS + 1)]),
     ]
-    picked = [f for f in facts if f["kind"] in ("number", "limit", "period")][:2]
-    picked += [f for f in facts if f["kind"] in ("condition", "exception")][:2]
-    rows = []
-    for fact in picked[:MUTATIONS_PER_PAGE]:
-        how = "change" if fact["kind"] in ("number", "limit", "period") else "drop"
-        mutated = _mutate(explanation, fact["value"], how)
-        if mutated is None:
-            continue
-        # The ledger reads each fact inside its own units, so the mutation is applied to the
-        # units' text as well as to the assembled page.
-        units = [
-            {
-                **u,
-                **{
-                    k: _mutate(u.get(k) or "", fact["value"], how) or u.get(k) or ""
-                    for k in ("exact_fact", "explanation", "analogy")
-                },
-            }
-            if u["unit_id"] in (fact.get("unit_ids") or [])
-            else u
-            for u in persona["units"]
-        ]
-        result = check_ledger(persona["fact_ledger"], units, original_text, mutated, model, ask)
-        flagged = [
-            r
-            for r in result["fidelity"]
-            if r["code"] == fact["fact_id"] or (how == "change" and r["kind"] == "추가")
-        ]
-        rows.append(
-            {
-                "fact_id": fact["fact_id"],
-                "kind": fact["kind"],
-                "value": fact["value"],
-                "mutation": how,
-                "detected": bool(flagged),
-                "by": sorted({r["decided_by"] for r in flagged}),
-            }
-        )
-    return rows
-
-
-def generation_mutations(persona: dict, sources: list[dict], cards: list[dict]) -> list[dict]:
-    """First safety layer: mutate accepted drafts and re-run the per-unit code review, free."""
-    cards_by_id = {c["id"]: c for c in cards}
-    sources_by_id = {s["source_id"]: s for s in sources}
-    order = {s["source_id"]: n for n, s in enumerate(sources)}
-    ledger = persona.get("fact_ledger") or []
-    policy = ((persona.get("profile") or {}).get("attributes") or {}).get("analogy_policy", "none")
-    rows = []
-    for unit in [u for u in persona.get("units") or [] if u["status"] == "accepted"][:6]:
-        facts = [f for f in ledger if unit["unit_id"] in (f.get("unit_ids") or [])]
-        risky = any(cards_by_id[i]["kind"] in RISK_KINDS for i in unit["card_ids"])
-        variants = []
-        if facts:
-            value = facts[0]["value"]
-            variants.append(
-                (
-                    "drop_fact",
-                    {
-                        "exact_fact": unit["exact_fact"].replace(value, ""),
-                        "explanation": unit["explanation"].replace(value, ""),
-                    },
-                    "reverted",
-                )
-            )
-        variants.append(
-            ("invent_number", {"explanation": unit["explanation"] + " 약 37만원"}, "reverted")
-        )
-        variants.append(
-            ("verdict_word", {"explanation": unit["explanation"] + " 위반이 아닙니다."}, "reverted")
-        )
-        if risky:
-            variants.append(
-                ("risk_analogy", {"analogy": "은행 적금과 비슷합니다."}, "analogy_dropped")
-            )
-        for name, change, expect in variants:
-            draft = {**unit, **change}
-            reviewed = review_unit(
-                unit["unit_id"], draft, cards_by_id, sources_by_id, order, ledger, policy
-            )
-            if expect == "reverted":
-                caught = reviewed["status"] == "reverted"
-            else:
-                caught = not reviewed["analogy"]
-            rows.append({"unit_id": unit["unit_id"], "mutation": name, "caught": caught})
-    return rows
-
-
-def persona_metrics(persona: dict, ledger: dict, cards: list[dict]) -> dict:
-    units = persona.get("units") or []
-    kinds = {c["id"]: c["kind"] for c in cards}
-    risky_with_analogy = [
-        u["unit_id"]
-        for u in units
-        if u["status"] == "accepted"
-        and u.get("analogy")
-        and any(kinds.get(i) in RISK_KINDS for i in u.get("card_ids") or [])
+    return [
+        {"mutation": name, "caught": bool(overview_problems(changed, source_text))}
+        for name, changed in variants
     ]
-    rows = ledger.get("ledger") or []
+
+
+def persona_metrics(persona: dict) -> dict:
+    paragraphs = persona.get("overview") or []
     return {
         "status": persona.get("status"),
         "profile": (persona.get("profile") or {}).get("id"),
-        "units": len(units),
-        "accepted": sum(u["status"] == "accepted" for u in units),
-        "reverted": sum(u["status"] == "reverted" for u in units),
-        "revert_reasons": sorted(
-            {p.split(":")[0] for u in units if u["status"] == "reverted" for p in u["problems"]}
-        ),
-        "analogies_kept": sum(1 for u in units if u["status"] == "accepted" and u.get("analogy")),
-        "analogies_dropped": sum(
-            1 for u in units for p in u.get("problems") or [] if p.startswith("analogy_dropped")
-        ),
-        "risk_analogies_kept": risky_with_analogy,
-        "ledger_facts": len(rows),
-        "ledger_preserved": sum(r["verdict"] == "보존" for r in rows),
-        "ledger_by_code": sum(r["decided_by"] == "code" for r in rows),
-        "fidelity_rows": len(ledger.get("fidelity") or []),
-        "fidelity_failing": sum(
-            1 for r in ledger.get("fidelity") or [] if not r.get("informational")
-        ),
+        "shown": bool(persona.get("html")),
+        "paragraphs": len(paragraphs),
+        "chars": sum(len(p) for p in paragraphs),
+        "problems": persona.get("problems") or [],
     }
 
 
@@ -229,16 +109,6 @@ def main() -> None:
         persona = generate_persona_explanation(
             cards["sources"], cards["cards"], classification, ctx, ask=cassette.ask
         )
-        original_text = visible_text(page["html"])
-        ledger = check_ledger(
-            persona["fact_ledger"],
-            persona["units"],
-            original_text,
-            visible_text(persona["html"]),
-            ctx.model,
-            cassette.ask,
-        )
-        mutations = mutation_checks(persona, original_text, ctx.model, cassette.ask)
         pages[name] = {
             "cards": {
                 **card_metrics(cards["cards"], cards["sources"], fixture_gold),
@@ -248,20 +118,17 @@ def main() -> None:
                 "sources": len(cards["sources"]),
                 "kinds": sorted({c["kind"] for c in cards["cards"]}),
             },
-            "persona": persona_metrics(persona, ledger, cards["cards"]),
-            "mutations": mutations,
-            "generation_mutations": generation_mutations(persona, cards["sources"], cards["cards"]),
+            "persona": persona_metrics(persona),
+            "generation_mutations": generation_mutations(persona, cards["sources"]),
             "examples": {
                 "card": cards["cards"][0] if cards["cards"] else None,
-                "unit": next((u for u in persona["units"] if u["status"] == "accepted"), None),
-                "ledger": (ledger["ledger"] or [None])[0],
-                "fidelity": (ledger["fidelity"] or [None])[0],
+                "overview": persona.get("overview") or [],
             },
         }
 
     saved = cassette.save()
     result = {
-        "meta": run_meta("evidence_cards+persona_explanation (cassette)", gold=GOLD),
+        "meta": run_meta("evidence_cards+persona_overview (cassette)", gold=GOLD),
         "mode": mode,
         "model": ctx.model,
         "profile": ctx.persona_profile or "(default)",
@@ -277,7 +144,7 @@ def main() -> None:
     )
     meta = result["meta"]
     lines = [
-        f"# evidence cards and persona explanation ({mode}, {ctx.model})",
+        f"# evidence cards and persona overview ({mode}, {ctx.model})",
         "",
         f"meta: commit {meta['commit']}{' (dirty)' if meta['dirty'] else ''}, gold {meta['gold']}",
         "",

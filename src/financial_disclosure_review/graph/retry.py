@@ -10,12 +10,12 @@ MAX_LOOPS = 2
 # would repeat the same call on the same measurements. Its failures go to a person instead.
 RETRYABLE: dict[str, str] = {
     "persona_explanation": "generate_persona_explanation",
-    "explanation_duty_check": "judge_explanation_duty",
+    "ad_disclosure_check": "judge_ad_disclosure",
 }
 # Verification fields owned by `retry_dispatch`; `verify_answer` carries them across rounds.
 RETRY_KEYS = ("retry_target", "retry_modules", "retry_history")
 # Graph order, so a retry restarts at the earliest failed node and the rest follows by edges.
-NODE_ORDER = ["generate_persona_explanation", "judge_explanation_duty"]
+NODE_ORDER = ["generate_persona_explanation", "judge_ad_disclosure"]
 
 
 def retryable_modules(verification: Mapping[str, Any]) -> list[str]:

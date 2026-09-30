@@ -206,8 +206,7 @@ components:
           default: summary
         from_node:
           description: 'A graph node name: preprocess_product_page, classify_type, extract_evidence_cards,
-            judge_display_method, generate_persona_explanation, judge_explanation_duty, verify_answer,
-            end_report.'
+            judge_display_method, generate_persona_explanation, judge_ad_disclosure, verify_answer, end_report.'
           maxLength: 80
           title: From Node
           type: string
@@ -373,11 +372,13 @@ components:
       scheme: bearer
       type: http
 info:
-  description: "Reviews a Korean financial-product web page against the explanation duty (설명의무) and the\n\
-    display-method rules (표시방법), and rewrites its explanation in plain Korean.\n\n**A review takes minutes,\
-    \ so nothing here returns one.** The page is rendered in a real browser and\njudged over a series\
-    \ of model calls. Cloudflare closes a response that has produced nothing for\nabout 100 seconds, so\
-    \ a synchronous endpoint would fail on exactly the runs that worked.\n\nSubmitting therefore returns\
+  description: "Reviews a Korean card-company advertising page against the mandatory ad disclosures\n\
+    (광고 의무표시) and the display-method rules (표시방법), and writes a short plain-Korean overview\nto show beside\
+    \ it. Explanation-duty (설명의무) items are listed for the product documents, not\njudged, because they\
+    \ bind the contract-stage explanation rather than an advertisement.\n\n**A review takes minutes, so\
+    \ nothing here returns one.** The page is rendered in a real browser and\njudged over a series of\
+    \ model calls. Cloudflare closes a response that has produced nothing for\nabout 100 seconds, so a\
+    \ synchronous endpoint would fail on exactly the runs that worked.\n\nSubmitting therefore returns\
     \ `202 Accepted` with a job id; poll `GET /v1/reviews/{job_id}` until\n`status` leaves `queued`/`running`.\
     \ Job rows are stored on disk, so a restart does not lose the\nrecord of what was asked.\n\n`status`\
     \ reaches one of:\n\n- `succeeded` — `result` is filled.\n- `failed` — the worker raised; `error`\
