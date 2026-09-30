@@ -1,139 +1,135 @@
 # HTTP API
 
-The gateway accepts and tracks jobs; the worker runs the graph. Only the gateway is public.
+This page describes how to submit a review over HTTP, poll it, and read the result.
 
-```
+The gateway (`api`) accepts and tracks jobs; the worker (`agent`) runs the graph. Only the gateway is public.
+
+```text
 caller → Cloudflare tunnel → api:8000 → agent:8100 → LangGraph
                               │              │
                         data/jobs.sqlite  data/checkpoints.sqlite
 ```
 
+The generated [OpenAPI document](openapi.yaml) is the complete request and response contract. Regenerate it with `uv run python -m financial_disclosure_review.serving.openapi`.
+
 ## Authentication
 
-Every `/v1` route requires a bearer token. Health endpoints remain open for container probes.
+Every `/v1` route requires a bearer token. The health endpoints stay open for container probes.
 
 ```text
 Authorization: Bearer fdr_<token>
 ```
 
-Generate a token with `uv run python -m financial_disclosure_review.serving.token` and set it as
-`FDR_API_TOKEN`. The gateway fails closed when the variable is absent. A comma-separated value
-temporarily accepts both tokens during rotation.
+- Issue a token with `uv run python -m financial_disclosure_review.serving.token` and set it as `FDR_API_TOKEN`.
+- The gateway refuses to start when `FDR_API_TOKEN` is unset.
+- A comma-separated value accepts two tokens at once, for rotation.
 
 ## Endpoints
 
 | Method | Path | Result |
 |---|---|---|
-| `GET` | `/healthz` | Gateway liveness; no authentication. |
-| `GET` | `/readyz` | Gateway and worker readiness; no authentication. |
-| `POST` | `/v1/reviews` | Queue a URL review; returns `202`. |
-| `POST` | `/v1/reruns` | Resume a thread from a node; returns `202`. |
-| `GET` | `/v1/reviews` | List recent jobs (`limit`, `status`). |
-| `GET` | `/v1/reviews/{job_id}` | Get a job and, after success, its result. |
-| `GET` | `/v1/reviews/{job_id}/report.md` | Download the reviewer report. |
-
-The generated [OpenAPI document](openapi.yaml) is the complete request/response contract. Regenerate
-it with `uv run python -m financial_disclosure_review.serving.openapi`.
+| `GET` | `/healthz` | Gateway liveness; no authentication |
+| `GET` | `/readyz` | Gateway and worker readiness; no authentication |
+| `POST` | `/v1/reviews` | Queue a URL review; returns `202` |
+| `POST` | `/v1/reruns` | Resume a thread from a node; returns `202` |
+| `GET` | `/v1/reviews` | List recent jobs (`limit`, `status`) |
+| `GET` | `/v1/reviews/{job_id}` | Get a job and, after success, its result |
+| `GET` | `/v1/reviews/{job_id}/report.md` | Download the reviewer report |
 
 ## Submit and poll
 
 Only `url` is required. `detail` defaults to `summary`; `max_calls` and `max_usd` cap one run.
 
-### Reader information for the easy-language advice
+1. Submit a review.
 
-`persona` carries the user information used to choose the reader of the plain-language advice
-(쉬운말 확인 권고: one paragraph shown beside the page that tells this reader which contract terms
-the ad does not explain to check before signing). It does not identify the API caller. A normal UI sends the text the
-user entered in `persona.request`:
+    ```bash
+    # bash/zsh
+    BASE=http://localhost:8000
+    TOKEN=fdr_...
 
-```json
-{
-  "url": "https://www.example-card.co.kr/product/credit/apply",
-  "persona": {
-    "request": "70대 은퇴자이고 카드론을 처음 알아보는 사람입니다.",
-    "uuid": null,
-    "attributes": null
-  }
-}
-```
+    job=$(curl -sS -X POST "$BASE/v1/reviews" \
+      -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
+      -d '{
+        "url": "https://www.example-card.co.kr/product/credit/apply",
+        "persona": {"request": "70대 은퇴자이고 카드론을 처음 알아보는 사람입니다.", "uuid": null, "attributes": null}
+      }' \
+      | python3 -c 'import json,sys; print(json.load(sys.stdin)["job_id"])')
+    ```
+
+    ```powershell
+    # PowerShell
+    $BASE = "http://localhost:8000"
+    $TOKEN = "fdr_..."
+    $headers = @{ Authorization = "Bearer $TOKEN" }
+
+    $body = @{
+        url     = "https://www.example-card.co.kr/product/credit/apply"
+        persona = @{ request = "70대 은퇴자이고 카드론을 처음 알아보는 사람입니다."; uuid = $null; attributes = $null }
+    } | ConvertTo-Json
+
+    $job = (Invoke-RestMethod -Method Post -Uri "$BASE/v1/reviews" -Headers $headers `
+        -ContentType "application/json; charset=utf-8" -Body $body).job_id
+    ```
+
+1. Poll the job until its status leaves `queued` or `running`.
+
+    ```bash
+    # bash/zsh
+    curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/v1/reviews/$job"
+    ```
+
+    ```powershell
+    # PowerShell
+    Invoke-RestMethod -Uri "$BASE/v1/reviews/$job" -Headers $headers
+    ```
+
+1. Download the report.
+
+    ```bash
+    # bash/zsh
+    curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/v1/reviews/$job/report.md"
+    ```
+
+    ```powershell
+    # PowerShell
+    Invoke-RestMethod -Uri "$BASE/v1/reviews/$job/report.md" -Headers $headers
+    ```
+
+A job ends as `succeeded`, `failed`, or `interrupted`. `interrupted` means the gateway stopped mid-run; the checkpoint remains, so `POST /v1/reruns` with its `thread_id` resumes the run.
+
+## Reader information
+
+`persona` is optional user information that picks the reader of the plain-language advice (쉬운말 확인 권고). It does not identify the API caller. A normal UI sends only `persona.request`.
 
 | Field | Type | Use |
 |---|---|---|
-| `persona` | object \| `null` | Optional user information. Omit it or send `null` when the UI collected none. |
-| `persona.request` | string \| `null` | The usual input: one or two sentences, up to 300 characters. State who the user is and how familiar they are with the product. |
-| `persona.uuid` | string \| `null` | Advanced use: one exact dataset row, as 32 lowercase hexadecimal characters. |
-| `persona.attributes` | object \| `null` | Advanced use: dataset filters supplied directly. |
+| `persona` | object \| `null` | Omit or send `null` when the UI collected nothing |
+| `persona.request` | string \| `null` | The usual input: one or two sentences, up to 300 characters, about who the user is and how familiar they are with the product |
+| `persona.uuid` | string \| `null` | Advanced: one exact dataset row, 32 lowercase hexadecimal characters |
+| `persona.attributes` | object \| `null` | Advanced: dataset filters `age_min`, `age_max`, `sex`, `education_level`, `occupation_contains`, `province`, `family_type`, `housing_type`, `marital_status` |
 
-Free text is turned into dataset filters and a financial-familiarity hint by a small bounded
-agent. Useful details are age band, education, occupation, region, household type, and phrases
-such as "처음 알아보는" or "금융권 종사자". Income, credit standing, suitability, and other
-facts that the dataset does not contain are not inferred or used. The selected persona only
-changes the advice's wording and which items it recommends; it never changes a compliance verdict.
+Rules:
 
-Treat `persona.request` as model input. Collect only the demographic sketch and level of financial
-familiarity needed for the advice; do not send a name, contact details, account or card
-numbers, resident-registration numbers, credentials, or other identifying or sensitive data.
+- Precedence is `uuid` → `attributes` → `request`.
+- An omitted key, `null`, an empty string, or an empty or all-`null` `attributes` object means "not given". With nothing given, the run uses the product type's default reader.
+- A small bounded agent turns free text into dataset filters and a financial-familiarity hint. Useful details are age band, education, occupation, region, household type, and phrases such as "처음 알아보는" or "금융권 종사자". Income, credit standing, and suitability are never inferred.
+- An unusable filter, an unmatched value, or free text with no usable condition does not fail the job. The run falls back to a default reader and records the reason in the report.
+- Request-shape errors return FastAPI's standard `422` before a job exists: `request` over 300 characters, a non-string `request` or `uuid`, a non-object `persona` or `attributes`, or a nonempty `uuid` that is not 32 lowercase hex characters. `detail[].loc` names the field, for example `['body', 'persona', 'request']`.
+- The reader changes only the advice's wording and which items it recommends, never a compliance verdict.
 
-The advanced `attributes` form accepts the filters `age_min`, `age_max`, `sex`,
-`education_level`, `occupation_contains`, `province`, `family_type`, `housing_type`, and
-`marital_status`. When more than one form has a value, precedence is `uuid` → `attributes` →
-`request`. For ordinary screen integration, populate only `request` and leave the other two
-fields `null`.
+> **Important:** `persona.request` is sent to the model provider. Collect only a demographic sketch and a familiarity level. Never send names, contact details, account or card numbers, resident-registration numbers, credentials, or other identifying data.
 
-Every persona field is nullable, and so is `persona` itself. For `request` and `uuid`, an omitted
-key, `null`, or an empty string means "not given". For `attributes`, an omitted key, `null`, an
-empty object, or an object whose values are all `null` has the same meaning. If every form is
-empty, the run uses the product type's default reader. An unusable filter, unmatched value, or
-free-text request from which no supported condition can be obtained does not fail the job: the
-run falls back to a default reader and records the reason in the report.
+## Responses
 
-Request-shape validation still happens before a job is created. A `request` longer than 300
-characters, a non-string `request` or `uuid`, a non-object `persona` or `attributes`, or a nonempty
-`uuid` other than 32 lowercase hexadecimal characters returns FastAPI's standard `422` response.
-Invalid keys or values *inside* the free-form `attributes` object instead fall back during the
-run. A `422` response's `detail[].loc` identifies the field, for example
-`['body', 'persona', 'request']`.
+A successful result contains the checkpoint `thread_id`, reviewer status and decision, summary, report, cost, and elapsed time. Raw source HTML and snapshots never leave the API.
 
-```bash
-BASE=http://localhost:8000
-TOKEN=fdr_...
+| `detail` | Adds |
+|---|---|
+| `summary` (default) | `result.summary.persona_explanation.reader_chosen_by`: `agent` (free text), `default` (nothing supplied), `fallback` (input unusable), `uuid`, or `attributes` |
+| `full` | Per-item judgments, evidence cards, the page agent's trace, the advice HTML, text and `advice_codes`, the reader `selection` (filters, match count, trace, fallback reason), and `ad_disclosure_check` rows with the `deferred` explanation-duty items |
 
-job=$(curl -sS -X POST "$BASE/v1/reviews" \
-  -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
-  -d '{
-    "url":"https://www.example-card.co.kr/product/credit/apply",
-    "persona":{
-      "request":"70대 은퇴자이고 카드론을 처음 알아보는 사람입니다.",
-      "uuid":null,
-      "attributes":null
-    }
-  }' \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["job_id"])')
+## Limits
 
-curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/v1/reviews/$job"
-curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/v1/reviews/$job/report.md"
-```
-
-Poll until the status leaves `queued` or `running`. A job ends as `succeeded`, `failed`, or
-`interrupted`. `interrupted` means the gateway stopped mid-run; its checkpoint remains available
-for `/v1/reruns`.
-
-With `detail=summary`, `result.summary.persona_explanation.reader_chosen_by` is `agent` for a
-free-text choice, `default` when nothing was supplied, `fallback` when the input could not be
-used, or `uuid`/`attributes` for either advanced form. With `detail=full`,
-`result.summary.persona_explanation.selection` also contains the applied filters, match count,
-selection trace, and fallback reason.
-
-## Responses and limits
-
-Successful results contain the checkpoint `thread_id`, reviewer status and decision, summary,
-report, cost, and elapsed time. `detail=full` additionally includes per-item judgments, evidence cards,
-the page agent's trace, the advice HTML, text and recommended codes (`advice_codes`) with the
-reader selection, and under `ad_disclosure_check` the ad-disclosure rows for the page and the
-explanation-duty items left to the product document (`deferred`). Raw source HTML and snapshots never leave the API.
-
-The worker runs up to `FDR_AGENT_CONCURRENCY` reviews at once (2 in the compose file); each run
-meters its own budget. Extra submissions stay `queued` until a slot frees, and a run takes about
-8–11 minutes, so a queued job can wait that long before `started_at` is set. Each run starts its
-own Chromium, so raise the setting only with memory to spare. See [operations](operations.md) for
-budgets and service safeguards.
+- The worker runs up to `FDR_AGENT_CONCURRENCY` reviews at once (2 in the compose file). Each run meters its own budget and starts its own Chromium, so raise the value only with memory to spare.
+- A run takes about 8–11 minutes. Extra submissions stay `queued` until a slot frees, so `started_at` can be unset for that long.
+- See [Operations](operations.md) for budgets and service safeguards.

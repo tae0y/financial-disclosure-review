@@ -2,19 +2,19 @@
 ai-generated: true
 human-review: false
 created: 2026-09-28
+updated: 2026-09-30
 ---
 
-# Architecture decision records
+# Architecture Decision Records
 
-Decisions the report and the slides rely on. ADR-001 and ADR-002 were first written in
-`localdocs/adr/`, which is gitignored; the copies here are the ones the repository carries.
+This page lists the decisions that shape the implementation, each with the alternatives considered and its trade-offs.
 
-| ADR | Decision | Date |
-|---|---|---|
-| [001](adr-001-notebook-to-src.md) | Move the pipeline from one notebook into a src package | 2026-09-27 |
-| [002](adr-002-defect-injection-evaluation.md) | Measure the explanation-duty check by deleting disclosures | 2026-09-27 |
-| [003](adr-003-staged-classification.md) | Classify the product with a quoted, staged model judgment | 2026-09-10 / 09-17 |
-| [004](adr-004-fixed-statute-lookup.md) | Fixed statute lookup; similarity search for sanction cases only (case search removed 2026-09-30) | 2026-09-17 |
-| [005](adr-005-display-flip-evaluation.md) | Measure the display check by mutating rendered measurements | 2026-09-28 |
-| [006](adr-006-ad-disclosure-instead-of-explanation-duty.md) | Judge an ad page by the mandatory ad disclosures; write a short overview beside it | 2026-09-30 |
-| [007](adr-007-advice-only.md) | Keep only the reader-tailored advice; drop the page summary | 2026-09-30 |
+| ADR | Decision |
+|---|---|
+| [001](adr-001-package-per-state-key.md) | Organize the code as one package module per State key |
+| [002](adr-002-defect-injection-evaluation.md) | Measure the disclosure check by deleting disclosures, not by an answer key |
+| [003](adr-003-staged-classification.md) | Classify the product with a quoted, staged model judgment |
+| [004](adr-004-fixed-statute-lookup.md) | Look up statutes through a fixed mapping, not retrieval |
+| [005](adr-005-display-flip-evaluation.md) | Measure the display-method check by mutating rendered measurements |
+| [006](adr-006-ad-disclosure-instead-of-explanation-duty.md) | Judge an ad page by the mandatory ad disclosures, not the explanation duty |
+| [007](adr-007-advice-only.md) | Give the reader advice on what to ask, not a summary of the page |

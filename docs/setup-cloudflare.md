@@ -1,93 +1,105 @@
-# Serve the API through a Cloudflare tunnel
+# Set Up a Cloudflare Tunnel
 
-The tunnel gives the gateway a public hostname with no inbound port open on the host.
-`cloudflared` dials out to Cloudflare and traffic arrives over that connection, so the machine
-needs no port forwarding, no static address and no certificate of its own.
+This page describes how to give the review API a public hostname through a Cloudflare tunnel, with no inbound port open on the host.
 
-## What the tunnel reaches
+`cloudflared` dials out to Cloudflare, and traffic arrives over that connection. The host needs no port forwarding, static address, or certificate. The tunnel reaches only `api:8000`; the worker publishes nothing, so a public route to it cannot be created by accident.
 
-Only `api:8000`. The worker is on the same compose network and publishes nothing, so a public
-route to it cannot be created by accident.
+## Prerequisites
 
-## One-time setup
+- A [Cloudflare](https://dash.cloudflare.com/) account with a domain
+- The service set up as in [Run the Review Service in Docker](setup-docker.md#prepare-the-environment)
 
-1. In the Cloudflare Zero Trust dashboard, open **Networks → Tunnels** and create a tunnel.
-   Choose the **Docker** connector; the token in the command it shows is what you need.
-2. Put that token in `.env.tunnel`, not `.env`:
+## Create the tunnel
 
-   ```bash
-   cp .env.tunnel.example .env.tunnel
-   # TUNNEL_TOKEN=eyJhIjoi...
-   ```
+1. In the Cloudflare Zero Trust dashboard, open **Networks → Tunnels**, create a tunnel, and choose the **Docker** connector. Copy the token from the command it shows.
 
-   Its own file for two reasons. The sidecar has no business holding the model key that `.env`
-   carries. And compose variable substitution reads the *project* directory — `docker/` — not the
-   repository root, so a `${CLOUDFLARE_TUNNEL_TOKEN}` reference to `.env` resolved to an empty
-   string and the tunnel came up unable to connect, with no error. `env_file` reads the path as
-   written, which removes that failure entirely.
+1. Create `.env.tunnel` from its example.
 
-   Both files are gitignored and neither is copied into an image.
-3. Add a **public hostname** to the tunnel:
+    ```bash
+    # bash/zsh
+    cp .env.tunnel.example .env.tunnel
+    ```
 
-   | Field | Value |
-   |---|---|
-   | Subdomain | e.g. `disclosure-review` |
-   | Domain | your domain |
-   | Service type | `HTTP` |
-   | URL | `api:8000` |
+    ```powershell
+    # PowerShell
+    Copy-Item .env.tunnel.example .env.tunnel
+    ```
 
-   `api` is the compose service name. `cloudflared` resolves it on the shared network, which is
-   why the URL is not `localhost`.
-4. Start the stack without the local override:
+1. Set `TUNNEL_TOKEN` in `.env.tunnel` to the copied token.
+   The token lives in its own file so the sidecar never receives the model key in `.env`. Both files are gitignored and never copied into an image.
 
-   ```bash
-   docker compose -f docker/docker-compose.yml up -d --build
-   ```
+1. Add a **public hostname** to the tunnel.
 
-5. Check it:
+    | Field | Value |
+    |---|---|
+    | Subdomain | e.g. `disclosure-review` |
+    | Domain | Your domain |
+    | Service type | `HTTP` |
+    | URL | `api:8000` |
 
-   ```bash
-   curl -s https://disclosure-review.example.com/healthz
-   ```
+   `api` is the compose service name, which `cloudflared` resolves on the shared network. Do not use `localhost`.
 
-## Before you point a hostname at it
+1. Start the stack without the local override file.
 
-The tunnel makes the API reachable from anywhere, and each accepted call spends model credit.
-`FDR_API_TOKEN` is required, so an unauthenticated instance cannot start — but confirm the
-deployed one actually rejects an anonymous caller:
+    ```bash
+    docker compose -f docker/docker-compose.yml up -d --build
+    ```
 
-```bash
-curl -s -o /dev/null -w '%{http_code}\n' -X POST https://your-hostname/v1/reviews \
-  -H 'Content-Type: application/json' -d '{"url":"https://example.com"}'
-# expect 401
+## Verify access control
 
-curl -s -o /dev/null -w '%{http_code}\n' https://your-hostname/healthz
-# expect 200 — health stays open for probes
-```
+> **Important:** The tunnel makes the API reachable from anywhere, and each accepted call spends model credit. Confirm the deployed instance rejects anonymous callers before sharing the hostname.
 
-Hand the token to callers over a channel you would use for any other credential, not in a ticket
-or a chat thread that outlives it. To rotate: put both tokens in `FDR_API_TOKEN`, comma-separated,
-restart `api`, move the callers, then remove the old one and restart again.
+1. Check that an anonymous review request is rejected with `401`.
 
-Optionally add a Zero Trust **Access** policy in front of the hostname for a second layer. The
-token check is independent of it and stays useful for machine callers.
+    ```bash
+    # bash/zsh
+    curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<your-hostname>/v1/reviews \
+      -H 'Content-Type: application/json' -d '{"url":"https://example.com"}'
+    ```
 
-## Why the 100-second limit does not bite
+    ```powershell
+    # PowerShell
+    try { Invoke-WebRequest -Method Post -Uri https://<your-hostname>/v1/reviews `
+        -ContentType application/json -Body '{"url":"https://example.com"}' } `
+    catch { $_.Exception.Response.StatusCode.value__ }
+    ```
 
-Cloudflare closes a response that produces nothing for about 100 seconds, and a review takes
-minutes. The API is built around that: submitting returns `202` immediately and the caller polls.
-No request is ever held open across a run, so the limit is never reached. This is the reason for
-the job model — see [api.md](api.md).
+1. Check that the health endpoint answers `200`.
+
+    ```bash
+    # bash/zsh
+    curl -s -o /dev/null -w '%{http_code}\n' https://<your-hostname>/healthz
+    ```
+
+    ```powershell
+    # PowerShell
+    (Invoke-WebRequest https://<your-hostname>/healthz).StatusCode
+    ```
+
+Hand the token to callers over a channel you would use for any credential. Optionally add a Zero Trust **Access** policy in front of the hostname; the token check stays independent of it.
+
+## Rotate the token
+
+1. Set `FDR_API_TOKEN` to the old and new tokens, comma-separated, and restart `api`.
+1. Move every caller to the new token.
+1. Remove the old token from `FDR_API_TOKEN` and restart `api` again.
+
+## Why the 100-second limit does not apply
+
+Cloudflare closes a response that produces nothing for about 100 seconds, and a review takes minutes. Submitting returns `202` at once and the caller polls, so no request is held open across a run. See [HTTP API](api.md).
 
 ## Troubleshooting
 
-**Error 1033, or the hostname does not resolve.** The tunnel is not connected.
-`docker compose logs cloudflared` — a missing or wrong `TUNNEL_TOKEN` shows here. Check that
-`.env.tunnel` exists and holds it: the file is optional by design, so a missing one is not an
-error, it just leaves the sidecar with no token.
+- **Error 1033, or the hostname does not resolve.** The tunnel is not connected. Check `docker compose logs cloudflared` and that `.env.tunnel` holds `TUNNEL_TOKEN`; the file is optional, so a missing one raises no error.
+- **502 from the hostname.** `cloudflared` cannot reach the service. The public hostname's URL must be `api:8000`, not `localhost:8000`.
+- **`cloudflared` never starts.** It waits for `api` to be healthy, which waits for `agent`. Check `docker compose ps`.
 
-**502 from the hostname.** `cloudflared` is up but cannot reach the service. The public hostname's
-URL must be `api:8000`, not `localhost:8000`.
+## Remove
 
-**`cloudflared` never starts.** It waits on `api` being healthy, which waits on `agent`. Check
-those first: `docker compose ps`.
+1. Stop the stack.
+
+    ```bash
+    docker compose -f docker/docker-compose.yml down
+    ```
+
+1. Delete the tunnel in **Networks → Tunnels** in the Zero Trust dashboard.
