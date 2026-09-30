@@ -18,14 +18,13 @@ reviewer has to do about them, and the mapping is mechanical:
 |---|---|---|
 | `classification.product_type` is `범위 밖` | 검토 대상 아님 | — |
 | `classification.product_type` is `판정 불가` or missing | 판정 불가 | — |
-| verification passed, no 부적합, no 판정 불가 | 검토 완료 | 담당자 확인 후 쉬운말 개요 게시 가능 |
-| verification passed, but items are 부적합 | 사람 검토 필요 | 쉬운말 개요 자동 게시 불가 — 원문만 게시 |
-| verification failed after the retries | 사람 검토 필요 | 쉬운말 개요 자동 게시 불가 — 원문만 게시 |
+| verification passed, no 부적합, no 판정 불가 | 검토 완료 | 담당자 확인 후 쉬운말 확인 권고 게시 가능 |
+| verification passed, but items are 부적합 | 사람 검토 필요 | 쉬운말 확인 권고 자동 게시 불가 — 원문만 게시 |
+| verification failed after the retries | 사람 검토 필요 | 쉬운말 확인 권고 자동 게시 불가 — 원문만 게시 |
 | the run budget ran out after collection | 판정 불가 | names the interrupted node |
 
 A `판정 불가` item is a task, never a pass. `findings` collects every row a person must look at:
-`부적합` and `판정 불가` from both checks, every fidelity difference, and an overview held back
-by its code checks.
+`부적합` and `판정 불가` from both checks, and an advice held back by its code checks.
 
 ## 위반 or 권고 미충족
 
@@ -46,7 +45,7 @@ document, not an ad, and are listed in `ad_disclosure_check.deferred` for the re
 report adds one action naming their codes and a markdown section with their questions.
 
 The publish decision does not change with the reading: any `부적합` still keeps the plain-language
-overview unpublished. The reading changes what the reviewer is told, not what the tool lets through.
+advice unpublished. The reading changes what the reviewer is told, not what the tool lets through.
 
 ## Sections of the markdown
 
@@ -59,15 +58,18 @@ be mistaken for a reviewed one. Then the page (product, verdict and publish deci
 with header notes only where they explain the verdict: why a review stopped, an incomplete
 collection, a failed verification, hidden text no control could reveal. Then three sections:
 
-1. 확인할 항목 — one line of pass counts (표시방법, 광고 의무표시, 쉬운말 개요), then a single table
-   of every open item (부적합 first, then 판정 불가) from the display check and the page-side
-   disclosure check: area, rubric question, short basis, verdict, reason (80 characters).
-2. 쉬운말 개요 — the reader as an age band and financial familiarity only (never the dataset
-   persona's name or story), the paragraphs as shown (**요약**, then **확인 권고**) or why none
-   is shown, then "개요 확인 사항":
-   the overview's open items and the differences that are not merely informational.
+1. 확인할 항목 — one line of pass counts (표시방법, 광고 의무표시), then a single table of every
+   open item from the display check and the disclosure check, grouped by area (표시방법 first,
+   then 의무표시) with 부적합 before 판정 불가 in each: area, rubric question, short basis, verdict,
+   reason (80 characters).
+2. 쉬운말 확인 권고 — the reader as an age band and financial familiarity only (never the dataset
+   persona's name or story), then the advice paragraph as shown or why none is shown.
 3. 상품설명서에서 확인할 설명의무 (n개) — one paragraph of topics (the question without its asking
-   tail and asides); omitted when there are none.
+   tail and asides), with the items the advice recommends starred (★); omitted when there are
+   none.
+
+The escalation line in the header names modules as a reviewer knows them (표시방법, 광고 의무표시,
+쉬운말 확인 권고), not by their State keys.
 
 The question is the asking sentence of the rubric `criterion`; the short basis is its first cited
 document and article with a count of the others (`rubric_labels`, `knowledge.rubrics.DOC_NAMES`). Both come from `rubric_labels(db_path)`; with no DB the code stands in.
@@ -88,7 +90,7 @@ settled without it (`reuse`, `none`, `default`, ...), with turns, tool calls and
 Collection comes first in the status: a page with no collected html reads `수집 실패` or `조사
 불충분`, never a classification problem, and an open evidence gap keeps a clean run from reading
 `검토 완료`. A checkpoint written before 2026-09-30 (explanation units, `explanation_duty_check`)
-still produces a report, without an overview or disclosure rows.
+still produces a report, without an advice or disclosure rows.
 
 `report.limits` exists to stop the report from overclaiming: it repeats that the verification
 only checked citation validity and cross-module contradictions, and carries the display node's

@@ -26,28 +26,27 @@ not import each other; they exchange data only through State.
 ### Workflow
 
 ```text
-START → preprocess* ─┬→ classify ─┬→ evidence cards → display ─┬→ reader overview* ────────────────┬→ ad disclosure → verify → report
-                     │            │                            └→ ad disclosure (original side) ┘
+START → preprocess* ─┬→ classify ─┬→ evidence cards → display ─┬→ reader advice* ─┬→ verify → report
+                     │            │                            └→ ad disclosure ───┘
                      │            └→ report (out of scope / uncertain)
                      └→ report (collection failed / insufficient)
 
 * bounded tool-calling agents: the page-discovery agent (preprocess) and a small reader-selection
-  agent that the reader overview runs when the reader is given in free text.
+  agent that the reader advice runs when the reader is given in free text.
 ```
 
 The system is a deterministic review workflow with bounded agentic subflows, not an autonomous
 agent. The graph, its routing and its retry policy are fixed in code; classification, card
-extraction, display judgment, the overview and the ad-disclosure checks are single structured model
+extraction, display judgment, the advice and the ad-disclosure check are single structured model
 calls. Only the two subflows above choose their own tool calls, and each can be bypassed: a
 saved site rule replays without the page agent, and a reader given by uuid, attributes or the
 product-type default skips selection. The report's `에이전트 실행` line and `summary.agent_runs`
 state which loops ran in each review (see the [2026-09-29 audit](../data/agentic-behavior-audit.md)).
 
 - Classification ends normally for `범위 밖` and `판정 불가`; the report explains why.
-- The reader overview precedes the ad-disclosure check because the latter judges the page and the
-  overview by the same criteria and compares them. The original side reads only the page, so
-  `judge_disclosure_original` runs in the same step as the overview. LangGraph waits for every node of a step, which is
-  why each independent node is paired with the step it fits. With the partial re-ask of rejected
+- The reader advice and the ad-disclosure check read only the page and the cards, so they run in
+  the same LangGraph step and verification waits for both; a retry sends every failed node back
+  in one step. With the partial re-ask of rejected
   codes, one live page went from 662 s to 468 s (2026-09-29, 디지로카 Las Vegas, saved site rule).
 - Agents choose tools; code validates every quote, selector and filter they propose, and each
   agent has a turn budget and a machine-readable stop reason.
@@ -74,7 +73,9 @@ the rules that bind an advertisement: the mandatory ad disclosures (A·B·C grou
 `card_guardrail_rubric`, from 금소법 제22조 and the 여신협회 광고규정) and the display-method rules.
 Explanation-duty items (금소법 제19조) bind the contract-stage product document, not an ad, so they
 are listed for the reviewer to confirm in that document and are not judged
-([ADR-006](architecture-decisions/adr-006-ad-disclosure-instead-of-explanation-duty.md)). Any
+([ADR-006](architecture-decisions/adr-006-ad-disclosure-instead-of-explanation-duty.md)); the
+reader advice turns the ones that matter to the chosen reader into a prompt to ask
+([ADR-007](architecture-decisions/adr-007-advice-only.md)). Any
 unavailable evidence or unresolved condition becomes a reviewer task, never a pass.
 
 ### Cost and quality
@@ -95,7 +96,7 @@ recorded answers by default. See [evaluation](evaluation.md) for suites and resu
 - [Agent node specs](agent-node-specs/README.md) — the workflow map and a per-node summary, then per-node behavior: [product-page discovery](agent-node-specs/product_page.md),
   [classification](agent-node-specs/classification.md), [display checks](agent-node-specs/display_check.md),
   [evidence cards](agent-node-specs/evidence_cards.md),
-  [reader overview](agent-node-specs/persona_explanation.md), [ad disclosure](agent-node-specs/ad_disclosure_check.md),
+  [reader advice](agent-node-specs/persona_explanation.md), [ad disclosure](agent-node-specs/ad_disclosure_check.md),
   [verification and retry](agent-node-specs/verification.md) and [reporting](agent-node-specs/report.md). The legacy [plain language](agent-node-specs/plain_language.md)
   module is kept only for the plain-contract evaluation suite.
 

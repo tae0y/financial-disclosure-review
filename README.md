@@ -1,8 +1,9 @@
 # Financial Disclosure Review
 
 Korean card-company advertising pages are reviewed against the mandatory ad disclosures and the
-display-method rules, with a short reader-tailored plain-language overview judged by the same
-criteria as the page. Explanation-duty items are listed for the product document, not judged.
+display-method rules. Explanation-duty items bind the contract stage, not the ad, so they are
+listed for the product document, and a short plain-language paragraph advises the chosen reader
+which of them to check before signing.
 A fixed LangGraph workflow produces a reviewer report; it does not provide a legal opinion or
 publish content automatically. Inside that workflow, two bounded tool-calling agents collect the
 page and pick the reader; the review order, routing, retries and verdict rules stay in code.
@@ -83,7 +84,7 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.override.ym
 ```
 
 Submit with `POST /v1/reviews`, then poll the returned job URL. All `/v1` routes require a bearer
-token. Optional user information for the easy-language overview is sent as free text in
+token. Optional user information for the easy-language advice is sent as free text in
 `persona.request`. Its nullable fields, validation rules, examples, deployment, and the complete
 endpoint contract are in [the serving docs](docs/api.md).
 

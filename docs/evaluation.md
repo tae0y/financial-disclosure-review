@@ -17,13 +17,14 @@ uv run python -m financial_disclosure_review evaluate --ablation   # replays the
 
 > **2026-09-30 — criteria switched, re-recording pending.** The explanation-duty check became
 > the ad-disclosure check (A·B·C mandatory ad disclosures instead of 설명의무 by analogy), and the
-> reader explanation became a one- or two-paragraph overview
-> ([ADR-006](architecture-decisions/adr-006-ad-disclosure-instead-of-explanation-duty.md)). The
+> reader explanation became one paragraph of advice on what to check before signing
+> ([ADR-006](architecture-decisions/adr-006-ad-disclosure-instead-of-explanation-duty.md),
+> [ADR-007](architecture-decisions/adr-007-advice-only.md)). The
 > `duty-flip` suite is now `disclosure-flip` (`eval/cases/disclosure_flip.json` v2) and the
 > stability suite repeats the disclosure items. Their prompts and items changed, so the current
 > cassettes do not hold their answers: `disclosure-flip` and `stability` need `--record` (paid)
 > before they replay, and `eval/cards_persona_eval.py`, `agentic_stability.py` and
-> `persona_pair_eval.py` now measure the overview and need their persona answers recorded again.
+> `persona_pair_eval.py` now measure the advice and need their persona answers recorded again.
 > Every explanation-duty and unit/fact-ledger figure below was measured before the switch and is
 > kept as history, not as a result of the current code.
 
@@ -439,7 +440,7 @@ F13·설명13·F14·설명14는 1회차에 판정 불가였다가 다른 회차�
 - 인용 유효율 100%는 "인용문이 본문에 있다"는 뜻이고 "그 인용이 기준을 충족한다"는 뜻이 아닙니다.
 - 설명의무 준용 기준의 판정은 같은 입력에서도 23%가 흔들렸습니다(축소 구성 21%). 광고 의무표시 기준은 재측정 전입니다. 한 번의 실행 결과를 확정 판정으로
   읽으면 안 됩니다.
-- 증거 카드 정답셋은 AI 초안이고, 쉬운말 개요의 사람 평가는 0건입니다.
+- 증거 카드 정답셋은 AI 초안이고, 쉬운말 확인 권고의 사람 평가는 0건입니다.
 
 ## Adding a case
 

@@ -6,7 +6,8 @@ created: 2026-09-30
 
 # ADR-006 — Judge an ad page by the mandatory ad disclosures; write a short overview beside it
 
-- **Status:** Accepted 2026-09-30 (영태). Supersedes the 준용 premise of the explanation-duty
+- **Status:** Accepted 2026-09-30 (영태). The overview/summary parts are superseded by
+  [ADR-007](adr-007-advice-only.md): the plain-language output is now the reader advice alone. Supersedes the 준용 premise of the explanation-duty
   node, and the unit-by-unit reader explanation.
 
 ## Context

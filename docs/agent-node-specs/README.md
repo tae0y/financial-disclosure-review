@@ -20,24 +20,21 @@ START
             ├─ 범위 밖 / 판정 불가 ─────────────────────────────────────────→ end_report
             └→ extract_evidence_cards    fact-shaped cards from the page text
                  └→ judge_display_method size, contrast, separation, hiding (E group)
-                      ├→ generate_persona_explanation*   plain overview for one reader ─┐
-                      └→ judge_disclosure_original       A·B·C on the page only ─────────┤
-                                                                                         ↓
-                                          judge_ad_disclosure   A·B·C on the overview, differences
-                                                └→ verify_answer   cross-checks, no model call
-                                                     ├─ passed / nothing retryable / 2 rounds → end_report
-                                                     └→ retry_dispatch
-                                                          ├→ generate_persona_explanation (overview asked to change)
-                                                          └→ judge_ad_disclosure (a quote asked to change)
+                      ├→ generate_persona_explanation*   advice: what this reader should check ─┐
+                      └→ judge_ad_disclosure             A·B·C on the page; 설명의무 listed ───────┤
+                                                                                                ↓
+                                                        verify_answer   cross-checks, no model call
+                                                          ├─ passed / nothing retryable / 2 rounds → end_report
+                                                          └→ retry_dispatch → the failed node(s), then verify again
 end_report → END
 
 * bounded tool-calling agents; every other step is at most a few structured model calls or code.
 ```
 
-The two middle branches run in the same LangGraph step: the overview and the original side of
-the disclosure check both read only the page and the cards, so neither waits for the other.
-`judge_ad_disclosure` runs once both are done. A retry re-enters at one node and follows the
-edges from there; it never re-collects, re-classifies, re-extracts or re-measures the page.
+The advice and the disclosure check read only the page and the cards, so they run in the same
+LangGraph step and verification runs once both are done. A retry sends every failed node back at
+once (`retry_targets`) and goes straight on to verification; it never re-collects, re-classifies,
+re-extracts or re-measures the page.
 
 ## Nodes
 
@@ -47,9 +44,8 @@ edges from there; it never re-collects, re-classifies, re-extracts or re-measure
 | `classify_type` | [classification](classification.md) | `product_page` | `classification` | Three quoted steps: single product? card company's own credit product? which of 신용카드, 단기카드대출, 장기카드대출, 리볼빙, 할부금융·리스? The page type follows from the product type in code (상품광고 for 신용카드·장기카드대출·할부금융·리스, 업무광고 for 단기카드대출·리볼빙). `범위 밖`·`판정 불가` end the review with a report. | 1–2 structured calls plus one verification call |
 | `extract_evidence_cards` | [evidence_cards](evidence_cards.md) | `product_page`, `classification` | `evidence_cards` | Turns page text lines into cards (claim, conditions, exceptions, numbers, quote, source line); code keeps only cards whose quote is really on the page and records coverage gaps. | One structured call, one retry |
 | `judge_display_method` | [display_check](display_check.md) | `product_page`, `classification`, `evidence_cards` | `display_check` | Judges the E-group display rules. Code measures font size, contrast and visibility and decides E02/E04/E05; the model labels which blocks are mandatory disclosures and judges the qualitative items. | Structured calls (labels, verdicts), optional image crops |
-| `generate_persona_explanation` | [persona_explanation](persona_explanation.md) | `evidence_cards`, `classification`, `verification.feedback` | `persona_explanation` | Chooses one reader (free text, dataset uuid or attributes, or the product-type default) and writes a two-paragraph plain overview shown beside the page: a summary of the page, then advice on which explanation-duty items this reader should check in the product document. Code checks length, numbers, absolutes, verdict words and the advice codes; a failing draft is held back. | Reader-selection agent when the reader is given in free text; one drafting call |
-| `judge_disclosure_original` | [ad_disclosure_check](ad_disclosure_check.md) | `product_page`, `classification` | `ad_disclosure_check` (original side) | Judges the in-scope mandatory ad disclosures (A·B·C of `card_guardrail_rubric`) on the page, condition first, with quotes checked against the page. Lists the 설명의무 items for the product type as `deferred`, unjudged. | One structured call |
-| `judge_ad_disclosure` | [ad_disclosure_check](ad_disclosure_check.md) | `product_page`, `persona_explanation`, `ad_disclosure_check`, `verification.feedback` | `ad_disclosure_check` | Judges the overview by the same items, then asks the model where the two sides differ (누락, 변경, 추가). On a retry it re-judges only the codes it was asked about. | Two structured calls |
+| `generate_persona_explanation` | [persona_explanation](persona_explanation.md) | `evidence_cards`, `classification`, `verification.feedback` | `persona_explanation` | Chooses one reader (free text, dataset uuid or attributes, or the product-type default) and writes one paragraph of advice shown beside the page: which explanation-duty items the ad does not explain this reader should check in the product document before signing, and why for this reader. Code checks the item codes, length, invented numbers, rubric codes in the text, absolutes and verdict words; a failing draft is held back. | Reader-selection agent when the reader is given in free text; one drafting call |
+| `judge_ad_disclosure` | [ad_disclosure_check](ad_disclosure_check.md) | `product_page`, `classification`, `ad_disclosure_check`, `verification.feedback` | `ad_disclosure_check` | Judges the in-scope mandatory ad disclosures (A·B·C of `card_guardrail_rubric`) on the page, condition first, with quotes checked against the page, and lists the 설명의무 items for the product type as `deferred`, unjudged. On a retry it re-judges only the codes it was asked about. | One structured call |
 | `verify_answer` | [verification](verification.md) | every module key | `verification` | Cross-checks quotes, ids and measurements against the page, turns 판정 불가 into failures, and writes concrete requests for the next round. | None |
 | `retry_dispatch` | [verification](verification.md) | `verification` | `verification` (retry fields) | Picks the earliest node that can act on the requests. | None |
 | `end_report` | [report](report.md) | every module key | `report` | Maps the results to a status and publish decision, the reviewer's actions, findings, limits and cost, and a short markdown for the requester. | None |

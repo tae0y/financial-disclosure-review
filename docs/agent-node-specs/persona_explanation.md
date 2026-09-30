@@ -6,38 +6,35 @@ created: 2026-09-29
 
 # persona_explanation
 
-`generate_persona_explanation` writes a plain-language overview (쉬운말 개요) of the page's
-evidence cards for one reviewed reader profile: two paragraphs shown beside the page, never in
-place of it. The first (`summary`) is a supplementary summary of the page. The second (`advice`)
-recommends, for this reader, which explanation-duty items the ad page does not cover to check in
-the product document or with a consultant, and why they matter to this reader (영태,
-2026-09-30). It is not a legal rewrite and issues no compliance verdict. Code checks the draft;
-`judge_ad_disclosure` then judges the overview by the same mandatory ad disclosures as the page and
-records the differences ([ADR-006](../architecture-decisions/adr-006-ad-disclosure-instead-of-explanation-duty.md)).
-Until 2026-09-30 this node rewrote the page line by line in traced units checked against a fact
-ledger; that structure is removed.
+`generate_persona_explanation` writes the reader advice (쉬운말 확인 권고): one paragraph, shown
+beside the page, that tells one reviewed reader which explanation-duty items the ad page does not
+explain to check in the product document or with a consultant before signing, and why each
+matters to this reader. It names what to ask, never the answer, and issues no compliance verdict.
+
+History: until 2026-09-29 this node rewrote the page line by line; on 2026-09-30 it briefly wrote
+a summary of the page plus this advice. 영태 kept the advice as the MVP and removed the summary,
+so nothing here restates the page any more
+([ADR-007](../architecture-decisions/adr-007-advice-only.md)).
 
 ## Inputs and output
 
 | Input | Shape |
 |---|---|
-| `sources` | `[{source_id: "dom-N", text, visibility}]` in page order (from `evidence_cards`) |
+| `sources` | `[{source_id: "dom-N", text, visibility}]` in page order (from `evidence_cards`); every line goes to the model |
 | `cards` | `[{id, kind, subject, claim, qualifiers, exceptions, numbers, quote, source_id, visibility}]` |
 | `feedback` | verification entries; only `module == "persona_explanation"` reaches the prompt |
 | `profile` | the result of `choose_profile` (see below), used as is; a retry keeps the same reader |
 | profile fallback | without `profile`: `profile_id`, else `Context.persona_profile`, else the yaml's `default` |
 
-The result is `{status, reason, profile, overview, advice_codes, problems, html, controls}`.
+The result is `{status, reason, profile, advice, advice_codes, problems, html, controls}`.
 
-- `status`: `완료` (the overview passed its checks), `원문 대체` (invalid profile, no cards, or a
-  draft that failed its checks twice), `판정 불가` (no sources at all).
+- `status`: `완료` (the advice passed its checks), `원문 대체` (invalid profile, no checklist for the
+  product type, or a draft that failed its checks twice), `판정 불가` (no sources at all).
 - `profile`: `{id, version, source, review_status, status: 적용 | 무효, reason, attributes}`.
-- `overview`: `[summary, advice]`, kept even when held back so a reviewer can see them.
-- `advice_codes`: the explanation-duty codes (설명NN) the advice paragraph recommends checking.
-- `problems`: the code-check problems that held the overview back; empty when it is shown.
-- `html`: `<section data-role="overview"><p data-role="summary">…</p><p data-role="advice">…</p>
-  </section>` when shown, else empty. Only the summary goes to `judge_ad_disclosure`; the advice
-  points elsewhere and is not an ad disclosure.
+- `advice`: the paragraph, kept even when held back so a reviewer can see it.
+- `advice_codes`: the explanation-duty codes (설명NN) it recommends checking.
+- `problems`: the code-check problems that held the advice back; empty when it is shown.
+- `html`: `<section data-role="advice"><p>…</p></section>` when shown, else empty.
 - `controls`: a static list of UI controls (AI 생성 고지, 원문 보기 전환, 오류 신고) and governance
   controls (사람 승인, 변경 관리, 프로필 검토). They are documented for the report, not judged.
 
@@ -52,7 +49,7 @@ At the start of the run, `_context` maps the three fields to `Context.persona_re
 `Context.persona_uuid`, and `Context.persona_attributes`. It removes `null` values inside
 `attributes`; therefore an all-null object is treated as absent and cannot outrank a populated
 free-text request. The `persona` object and each of its fields may be omitted or `null`; empty
-input becomes the selection default described below. See [the HTTP API guide](../api.md#reader-information-for-the-easy-language-overview)
+input becomes the selection default described below. See [the HTTP API guide](../api.md#reader-information-for-the-easy-language-advice)
 for the wire format, validation failures, and response paths.
 
 ## Profiles
@@ -198,36 +195,30 @@ CLI: `review --persona "<free text>"`, `--persona-uuid <uuid>`, `--persona-attr 
 
 ## What the model gets
 
-`product_type`, the profile attributes (with `reader` for a dataset profile), the cards, the source
-lines the cards cite, and `disclosure_items`: the in-scope A·B·C criteria an overview must carry
-(`ad_disclosure_check.rubric.OVERVIEW_REQUIRED` — rates and fees, benefit conditions, warnings,
-repayment, product-specific disclosures). The prompt asks for their core in the page's own figures,
-not every breakdown, and not the page metadata (심의필 번호, 회사명) that stays on the page beside it.
-It also gets `explanation_items`: the product type's explanation-duty checklist
+`product_type`, the profile attributes (with `reader` for a dataset profile), the cards, **every**
+source line of the page (so it can see what the page already explains and not recommend it), and
+`explanation_items`: the product type's explanation-duty checklist
 (`ad_disclosure_check.rubric.deferred_explanation_items`, the same list the report shows). The
-advice picks 2–5 of them the page does not explain and that matter to this reader (familiarity,
-likely questions), and says what to check — never the answer, since the terms are not on the page.
-`previous_feedback` carries this module's verification requests (for example a `누락` on C01) on a
-retry.
+advice picks 2–5 items the page does not explain and that matter to this reader (familiarity,
+likely questions), names them in words the reader understands — not by code — and says why for
+this reader. `previous_feedback` carries this module's verification requests on a retry.
 
 ## What code checks
 
-`overview_problems(paragraphs, source_text)` over both paragraphs, against the text of every source
-line, and `advice_problems` for the advice:
+`advice_problems(answer, allowed, source_text)`:
 
-- a non-empty summary and, when the product has checklist items, a non-empty advice paragraph;
+- a non-empty paragraph of at most 700 characters;
 - 2–5 `advice_codes`, every one from `explanation_items`;
-- at most 1,200 characters in total;
+- no rubric code written into the text (`설명16`, `A04`, …) — the first sample of 2026-09-30 did
+  exactly that;
 - no number the page lacks (`number_set`, minus list numbering and the `counter_ones` exception
-  shared with `plain_language`);
+  shared with `plain_language`) — an invented 철회 기한 or 금액 is an answer the advice must not give;
 - no absolute/superlative phrase the page lacks (`has_phrase`), no verdict word
   (적합|부적합|위반|합법|불법|문제없).
 
 The model call goes through `call_ask`, so a draft with problems is asked again once with
-`previous_problems`. A second failing draft is kept in `overview` but not shown (`html` empty,
+`previous_problems`. A second failing draft is kept in `advice` but not shown (`html` empty,
 `status: 원문 대체`); `verify_answer` turns `problems` into a request, so the next round redraws it.
-Analogy rules (none on risk concepts, `analogy_policy`) are in the prompt only; a free paragraph
-has no field code could strip an analogy from.
 
 ## Familiarity stated by the reviewer
 
@@ -241,15 +232,14 @@ request does not name.
 
 ## HTML
 
-Only the overview, escaped, in one `<section data-role="overview">`. The page is shown beside it
-by the caller; the node no longer interleaves original lines, so the display check's mandatory
-labels (audit P2-12) have nothing to emphasise here.
+Only the advice, escaped, in one `<section data-role="advice">`. The page is shown beside it by
+the caller.
 
 ## Decisions taken without a reviewer
 
-- The length cap (1,200 characters for two paragraphs) is this node's reading of "한두 문단".
+- The length cap (700 characters) and the 2–5 item range are this node's reading of "한 문단".
 - Verdict words are rejected even when the source uses them (e.g. 약관 위반): a false hold-back
-  only costs the overview for that round.
+  only costs the advice for that round.
 - The default profiles path is `default_rubric_dir()/persona_profiles.yaml`. The Docker image
   mounts rubrics at `/app/rubrics`, so the graph node has to pass `profiles_path` from
   `serving.settings.rubric_dir` (or `Context` needs a path field) before this runs in Docker.
