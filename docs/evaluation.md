@@ -15,18 +15,19 @@ for free:
 uv run python -m financial_disclosure_review evaluate --ablation   # replays the cassette, $0
 ```
 
-> **2026-09-30 — criteria switched, re-recording pending.** The explanation-duty check became
+> **2026-09-30 — re-measured under the current criteria.** The explanation-duty check became
 > the ad-disclosure check (A·B·C mandatory ad disclosures instead of 설명의무 by analogy), and the
 > reader explanation became one paragraph of advice on what to check before signing
 > ([ADR-006](architecture-decisions/adr-006-ad-disclosure-instead-of-explanation-duty.md),
-> [ADR-007](architecture-decisions/adr-007-advice-only.md)). The
-> `duty-flip` suite is now `disclosure-flip` (`eval/cases/disclosure_flip.json` v2) and the
-> stability suite repeats the disclosure items. Their prompts and items changed, so the current
-> cassettes do not hold their answers: `disclosure-flip` and `stability` need `--record` (paid)
-> before they replay, and `eval/cards_persona_eval.py`, `agentic_stability.py` and
-> `persona_pair_eval.py` now measure the advice and need their persona answers recorded again.
-> Every explanation-duty and unit/fact-ledger figure below was measured before the switch and is
-> kept as history, not as a result of the current code.
+> [ADR-007](architecture-decisions/adr-007-advice-only.md)). The `duty-flip` suite is now
+> `disclosure-flip` (`eval/cases/disclosure_flip.json` v2) and the stability suite repeats the 17
+> disclosure items. Both were recorded again on 2026-09-30 at commit `f6e79e2`, and the three
+> advice scripts (`eval/cards_persona_eval.py`, `agentic_stability.py`, `persona_pair_eval.py`)
+> recorded their advice answers again; the paid total was $0.2331 (26 calls). Results:
+> disclosure deletions caught 2/3 in both arms (§2), disclosure verdicts stable on 15/17 items in
+> both arms (§5), reader advice shown on both pages with 10/10 injected advice defects rejected
+> (§6). Explanation-duty, unit and fact-ledger figures are kept below under "이전 기준" headings as
+> history, not as results of the current code.
 
 `eval/results/`, `eval/fixtures/`, `eval/cassettes/` and `tests/fixtures/classify/` hold captured
 third-party pages and are gitignored; they ship in the submission zip
@@ -34,12 +35,13 @@ third-party pages and are gitignored; they ship in the submission zip
 classification and stability suites stop with `no evaluation cases` instead of reporting an
 empty score.
 
-The current figures are from the 2026-09-29 19:08 recording (`eval/results/260929-190829-all-record.md`),
-made after a partially rejected answer started re-asking only the rejected codes (`1964aae`). On
-2026-09-29 the command above replayed all five suites from 88 recorded answers — 78 hits, 0
-misses, $0, about 9 seconds (`eval/results/260929-212416-all-replay.md`). A suite whose prompt or
-model changes needs its answers recorded again; `--record` calls the model only for the questions
-the cassette does not hold. What the recordings cost:
+The current figures are from the 2026-09-30 recordings (`eval/results/260930-135417-disclosure-flip-record.md`,
+`eval/results/260930-135741-stability-record.md`); classification, display-flip and
+plain-contract did not change and replay their earlier answers. On 2026-09-30 the command above
+replayed all five suites from 104 recorded answers — 74 hits, 0 misses, $0, about 5 seconds
+(`eval/results/260930-140141-all-replay.md`). A suite whose prompt or model changes needs its
+answers recorded again; `--record` calls the model only for the questions the cassette does not
+hold. What the recordings cost:
 
 | Recording | Calls | Cost | Time | File |
 |---|---|---|---|---|
@@ -52,7 +54,9 @@ the cassette does not hold. What the recordings cost:
 | stability, ablation rounds 2–3 (2026-09-28) | 2 | $0.0288 | 143 s | `eval/results/260928-201825-stability-record.md` |
 | display-flip, E02/E04/E05 decided by code (2026-09-29) | 10 | $0.0834 | 205 s | `eval/results/260929-091909-display-flip-record.md` |
 | all suites after partial re-asking (2026-09-29) | 10 | $0.1482 | 555 s | `eval/results/260929-190829-all-record.md` |
-| **Total for gpt-5-mini** | **88** | **$0.9547** | | |
+| disclosure-flip, both arms, ad-disclosure criteria (2026-09-30) | 12 | $0.1236 | 484 s | `eval/results/260930-135417-disclosure-flip-record.md` |
+| stability, disclosure rounds 2–3 (2026-09-30) | 4 | $0.0458 | 161 s | `eval/results/260930-135741-stability-record.md` |
+| **Total for gpt-5-mini** | **104** | **$1.1241** | | |
 
 Answers recorded under an earlier prompt or target rule that the current code no longer asks for
 stay in the cassette unused; a replay never reads them.
@@ -68,7 +72,7 @@ The model comparison (other models on the same suites) is recorded in its own ca
 | `disclosure-flip` (was `duty-flip`) | Is a disclosure that left the page noticed? | the deletion itself — the sentence is provably gone | 3 + 1 control | `ablation`: one call, no quote check, no condition step, no retry — on the same deletions |
 | `display-flip` | Is a disclosure made too small or too faint noticed, and only that one? | the mutation itself — the measured size or contrast is provably under the threshold | 4 + 2 controls | `rules`: thresholds with no notion of which text is mandatory |
 | `plain-contract` | Is a rewrite that drifts from the original caught? (the 2026-09-28 plain-language checks; see §4) | the defect written into each pair | 13 (9 defective, 4 clean) | `mechanical`: numbers, absolute phrases and quotes only, no model judgment of conditions |
-| `stability` | Does the same input get the same answer? | agreement with itself, no label | 6 pages + 39 items, 3 rounds | `ablation`: the one-call judgment asked three times (the keyword classifier is code and never varies) |
+| `stability` | Does the same input get the same answer? | agreement with itself, no label | 6 pages + 17 disclosure items (39 explanation-duty items before 2026-09-30), 3 rounds | `ablation`: the one-call judgment asked three times (the keyword classifier is code and never varies) |
 
 Why the disclosure check is measured by deletion and the display method by mutation is recorded
 in `docs/architecture-decisions/adr-002-defect-injection-evaluation.md` and `docs/architecture-decisions/adr-005-display-flip-evaluation.md`.
@@ -95,9 +99,37 @@ The out-of-scope path is demonstrable without a network:
 `uv run python eval/out_of_scope_report.py` replays the recorded calls and renders the report
 through the same `build_report` the graph's `end_report` node uses.
 
-### 2. Explanation duty, defect injection — pipeline 2/3, ablation 1/3 on the same deletions
+### 2. Ad disclosures, defect injection — pipeline 2/3, ablation 2/3 on the same deletions
 
-Base page: 롯데카드 디지로카 Las Vegas 상품안내 화면 (공개 페이지, 본문 5,667자, 적용 항목 39개).
+Base page: 롯데카드 디지로카 Las Vegas 상품안내 화면 (공개 페이지, 본문 5,667자), judged on the 17 A·B·C
+mandatory ad disclosures that apply to a 신용카드 상품광고. Both arms judge the same deletions and the
+same control: a target is an item both arms judged 적합 on the unedited page, and its deletion
+removes every quote either arm gave for it that is on the page. The deletions:
+A04 (연체이자율), A10 (건당 결제 금액별 할인율 표), A13 (원리금 변제 의무 경고).
+
+| Metric | `pipeline` | `ablation` |
+|---|---|---|
+| 삭제한 의무표시를 부적합으로 잡아냄 | **2/3** (A04, A13) | 2/3 (A04, A13) |
+| 미탐 중 삭제 뒤에도 본문에 있는 다른 근거를 댄 경우 | A10 | 확인 불가 |
+| 인용 유효율 (인용문이 실제로 본문에 있음) | **56/56 (100%)** | 50/68 (73.5%) |
+| 기준 실행의 인용 유효율 | **15/15 (100%)** | 13/17 (76.5%) |
+| 대조군(무관 문장 삭제) 오탐 | 1건 (A08) | 0건 |
+| 판정 불가로 보류한 항목 (기준 실행) | 1 (A09) | 1 (A09) |
+| 기준 판정 분포 (적합/부적합/판정 불가) | 15 / 1 (B01) / 1 | 15 / 1 (A05) / 1 |
+
+Detection is a tie; the difference is again the evidence. Every quote the pipeline gives is on
+the page, against 74% of the ablation's, and the two arms disagree on which item fails on the
+unedited page (pipeline B01, ablation A05). A10 was missed by both arms for the same reason F12
+was under the old criteria: after the table was deleted, the pipeline passed A10 on another part
+of the page that still states the per-payment discount rates, so "deleted, therefore 부적합" does
+not hold for that case. The pipeline's one control flip (A08, 광고·심의필 유효기간) is on an item that
+also changes verdict across the stability rounds (§5). Source:
+`eval/results/260930-135417-disclosure-flip-record.json`, replayed in
+`eval/results/260930-140141-all-replay.json`.
+
+#### 이전 기준 — explanation duty by analogy (2026-09-27 – 09-29)
+
+Measured before ADR-006 on the same page with 39 explanation-duty items; kept as history.
 
 Both arms judge the same three deletions and the same control. A target is an item both arms
 judged 적합 on the unedited page; its deletion removes every quote either arm gave for it that is on
@@ -164,8 +196,9 @@ a pass nor a failure.
 This suite measures `domain/plain_language` (`verify_block`, `judge_condition_preservation`), the
 line-by-line rewrite of the 2026-09-28 graph. Since the 2026-09-29 merge the graph writes a
 persona explanation instead and calls neither function, so this suite is kept as a record, not as
-evidence about the current graph. The current counterpart is the fact-ledger and mutation result
-in §6–§7 (generation-layer mutations 33/33 rejected, ledger-layer 8/8).
+evidence about the current graph. The current counterpart is the advice check in §6 (10/10
+injected advice defects rejected, 2026-09-30); the fact-ledger results in §6–§7 describe the
+line-by-line output that ADR-007 removed.
 
 | Metric | 2026-09-27, before the fix | 2026-09-27, after | 2026-09-28, condition judged by the model | 2026-09-29, `mechanical` arm |
 |---|---|---|---|---|
@@ -191,10 +224,26 @@ omissions. The suite was re-recorded the same day (one call, $0.0021) with the s
 Before/after files: `260927-173641-plain-contract-replay.before-fix.json`,
 `260927-173802-plain-contract-replay.json`, `260928-183438-plain-contract-record.json`.
 
-### 5. Stability — classification steady, explanation duty 30/39, ablation 31/39
+### 5. Stability — classification steady, ad disclosures 15/17 in both arms
 
 Round 1 is the recording the other suites use; rounds 2–3 are salted repeats from the same
-cassette. Figures are from the 2026-09-29 19:08 recording.
+cassette. Figures are from the 2026-09-30 recording (`eval/results/260930-135741-stability-record.json`).
+
+| Question | `pipeline` | `ablation` |
+|---|---|---|
+| Classification of the six pages | **6/6** | the keyword baseline is code: the same answer every time |
+| Ad-disclosure verdicts on the base page (17 items) | 15/17 (88.2%) | 15/17 (88.2%) |
+| — unstable items moving only between 적합 and 부적합 | 2 (A08 적합·적합·부적합, B01 부적합·부적합·적합) | 2 (A05, B02) |
+| — moving through 판정 불가 | 0 | 0 |
+
+Both arms agree with themselves on 15 of 17 items, and every disagreement is an outright 적합 ↔
+부적합 contradiction, not a hand-off to 판정 불가. The two unstable pipeline items are the ones the
+live run of the same page reported as 부적합 on 2026-09-30 (A08, B01; A09 was the third,
+`data/live6/review-report-2026-09-30-lasvegas-advice.md`), so those findings from a single run are
+not reproducible and a reviewer should check them first. Under the old criteria about a quarter of
+the items moved (9/39, next subsection); under the ad-disclosure items it is 2/17 (12%).
+
+#### 이전 기준 — explanation duty by analogy (2026-09-29 19:08 recording)
 
 | Question | `pipeline` | `ablation` |
 |---|---|---|
@@ -221,16 +270,52 @@ explanation-duty items. Source: `eval/results/260929-190829-all-record.json`.
 > 2026-09-30 short report the report did not show cases either. Its measurements are dropped from
 > §6–§8 with the feature. The judging suites (§1–§5) never read cases and are unaffected.
 
-### 6. Evidence agent, cards and reader explanation (2026-09-29)
+### 6. Evidence cards and reader advice — advice shown on 2/2 pages, 10/10 injected defects rejected (2026-09-30)
+
+`uv run python eval/cards_persona_eval.py [--record]` runs on the two real lottecard pages in
+`eval/fixtures/` against a 25-entry gold set in `eval/fixtures/gold/evidence_cards.json` (both
+local only: `eval/fixtures/` is gitignored). Since ADR-007 the reader output is one paragraph of
+advice (`advice`, `advice_codes`: which 설명의무 items to check in the product document before
+signing), written for a 70s reader with low finance familiarity (`nemotron-ko-70s-lowfin`). The
+card extraction prompt did not change, so the card rows replay the 2026-09-29 answers; only the
+advice was recorded again (2 calls, $0.0131, `eval/results/260930-135827-cards-persona-record.json`,
+commit `f6e79e2`, clean tree).
+
+| Measure | 카드론 (131 sources) | LOCA CLASSIC (89 sources) |
+|---|---|---|
+| Cards kept / rejected by code | 45 / 0 | 28 / 0 |
+| Card quote resolves in its source | 45/45 | 28/28 |
+| Gold quotes covered (risk-only) | 11/12 (10/11) | 10/13 (9/12) |
+| Advice passes its code checks and is shown | yes (336 chars) | yes (297 chars) |
+| Items the advice points to | 설명02·04·21·23 | 설명02·10·16·23 |
+| Injected advice defects rejected (invented number, verdict word, code in text, over length, unknown code) | 5/5 | 5/5 |
+
+**Repeat stability of the advice** (`eval/agentic_stability.py`, three rounds on the round-1
+cards; 4 calls, $0.0254, `eval/results/260930-135938-agentic-stability-record.json`). The advice
+passed its checks in every round on both pages (6/6). The items it points to vary: pairwise
+Jaccard of `advice_codes` between rounds is 0.33 / 0.33 / 1.00 on 카드론 and 0.75 / 0.60 / 0.75 on
+LOCA CLASSIC. 설명02 (상환방법) is in every round on both pages; the rest of the list changes
+from run to run. Card extraction itself is unchanged from §7 (Jaccard 0.37–0.53).
+
+**Two readers, same page** (`eval/persona_pair_eval.py`, 4 calls, $0.0252,
+`eval/results/260930-140114-persona-pair-record.json`). The same two dataset readers as §7 (70+,
+초등학교, 익숙도 낮음; 40s bank/insurance worker, 익숙도 높음). Both advices pass on both pages. The item
+overlap between the two readers is 0.60 on 카드론 (only the older reader gets 설명23, only the
+familiar reader 설명17) and 0.29 on LOCA CLASSIC (older: 설명10·21; familiar: 설명09·17·23).
+Whether a different list is a better list for that reader is not measured; no person has scored
+the advice.
+
+The live run of the current code on 디지로카 Las Vegas (2026-09-30, thread `review-260930-133058-9a1151`, 18 calls,
+$0.1085, 305 s; `data/live6/review-result-2026-09-30-lasvegas-advice.json`, gitignored) collected
+the page to `full_coverage` with 0 open gaps and judged 표시방법 적합 4/8 and 의무표시 적합 14/17
+(A08, A09, B01 부적합); the advice for a 70s low-familiarity reader pointed to four items in one
+call.
+
+#### 이전 기준 — explanation units and fact ledger (2026-09-29)
 
 Added with the bounded evidence agent, evidence cards and the persona explanation (branch
-`agentic-evidence-persona`). The five suites above replay unchanged after this work (80 hits,
-0 misses, same numbers): none of their prompts or inputs changed.
-
-`uv run python eval/agentic_eval.py [--record]` (renamed `eval/cards_persona_eval.py` on
-2026-09-29, see §8) runs on the two real lottecard pages in
-`eval/fixtures/` against a 25-entry gold set in `eval/fixtures/gold/evidence_cards.json` (both
-local only: `eval/fixtures/` is gitignored). Recording cost $0.0981 (13 calls); replay is free.
+`agentic-evidence-persona`). Recording cost $0.0981 (13 calls). The unit and ledger rows describe
+the line-by-line output ADR-007 removed.
 
 | Measure | 카드론 (131 sources) | LOCA CLASSIC (89 sources) |
 |---|---|---|
@@ -258,6 +343,10 @@ payment action; the accordions open through a checkbox input the tools never cli
 lists the 29 gaps as the reviewer's first action instead of passing the page.
 
 ### 7. Follow-up on the agentic design (2026-09-29, branch `agentic-followup`)
+
+> 이전 기준: the persona-unit and fact-ledger figures in this section describe the line-by-line
+> output removed by ADR-007; the current advice measurements are in §6. The display-flip and
+> page-agent figures still apply.
 
 Paid total for this follow-up: about $1.52; the measurements kept below cost $1.38 (re-recordings
 $0.123, stability $0.160, reader pair $0.059, live reviews $1.04).
@@ -353,11 +442,14 @@ Results: `eval/results/260929-140148-agent-loop.md`, `260929-141601-agent-loop.m
 
 The same cassette-backed suites run with `--model`; each model has its own cassette.
 
+The duty-flip rows were measured under the explanation-duty criteria (이전 기준); the other
+models were not re-run on `disclosure-flip` after 2026-09-30.
+
 | Suite | gpt-5-mini (default) | gpt-5-nano | gpt-5 |
 |---|---|---|---|
 | classification (6 pages) | **6/6** · 8 calls · $0.0354 · 104 s | 4/6 · 11 calls · $0.0244 · 350 s | 5/6 · 9 calls · $0.1903 · 184 s |
-| duty-flip, pipeline arm (2026-09-28 code) | **1/3**, quotes 67/67 (current code: 2/3, 64/64) | 0/3, quotes 47/47 | not run |
-| duty-flip, ablation arm (2026-09-28 code) | 1/3, quotes 45/156 (current code: 1/3, 27/156) | 0/3, quotes 59/127 | not run |
+| duty-flip, pipeline arm (2026-09-28 code, 이전 기준) | **1/3**, quotes 67/67 (2026-09-29 code: 2/3, 64/64) | 0/3, quotes 47/47 | not run |
+| duty-flip, ablation arm (2026-09-28 code, 이전 기준) | 1/3, quotes 45/156 (2026-09-29 code: 1/3, 27/156) | 0/3, quotes 59/127 | not run |
 | duty-flip recordings, both rules | 15 calls · $0.2893 · 1,154 s | 16 calls · $0.1411 · 2,473 s, plus $0.0199 lost | — |
 | plain-contract | 9/9, 0/4 false alarms | 9/9, 0/4 | 9/9, 0/4 |
 
@@ -379,6 +471,30 @@ roughly $1. Files: `eval/results/*-gpt-5-nano.*`, `eval/results/*-gpt-5.*`; cass
 ## Failure analysis
 
 Each finding is traced to a cause rather than left as a rate.
+
+### 광고 의무표시 기준 (2026-09-30 재측정)
+
+**A10 미탐은 F12와 같은 정답 쪽 문제입니다.** 건당 결제 금액별 할인율 표를 지웠지만, 본 구성은 삭제 뒤
+페이지에 남은 다른 부분(건당 결제 금액·할인율·월 통합 할인한도를 담은 표)을 근거로 적합을 유지했고 그 근거는
+변형 페이지에 실제로 있습니다(`missed_with_evidence_on_page: A10`). 같은 사실이 두 곳에 있으면 '삭제했으므로
+부적합'이라는 정답이 성립하지 않습니다. → 삭제 대상을 페이지에 한 번만 나오는 사실로 제한하는 개선이 여전히
+남아 있습니다.
+
+**단발 실행의 부적합 3건 중 2건이 반복 측정에서 흔들리는 항목입니다.** 같은 페이지의 실제 실행(2026-09-30)은
+A08(유효기간)·A09(통계 출처)·B01(신용평점 기준)을 부적합으로 냈습니다. 반복 측정에서 A08은 적합·적합·부적합,
+B01은 부적합·부적합·적합으로 갈렸고, 무관 문장 하나를 지운 대조군에서도 A08이 적합 → 부적합으로 바뀌었습니다
+(§2, §5). 두 항목은 원래부터 경계선상의 판정입니다. → 같은 질문을 세 번 묻고 일치할 때만 확정하는 방식의
+적용 대상이 17항목 중 이 둘로 좁혀졌습니다.
+
+**A09는 두 구성 모두 기준 실행에서 판정 불가였습니다.** 실제 실행에서는 할인율 표를 '인용한 통계'로 읽어
+출처 누락으로 부적합을 냈습니다. 혜택 조건표는 통계 인용이 아니므로 오탐일 가능성이 높습니다. → 조건 판단
+단계에서 '통계·도표 인용'의 범위를 좁히는 것이 다음 확인 사항입니다.
+
+**두 구성이 기준 페이지에서 서로 다른 항목을 부적합으로 봤습니다.** 본 구성은 B01, 축소 구성은 A05를
+부적합으로 판정했고, 축소 구성의 기준 실행 인용 17건 중 4건은 본문에 없는 문장이었습니다. 탐지율이 같아도
+검토자가 확인할 수 있는 근거의 비율은 100% 대 77%입니다.
+
+### 이전 기준 — 설명의무 준용 기준 (2026-09-27 – 09-29)
 
 **설명의무 두 구성의 첫 비교는 같은 사례가 아니었습니다.** 각 구성이 자기 판정에서 삭제 대상을 골라
 본 구성은 F07·F15·설명07, 축소 구성은 설명07·F06·설명06을 지웠고, 한 구성 안에서도 같은 문장을 지운 두 행을
@@ -420,14 +536,16 @@ F13·설명13·F14·설명14는 1회차에 판정 불가였다가 다른 회차�
 끝까지 돌린 검토 3건의 실측은 **$0.148~$0.193(중앙값 $0.184, 약 258원), 20~24회 호출, 513~723초**입니다
 (`eval/results/260928-191135-cost-ledger.md`). 출력 토큰이 원인입니다 — 설명의무 항목마다 조건·판정·인용·
 근거를 쓰고 원문·쉬운말을 각각 판정하므로 한 번 검토의 출력이 54,000~72,000 tokens입니다. 처음 보는
-사이트에서는 페이지 구조 파악 호출(6~10회, $0.013~$0.039)이 더해집니다.
+사이트에서는 페이지 구조 파악 호출(6~10회, $0.013~$0.039)이 더해집니다. 광고 의무표시 기준과 조언 한
+문단으로 바꾼 뒤의 실제 실행(2026-09-30, 페이지 구조 파악 포함)은 **18회 호출, $0.1085, 305초, 출력 31,217
+tokens**였습니다(`data/live6/review-result-2026-09-30-lasvegas-advice.json`).
 
 ## What this evaluation does not say
 
 - 표본이 작습니다. 분류 6건, 결함 주입 3건과 대조군 1건, 표시방법 2개 페이지에 주입 4건과 대조군 2건,
   쉬운말 13건입니다. 여기의 비율은 경향이고 신뢰구간이 붙은 성능치가 아닙니다.
-- 결함 주입은 3건입니다. 본 구성 2/3 대 축소 구성 1/3이지만 재녹음만으로 1/3과 2/3을 오갈 수 있고(9/28
-  녹음에서는 둘 다 1/3), 본 구성이 놓친 F12는 같은 사실이 다른 문장에 남아 정답이 성립하지 않았습니다.
+- 결함 주입은 3건입니다. 광고 의무표시 기준에서 두 구성 모두 2/3이고, 두 구성이 놓친 A10은 같은 사실이
+  다른 곳에 남아 정답이 성립하지 않았습니다. 이전 기준에서는 재녹음만으로 1/3과 2/3을 오갔습니다.
 - 실제 페이지에서 수집과 판정을 모두 끝낸 것은 7건 중 1건입니다(§8). 녹음 재생 스위트의 수치는 저장된
   페이지에 대한 값이며, 실제 페이지의 완주율을 뜻하지 않습니다.
 - `plain-contract`는 9/28 구조의 쉬운말 검사를 잽니다. 현재 그래프는 이 검사를 부르지 않습니다(§4).
@@ -438,8 +556,10 @@ F13·설명13·F14·설명14는 1회차에 판정 불가였다가 다른 회차�
   사람의 교차 확인은 아직 없습니다.
 - 쉬운말 케이스는 손으로 만든 문장쌍입니다. 실제 모델이 만드는 오류 분포와 다를 수 있습니다.
 - 인용 유효율 100%는 "인용문이 본문에 있다"는 뜻이고 "그 인용이 기준을 충족한다"는 뜻이 아닙니다.
-- 설명의무 준용 기준의 판정은 같은 입력에서도 23%가 흔들렸습니다(축소 구성 21%). 광고 의무표시 기준은 재측정 전입니다. 한 번의 실행 결과를 확정 판정으로
-  읽으면 안 됩니다.
+- 광고 의무표시 판정은 같은 입력에서 17항목 중 2항목(12%)이 흔들렸습니다(축소 구성도 2항목). 이전 기준인
+  설명의무 준용에서는 23%였습니다. 한 번의 실행 결과를 확정 판정으로 읽으면 안 됩니다.
+- 조언이 가리키는 설명의무 항목은 실행마다 달라집니다(회차 간 Jaccard 0.33~1.00). 조언은 매번 코드 검사를
+  통과하지만, 어떤 목록이 그 독자에게 더 나은지는 재지 않았습니다.
 - 증거 카드 정답셋은 AI 초안이고, 쉬운말 확인 권고의 사람 평가는 0건입니다.
 
 ## Adding a case
