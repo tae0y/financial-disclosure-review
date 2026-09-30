@@ -1,4 +1,4 @@
-"""Evidence cards and the persona overview on real pages (single structured calls, no agent).
+"""Evidence cards and the persona advice on real pages (single structured calls, no agent).
 
 Named `agentic_eval.py` until 2026-09-29. The audit of that date (A-05) found the name implied
 it measured the agents while it also had a reference-case part; that part is removed along
@@ -14,10 +14,10 @@ cassette, so a recorded run replays for free:
 
 Measured, separately:
 - evidence cards: quote resolution, gold recall, risk-gold recall;
-- persona overview: status, paragraph and character counts, the code-check problems, and whether
-  those checks catch an overview mutated to invent a number, add a verdict word or run long.
-  (Until 2026-09-30 this measured explanation units and the fact ledger; both were removed when
-  the explanation became a one- or two-paragraph overview beside the page.)
+- persona advice: status, the explanation-duty codes it recommends, its length, the code-check
+  problems, and whether those checks catch an advice mutated to invent a term, add a verdict
+  word, write a rubric code or run long. (Until 2026-09-30 this measured explanation units and
+  the fact ledger, then a summary overview; the graph now writes the advice only.)
 
 Writes `eval/results/<timestamp>-cards-persona-<mode>.{json,md}` with a `meta` block naming the
 code revision, prompt hashes and gold version.
@@ -38,13 +38,16 @@ load_dotenv(ROOT / ".env")
 
 from financial_disclosure_review.core.context import Context  # noqa: E402
 from financial_disclosure_review.core.usage import current, start_run  # noqa: E402
+from financial_disclosure_review.domain.ad_disclosure_check.rubric import (  # noqa: E402
+    deferred_explanation_items,
+)
 from financial_disclosure_review.domain.evidence_cards import extract_evidence_cards  # noqa: E402
 from financial_disclosure_review.domain.persona_explanation import (  # noqa: E402
     generate_persona_explanation,
 )
 from financial_disclosure_review.domain.persona_explanation.generate import (  # noqa: E402
     MAX_CHARS,
-    overview_problems,
+    advice_problems,
 )
 from financial_disclosure_review.evaluation.cassette import Cassette  # noqa: E402
 from financial_disclosure_review.evaluation.evidence_metrics import card_metrics  # noqa: E402
@@ -54,32 +57,35 @@ FIXTURES = ("display_lottecard_card_loan", "display_lottecard_loca_classic")
 GOLD = ROOT / "eval" / "fixtures" / "gold" / "evidence_cards.json"
 
 
-def generation_mutations(persona: dict, sources: list[dict]) -> list[dict]:
-    """Mutate an accepted overview and re-run its code checks, free. Each must be caught."""
-    paragraphs = persona.get("overview") or []
-    if not persona.get("html") or not paragraphs:
+def generation_mutations(
+    persona: dict, sources: list[dict], db_path: str, product_type: str
+) -> list[dict]:
+    """Mutate an accepted advice and re-run its code checks, free. Each must be caught."""
+    advice, codes = persona.get("advice") or "", persona.get("advice_codes") or []
+    if not persona.get("html") or not advice:
         return []
+    allowed = [i["code"] for i in deferred_explanation_items(db_path, product_type)]
     source_text = " ".join(s.get("text", "") for s in sources)
     variants = [
-        ("invent_number", [*paragraphs[:-1], paragraphs[-1] + " 약 37만원을 돌려받습니다."]),
-        ("verdict_word", [*paragraphs[:-1], paragraphs[-1] + " 이 광고는 위반이 아닙니다."]),
-        ("third_paragraph", [*paragraphs, "추가 문단입니다.", "또 하나의 문단입니다."]),
-        ("too_long", [*paragraphs, "가" * (MAX_CHARS + 1)]),
+        ("invent_term", {"advice": advice + " 철회 기한은 37일입니다.", "advice_codes": codes}),
+        ("verdict_word", {"advice": advice + " 이 광고는 위반이 아닙니다.", "advice_codes": codes}),
+        ("code_in_text", {"advice": advice + " (설명16)", "advice_codes": codes}),
+        ("too_long", {"advice": advice + "가" * (MAX_CHARS + 1), "advice_codes": codes}),
+        ("unknown_code", {"advice": advice, "advice_codes": [*codes, "설명99"]}),
     ]
     return [
-        {"mutation": name, "caught": bool(overview_problems(changed, source_text))}
+        {"mutation": name, "caught": bool(advice_problems(changed, allowed, source_text))}
         for name, changed in variants
     ]
 
 
 def persona_metrics(persona: dict) -> dict:
-    paragraphs = persona.get("overview") or []
     return {
         "status": persona.get("status"),
         "profile": (persona.get("profile") or {}).get("id"),
         "shown": bool(persona.get("html")),
-        "paragraphs": len(paragraphs),
-        "chars": sum(len(p) for p in paragraphs),
+        "advice_codes": persona.get("advice_codes") or [],
+        "chars": len(persona.get("advice") or ""),
         "problems": persona.get("problems") or [],
     }
 
@@ -119,16 +125,18 @@ def main() -> None:
                 "kinds": sorted({c["kind"] for c in cards["cards"]}),
             },
             "persona": persona_metrics(persona),
-            "generation_mutations": generation_mutations(persona, cards["sources"]),
+            "generation_mutations": generation_mutations(
+                persona, cards["sources"], ctx.db_path, classification.get("product_type")
+            ),
             "examples": {
                 "card": cards["cards"][0] if cards["cards"] else None,
-                "overview": persona.get("overview") or [],
+                "advice": persona.get("advice") or "",
             },
         }
 
     saved = cassette.save()
     result = {
-        "meta": run_meta("evidence_cards+persona_overview (cassette)", gold=GOLD),
+        "meta": run_meta("evidence_cards+persona_advice (cassette)", gold=GOLD),
         "mode": mode,
         "model": ctx.model,
         "profile": ctx.persona_profile or "(default)",
@@ -144,7 +152,7 @@ def main() -> None:
     )
     meta = result["meta"]
     lines = [
-        f"# evidence cards and persona overview ({mode}, {ctx.model})",
+        f"# evidence cards and persona advice ({mode}, {ctx.model})",
         "",
         f"meta: commit {meta['commit']}{' (dirty)' if meta['dirty'] else ''}, gold {meta['gold']}",
         "",

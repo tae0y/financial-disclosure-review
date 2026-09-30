@@ -1,4 +1,4 @@
-"""Response schemas of the three model calls this domain makes."""
+"""Response schema of the model call this domain makes."""
 
 from typing import Literal
 
@@ -15,24 +15,3 @@ class DisclosureJudgment(BaseModel):
 
 class DisclosureJudgments(BaseModel):
     items: list[DisclosureJudgment]
-
-
-class OverviewJudgment(BaseModel):
-    code: str
-    verdict: Literal["적합", "부적합", "판정 불가"]
-    quote: str
-    reason: str
-
-
-class OverviewJudgments(BaseModel):
-    items: list[OverviewJudgment]
-
-
-class FidelityDiff(BaseModel):
-    code: str
-    kind: Literal["누락", "변경", "추가", "판정 불가", "변화없음"]
-    reason: str
-
-
-class FidelityDiffs(BaseModel):
-    items: list[FidelityDiff]

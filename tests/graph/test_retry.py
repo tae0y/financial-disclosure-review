@@ -54,7 +54,7 @@ def test_a_failure_with_actionable_feedback_goes_back_to_the_owning_node():
     plan = plan_retry(v)
     assert plan["retry_target"] == "generate_persona_explanation"
     assert plan["retry_modules"] == ["persona_explanation"]
-    assert route_after_retry(state_of({**v, **plan})) == "generate_persona_explanation"  # type: ignore[arg-type]
+    assert route_after_retry(state_of({**v, **plan})) == ["generate_persona_explanation"]  # type: ignore[arg-type]
 
 
 def test_a_failure_with_no_requested_change_is_not_retried():
@@ -72,7 +72,7 @@ def test_display_check_is_escalated_instead_of_retried():
     v = verification(failed_modules=["display_check"], feedback=[feedback_for("display_check")])
     assert should_retry(v) is False
     assert escalation(v)["reason"] == "자동 재시도 불가"
-    assert "display_check" in escalation(v)["detail"]
+    assert "표시방법" in escalation(v)["detail"], "담당자가 읽는 이름으로 적는다"
 
 
 def test_the_loop_stops_at_the_cap():
@@ -86,12 +86,18 @@ def test_the_loop_stops_at_the_cap():
     assert escalation(v)["reason"] == "재시도 한도 초과"
 
 
-def test_the_earliest_failed_node_is_the_target_so_the_rest_follows_by_edges():
+def test_every_failed_node_is_retried_in_one_step():
+    """The advice and the disclosure check are independent, so both are sent back at once."""
     v = verification(
         failed_modules=["ad_disclosure_check", "persona_explanation"],
         feedback=[feedback_for("persona_explanation"), feedback_for("ad_disclosure_check")],
     )
-    assert plan_retry(v)["retry_target"] == "generate_persona_explanation"
+    plan = plan_retry(v)
+    assert plan["retry_targets"] == ["generate_persona_explanation", "judge_ad_disclosure"]
+    assert route_after_retry(state_of({**v, **plan})) == [  # type: ignore[arg-type]
+        "generate_persona_explanation",
+        "judge_ad_disclosure",
+    ]
 
 
 def test_every_round_is_recorded_in_the_history():

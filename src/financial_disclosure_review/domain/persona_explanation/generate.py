@@ -1,5 +1,5 @@
-"""Entry point of persona_explanation: a two-paragraph plain overview beside the page — a summary
-of the page, then advice on the explanation-duty items this reader should check elsewhere."""
+"""Entry point of persona_explanation: one paragraph of reader-tailored advice beside the page —
+which explanation-duty items the ad does not cover this reader should check before signing."""
 
 import re
 from collections.abc import Mapping, Sequence
@@ -8,13 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from ...core.context import Context
-from ...knowledge.rubrics import item_scope
 from ...llm.client import ask, call_ask
-from ..ad_disclosure_check.rubric import (
-    OVERVIEW_REQUIRED,
-    deferred_explanation_items,
-    load_disclosure_items,
-)
+from ..ad_disclosure_check.rubric import deferred_explanation_items
 from ..plain_language.contract import (
     FORBIDDEN_ABSOLUTE_PHRASES,
     counter_ones,
@@ -23,16 +18,15 @@ from ..plain_language.contract import (
 )
 from .profiles import resolve_profile
 from .prompts import PERSONA_TASK
-from .schema import OverviewDraft
+from .schema import AdviceDraft
 
-MAX_PARAGRAPHS = 2
 MIN_ADVICE_CODES = 2
 MAX_ADVICE_CODES = 5
-# The roles of the two paragraphs, in order; only the summary is judged against the ad disclosures.
-ROLES = ("summary", "advice")
-MAX_CHARS = 1200
+MAX_CHARS = 700
 ENUM_MARKER = re.compile(r"(?<!\S)\(?\d{1,2}[)）.](?=\s)")
 VERDICT_RE = re.compile(r"적합|부적합|위반|합법|불법|문제없")
+# A rubric code written into the reader's text ("설명16") means nothing to the reader.
+CODE_RE = re.compile(r"설명\s?\d{2}|[A-GF]\d{2}\b")
 CARD_FIELDS = (
     "id",
     "kind",
@@ -44,7 +38,7 @@ CARD_FIELDS = (
     "quote",
     "source_id",
 )
-# Controls a published overview needs around it. They are listed so the report can show them;
+# Controls a published advice needs around it. They are listed so the report can show them;
 # this node neither implements nor judges them.
 CONTROLS = {
     "ui": ["AI 생성 고지", "원문 보기 전환", "오류 신고"],
@@ -53,68 +47,46 @@ CONTROLS = {
 }
 
 
-def overview_html(paragraphs: Sequence[str]) -> str:
-    """The overview alone; the page it summarises is shown beside it, not inside it. The first
-    paragraph is the summary, the second the advice."""
-    if not paragraphs:
-        return ""
-    body = "".join(
-        f'<p data-role="{role}">{escape(p)}</p>' for role, p in zip(ROLES, paragraphs, strict=False)
-    )
-    return f'<section data-role="overview">{body}</section>'
+def advice_html(advice: str) -> str:
+    """The advice alone; the page it refers to is shown beside it, not inside it."""
+    return f'<section data-role="advice"><p>{escape(advice)}</p></section>' if advice else ""
 
 
-def advice_problems(answer: Mapping[str, Any], allowed: Sequence[str]) -> list[str]:
-    """The advice paragraph must exist and name 2–5 explanation-duty items the product has."""
-    if not allowed:
-        return []
+def advice_problems(
+    answer: Mapping[str, Any], allowed: Sequence[str], source_text: str
+) -> list[str]:
+    """Code checks of a drafted advice against the checklist and the page; empty when it may be
+    shown."""
+    advice = (answer.get("advice") or "").strip()
+    if not advice:
+        return ["권고 문단(advice)이 비어 있음"]
     problems = []
-    if not (answer.get("advice") or "").strip():
-        problems.append("권고 문단(advice)이 비어 있음")
     codes = list(dict.fromkeys(answer.get("advice_codes") or []))
     unknown = [c for c in codes if c not in allowed]
     if unknown:
-        problems.append(f"설명의무 항목에 없는 advice_codes: {', '.join(unknown)}")
+        problems.append(f"설명의무 확인 목록에 없는 advice_codes: {', '.join(unknown)}")
     known = [c for c in codes if c in allowed]
     if not MIN_ADVICE_CODES <= len(known) <= MAX_ADVICE_CODES:
         problems.append(
             f"권고 항목 {len(known)}개(advice_codes는 {MIN_ADVICE_CODES}~{MAX_ADVICE_CODES}개)"
         )
-    return problems
-
-
-def _draft_paragraphs(answer: Mapping[str, Any]) -> list[str]:
-    return [
-        text
-        for text in ((answer.get("summary") or "").strip(), (answer.get("advice") or "").strip())
-        if text
-    ]
-
-
-def overview_problems(paragraphs: Sequence[str], source_text: str) -> list[str]:
-    """Code checks of a drafted overview against the page text; empty when it may be shown."""
-    kept = [p.strip() for p in paragraphs if p and p.strip()]
-    if not kept:
-        return ["개요 문단이 없음"]
-    problems = []
-    if len(kept) > MAX_PARAGRAPHS:
-        problems.append(f"문단 {len(kept)}개(최대 {MAX_PARAGRAPHS}개)")
-    chars = sum(len(p) for p in kept)
-    if chars > MAX_CHARS:
-        problems.append(f"개요 {chars}자(최대 {MAX_CHARS}자)")
+    if len(advice) > MAX_CHARS:
+        problems.append(f"권고 문단 {len(advice)}자(최대 {MAX_CHARS}자)")
+    if CODE_RE.search(advice):
+        problems.append("본문에 항목 코드가 들어 있음(독자에게는 항목 이름으로 쓸 것)")
     # "1) …", "(2) …", "3. …" number a list; they state no fact, so they are not checked.
-    generated = ENUM_MARKER.sub(" ", " ".join(kept))
-    extra = sorted(number_set(generated) - number_set(source_text) - counter_ones(generated))
+    stated = ENUM_MARKER.sub(" ", CODE_RE.sub(" ", advice))
+    extra = sorted(number_set(stated) - number_set(source_text) - counter_ones(stated))
     if extra:
         problems.append(f"원문에 없는 수치: {', '.join(extra)}")
     added = [
         p
         for p in FORBIDDEN_ABSOLUTE_PHRASES
-        if has_phrase(generated, p) and not has_phrase(source_text, p)
+        if has_phrase(stated, p) and not has_phrase(source_text, p)
     ]
     if added:
         problems.append(f"원문에 없는 단정·최상급 표현: {', '.join(added)}")
-    verdicts = sorted(set(VERDICT_RE.findall(generated)))
+    verdicts = sorted(set(VERDICT_RE.findall(stated)))
     if verdicts:
         problems.append(f"판정 표현 사용: {', '.join(verdicts)}")
     return problems
@@ -125,7 +97,7 @@ def _fallback(status: str, reason: str, profile: dict) -> dict:
         "status": status,
         "reason": reason,
         "profile": profile,
-        "overview": [],
+        "advice": "",
         "advice_codes": [],
         "problems": [],
         "html": "",
@@ -144,46 +116,30 @@ def generate_persona_explanation(
     profiles_path: str | Path | None = None,
     profile: dict | None = None,
 ) -> dict:
-    """독자 맞춤 쉬운말 개요 생성. PersonaExplanation의 모든 필드를 돌려준다.
+    """독자 맞춤 확인 권고 생성. PersonaExplanation의 모든 필드를 돌려준다.
 
-    {status, reason, profile, overview, advice_codes, problems, html, controls}. `overview`는
-    [요약 문단, 권고 문단]이다. 모델 호출은 한 번이며, 코드
-    검사에 걸린 답은 한 번 다시 묻는다. 두 번째 답도 걸리면 개요를 싣지 않고(원문 대체) 문제를
-    `problems`에 남겨 검증이 재생성을 요청하게 한다. `profile`이 주어지면(choose_profile의 결과)
-    다시 고르지 않고 그대로 쓴다: 재시도도 같은 독자로 쓴다.
+    {status, reason, profile, advice, advice_codes, problems, html, controls}. 이 광고 페이지에
+    없지만 계약 전에 설명받아야 하는 설명의무 항목 중 이 독자에게 중요한 2~5개를 골라, 상품설명서나
+    상담에서 확인해 보라고 권하는 한 문단이다. 모델 호출은 한 번이며, 코드 검사에 걸린 답은 한 번
+    다시 묻는다. 두 번째 답도 걸리면 싣지 않고 문제를 `problems`에 남겨 검증이 재생성을 요청하게
+    한다. `profile`이 주어지면(choose_profile의 결과) 그대로 쓴다: 재시도도 같은 독자로 쓴다.
     """
     if profile is None:
         wanted_profile = profile_id if profile_id is not None else ctx.persona_profile
         profile = resolve_profile(wanted_profile, profiles_path)
     if not sources:
-        return _fallback("판정 불가", "요약할 원문 출처(sources)가 없음", profile)
+        return _fallback("판정 불가", "페이지 원문(sources)이 없음", profile)
     if profile["status"] != "적용":
         return _fallback("원문 대체", f"페르소나 프로필 무효: {profile['reason']}", profile)
-    if not cards:
-        return _fallback("원문 대체", "증거 카드가 없어 개요를 만들지 않음", profile)
-
-    source_text = " ".join(s.get("text", "") for s in sources)
-    cited_sources = {c.get("source_id") for c in cards}
-    disclosure_items = [
-        {"code": i["code"], "criterion": i["criterion"]}
-        for i in load_disclosure_items(ctx.db_path)
-        if i["code"] in OVERVIEW_REQUIRED and not item_scope(i, classification)
-    ]
     explanation_items = [
         {"code": i["code"], "question": i["question"]}
         for i in deferred_explanation_items(ctx.db_path, classification.get("product_type"))
     ]
+    if not explanation_items:
+        return _fallback("원문 대체", "이 상품유형에 확인할 설명의무 항목이 없음", profile)
+
     allowed = [i["code"] for i in explanation_items]
-
-    def check(answer: Mapping[str, Any]) -> list[str]:
-        paragraphs = _draft_paragraphs(answer)
-        problems = (
-            [] if (answer.get("summary") or "").strip() else ["요약 문단(summary)이 비어 있음"]
-        )
-        return (
-            problems + overview_problems(paragraphs, source_text) + advice_problems(answer, allowed)
-        )
-
+    source_text = " ".join(s.get("text", "") for s in sources)
     own_feedback = [
         {
             "code": f.get("code", ""),
@@ -198,32 +154,29 @@ def generate_persona_explanation(
     answer = call_ask(
         ask,
         ctx.model,
-        OverviewDraft,
+        AdviceDraft,
         PERSONA_TASK,
-        check,
+        lambda a: advice_problems(a, allowed, source_text),
         "medium",
         # A second answer that still fails is kept as is; the checks below hold it back.
         lambda a, _problems: a,
         product_type=classification.get("product_type"),
         profile=profile["attributes"],
         cards=[{k: c.get(k) for k in CARD_FIELDS} for c in cards],
-        sources=[
-            {"source_id": s["source_id"], "text": s["text"]}
-            for s in sources
-            if s["source_id"] in cited_sources
-        ],
-        disclosure_items=disclosure_items,
+        # Every page line, not only the ones cards cite: the advice must not recommend checking
+        # what the page already explains.
+        sources=[{"source_id": s["source_id"], "text": s["text"]} for s in sources],
         explanation_items=explanation_items,
         **extra,
     )
 
-    paragraphs = _draft_paragraphs(answer)
+    advice = (answer.get("advice") or "").strip()
     advice_codes = [c for c in dict.fromkeys(answer.get("advice_codes") or []) if c in allowed]
-    problems = check(answer)
+    problems = advice_problems(answer, allowed, source_text)
     if problems:
         return {
-            **_fallback("원문 대체", "개요가 코드 검사를 통과하지 못해 싣지 않음", profile),
-            "overview": paragraphs,
+            **_fallback("원문 대체", "확인 권고가 코드 검사를 통과하지 못해 싣지 않음", profile),
+            "advice": advice,
             "advice_codes": advice_codes,
             "problems": problems,
         }
@@ -231,9 +184,9 @@ def generate_persona_explanation(
         "status": "완료",
         "reason": "",
         "profile": profile,
-        "overview": paragraphs,
+        "advice": advice,
         "advice_codes": advice_codes,
         "problems": [],
-        "html": overview_html(paragraphs),
+        "html": advice_html(advice),
         "controls": CONTROLS,
     }

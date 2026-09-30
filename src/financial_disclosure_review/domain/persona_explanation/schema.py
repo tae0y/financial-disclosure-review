@@ -3,7 +3,6 @@
 from pydantic import BaseModel
 
 
-class OverviewDraft(BaseModel):
-    summary: str
+class AdviceDraft(BaseModel):
     advice: str
     advice_codes: list[str]

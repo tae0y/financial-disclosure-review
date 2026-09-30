@@ -1,7 +1,6 @@
 """The graph nodes. Each pulls what it needs from State and calls one domain entry point."""
 
 from collections.abc import Mapping
-from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +10,7 @@ from ..core.context import Context
 from ..core.state import State
 from ..core.text import norm
 from ..core.threads import run_in_thread
-from ..domain.ad_disclosure_check import judge_disclosure, judge_original
+from ..domain.ad_disclosure_check import judge_disclosure
 from ..domain.classification import classify_page
 from ..domain.display_check import judge_display
 from ..domain.evidence_cards import extract_evidence_cards as extract_cards
@@ -91,7 +90,7 @@ def judge_display_method(state: State, runtime: Runtime[Context]) -> dict:
 
 
 def generate_persona_explanation(state: State, runtime: Runtime[Context]) -> dict:
-    """A plain overview for one reviewed reader profile, shown beside the page; never a verdict."""
+    """Advice for one reviewed reader on what to check before signing; never a verdict."""
     print("[generate_persona_explanation]")
     ctx = runtime.context
     persona: dict[str, Any] = dict(state.get("persona_explanation") or {})
@@ -123,29 +122,11 @@ def generate_persona_explanation(state: State, runtime: Runtime[Context]) -> dic
     return {"persona_explanation": persona}
 
 
-def judge_disclosure_original(state: State, runtime: Runtime[Context]) -> dict:
-    """The original side of the ad-disclosure check, beside the overview it does not read.
-
-    `judge_ad_disclosure` reuses these rows; without them (a rerun from an older checkpoint, or
-    nothing to judge yet) it judges the original side itself.
-    """
-    print("[judge_disclosure_original]")
-    classification = state.get("classification") or {}
-    page = state.get("product_page") or {}
-    if not classification.get("product_type") or not classification.get("page_type"):
-        return {}
-    if not page.get("html"):
-        return {}
-    check: dict[str, Any] = dict(state.get("ad_disclosure_check") or {})
-    check.update(judge_original(page, classification, runtime.context))
-    return {"ad_disclosure_check": check}
-
-
 def judge_ad_disclosure(state: State, runtime: Runtime[Context]) -> dict:
+    """The mandatory ad disclosures on the page; on a retry only the codes verification flagged."""
     print("[judge_ad_disclosure]")
     check: dict[str, Any] = dict(state.get("ad_disclosure_check") or {})
     page: dict[str, Any] = dict(state.get("product_page") or {})
-    persona: dict[str, Any] = dict(state.get("persona_explanation") or {})
     classification = state.get("classification") or {}
 
     def blocked(reason: str) -> list[dict]:
@@ -163,36 +144,14 @@ def judge_ad_disclosure(state: State, runtime: Runtime[Context]) -> dict:
         check.update(
             items=blocked("classification이 비어 있음; classify_type을 먼저 실행해야 함"),
             original=[],
-            overview=[],
-            fidelity=[],
         )
     elif not page.get("html"):
-        check.update(
-            items=blocked("product_page.html이 비어 있음"),
-            original=[],
-            overview=[],
-            fidelity=[],
-        )
-    elif not persona.get("html"):
-        check.update(
-            items=check.get("items")
-            or blocked(
-                "persona_explanation.html이 비어 있음;"
-                " generate_persona_explanation을 먼저 실행해야 함"
-            ),
-            original=check.get("original") or [],
-            overview=[],
-            fidelity=[],
-        )
+        check.update(items=blocked("product_page.html이 비어 있음"), original=[])
     else:
         feedback = (state.get("verification") or {}).get("feedback") or []
-        # Only the summary paragraph restates the page; the advice paragraph points elsewhere
-        # (explanation-duty items for the product document) and is not an ad disclosure.
-        summary = (persona.get("overview") or [""])[0]
         check.update(
             judge_disclosure(
                 page,
-                {"html": f"<p>{escape(summary)}</p>"},
                 classification,
                 runtime.context,
                 # An empty original side (every item ruled out) is a result, not a missing one.

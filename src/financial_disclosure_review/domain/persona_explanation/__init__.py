@@ -1,4 +1,4 @@
-"""A plain-language overview of the page for one reviewed reader profile, shown beside it."""
+"""Reader-tailored advice on what to check before signing, shown beside the page."""
 
 from .dataset import PersonaStore, ensure_dataset
 from .generate import generate_persona_explanation

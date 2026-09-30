@@ -87,7 +87,7 @@ def print_summary(state: dict) -> None:
         "persona_explanation:",
         persona.get("status"),
         f"profile={(persona.get('profile') or {}).get('id')}",
-        f"{len(persona.get('overview') or [])} overview paragraphs,",
+        f"advice items={persona.get('advice_codes') or []},",
         f"problems={persona.get('problems') or []}",
     )
     disclosure = state.get("ad_disclosure_check") or {}
@@ -95,7 +95,6 @@ def print_summary(state: dict) -> None:
     print(
         "ad_disclosure_check:",
         f"{len(applied)}/{len(disclosure.get('items') or [])} items applied,",
-        f"{len(disclosure.get('fidelity') or [])} fidelity differences,",
         f"{len(disclosure.get('deferred') or [])} explanation-duty items deferred",
     )
     verification = state.get("verification") or {}

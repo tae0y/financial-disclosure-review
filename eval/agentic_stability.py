@@ -1,4 +1,4 @@
-"""Repeat stability of evidence-card extraction and persona overview generation (backlog F2).
+"""Repeat stability of evidence-card extraction and persona advice generation (backlog F2).
 
 The same two real lottecard pages as `eval/cards_persona_eval.py`, three rounds each. Round 1
 reuses the unsalted recordings of the agentic cassette; rounds 2 and 3 are salted, so they are
@@ -10,9 +10,9 @@ round, so its variance is the generator's own, not inherited from extraction.
 
 Measured:
 - cards: count, gold recall and the pairwise Jaccard of (kind, quote) sets between rounds;
-- persona overview: whether it passes its code checks in every round, its size, and the pairwise
-  Jaccard of the numbers it cites between rounds (the facts a reader is told, independent of
-  wording). Until 2026-09-30 this compared fact-ledger verdicts of explanation units.
+- persona advice: whether it passes its code checks in every round, and the pairwise Jaccard of
+  the explanation-duty codes it recommends between rounds (what the reader is told to check,
+  independent of wording). Until 2026-09-30 this compared fact-ledger verdicts of explanation units.
 
 Writes `eval/results/<timestamp>-agentic-stability-<mode>.{json,md}`.
 """
@@ -41,7 +41,6 @@ from financial_disclosure_review.domain.evidence_cards import extract_evidence_c
 from financial_disclosure_review.domain.persona_explanation import (  # noqa: E402
     generate_persona_explanation,
 )
-from financial_disclosure_review.domain.plain_language.contract import number_set  # noqa: E402
 from financial_disclosure_review.evaluation.cassette import Cassette  # noqa: E402
 from financial_disclosure_review.evaluation.evidence_metrics import card_metrics  # noqa: E402
 from financial_disclosure_review.evaluation.run_meta import run_meta  # noqa: E402
@@ -84,7 +83,7 @@ def main() -> None:
         fixture = json.loads((ROOT / "eval" / "fixtures" / f"{name}.json").read_text("utf-8"))
         page, classification = fixture["page"], fixture["classification"]
         fixture_gold = [g for g in gold if g["fixture"] == name]
-        rounds_cards, cards_rows, persona_rows, numbers = [], [], [], []
+        rounds_cards, cards_rows, persona_rows, advised = [], [], [], []
         for salt in ROUNDS:
             ask = salted(cassette, salt)
             cards = extract_evidence_cards(page, classification, ctx, ask=ask)
@@ -97,9 +96,9 @@ def main() -> None:
             persona = generate_persona_explanation(
                 base["sources"], base["cards"], classification, ctx, ask=ask
             )
-            numbers.append(number_set(" ".join(persona.get("overview") or [])))
+            advised.append(set(persona.get("advice_codes") or []))
             m = persona_metrics(persona)
-            persona_rows.append({k: m[k] for k in ("shown", "paragraphs", "chars", "problems")})
+            persona_rows.append({k: m[k] for k in ("shown", "advice_codes", "chars", "problems")})
         sets = [{card_key(c) for c in r["cards"]} for r in rounds_cards]
         result[name] = {
             "cards": cards_rows,
@@ -108,16 +107,16 @@ def main() -> None:
                 for i, j in combinations(range(len(sets)), 2)
             },
             "persona": persona_rows,
-            "overview_shown_every_round": all(row["shown"] for row in persona_rows),
-            "overview_number_jaccard": {
-                f"{i + 1}-{j + 1}": jaccard(numbers[i], numbers[j])
-                for i, j in combinations(range(len(numbers)), 2)
+            "advice_shown_every_round": all(row["shown"] for row in persona_rows),
+            "advice_code_jaccard": {
+                f"{i + 1}-{j + 1}": jaccard(advised[i], advised[j])
+                for i, j in combinations(range(len(advised)), 2)
             },
         }
 
     saved = cassette.save()
     out = {
-        "meta": run_meta("evidence_cards+persona_overview stability (cassette)", gold=GOLD),
+        "meta": run_meta("evidence_cards+persona_advice stability (cassette)", gold=GOLD),
         "mode": mode,
         "model": args.model,
         "pages": result,

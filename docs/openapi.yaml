@@ -373,17 +373,18 @@ components:
       type: http
 info:
   description: "Reviews a Korean card-company advertising page against the mandatory ad disclosures\n\
-    (광고 의무표시) and the display-method rules (표시방법), and writes a short plain-Korean overview\nto show beside\
-    \ it. Explanation-duty (설명의무) items are listed for the product documents, not\njudged, because they\
-    \ bind the contract-stage explanation rather than an advertisement.\n\n**A review takes minutes, so\
-    \ nothing here returns one.** The page is rendered in a real browser and\njudged over a series of\
-    \ model calls. Cloudflare closes a response that has produced nothing for\nabout 100 seconds, so a\
-    \ synchronous endpoint would fail on exactly the runs that worked.\n\nSubmitting therefore returns\
-    \ `202 Accepted` with a job id; poll `GET /v1/reviews/{job_id}` until\n`status` leaves `queued`/`running`.\
-    \ Job rows are stored on disk, so a restart does not lose the\nrecord of what was asked.\n\n`status`\
-    \ reaches one of:\n\n- `succeeded` — `result` is filled.\n- `failed` — the worker raised; `error`\
-    \ holds the type and message.\n- `interrupted` — the gateway restarted mid-run. The partial run's\
-    \ checkpoints survive, so\n  `POST /v1/reruns` resumes it instead of starting over.\n"
+    (광고 의무표시) and the display-method rules (표시방법). Explanation-duty (설명의무) items bind the\ncontract-stage\
+    \ explanation, not an advertisement, so they are not judged: the review lists them,\nand writes one\
+    \ plain-Korean paragraph that advises the chosen reader which of them to check\nbefore signing.\n\n\
+    **A review takes minutes, so nothing here returns one.** The page is rendered in a real browser and\n\
+    judged over a series of model calls. Cloudflare closes a response that has produced nothing for\n\
+    about 100 seconds, so a synchronous endpoint would fail on exactly the runs that worked.\n\nSubmitting\
+    \ therefore returns `202 Accepted` with a job id; poll `GET /v1/reviews/{job_id}` until\n`status`\
+    \ leaves `queued`/`running`. Job rows are stored on disk, so a restart does not lose the\nrecord of\
+    \ what was asked.\n\n`status` reaches one of:\n\n- `succeeded` — `result` is filled.\n- `failed` —\
+    \ the worker raised; `error` holds the type and message.\n- `interrupted` — the gateway restarted\
+    \ mid-run. The partial run's checkpoints survive, so\n  `POST /v1/reruns` resumes it instead of starting\
+    \ over.\n"
   title: Financial Disclosure Review API
   version: 0.1.0
 openapi: 3.1.0

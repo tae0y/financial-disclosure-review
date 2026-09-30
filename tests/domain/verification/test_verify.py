@@ -10,11 +10,8 @@ PRODUCT_HTML = (
     "<p>단기카드대출 이자율은 연 20%입니다.</p>"
     "</body></html>"
 )
-OVERVIEW_HTML = (
-    '<section data-role="overview">'
-    "<p>이 카드는 매년 15000원의 회비를 냅니다. 돈을 짧게 빌리면 이자가 연 20%입니다.</p>"
-    "</section>"
-)
+ADVICE = "계약 전에 청약 철회 방법과 연회비 반환 조건을 상품설명서에서 꼭 확인해 보세요."
+ADVICE_HTML = f'<section data-role="advice"><p>{ADVICE}</p></section>'
 
 
 def sound_input() -> dict:
@@ -42,26 +39,16 @@ def sound_input() -> dict:
         },
         "persona_explanation": {
             "status": "완료",
-            "overview": [
-                "이 카드는 매년 15000원의 회비를 냅니다. 돈을 짧게 빌리면 이자가 연 20%입니다."
-            ],
+            "advice": ADVICE,
+            "advice_codes": ["설명16", "설명11"],
             "problems": [],
-            "html": OVERVIEW_HTML,
+            "html": ADVICE_HTML,
         },
         "ad_disclosure_check": {
             "items": ["E02"],
             "original": [
                 {"code": "E02", "verdict": "적합", "quote": "연회비는 15000원", "reason": "기재됨"}
             ],
-            "overview": [
-                {
-                    "code": "E02",
-                    "verdict": "적합",
-                    "quote": "매년 15000원의 회비",
-                    "reason": "기재됨",
-                }
-            ],
-            "fidelity": [],
         },
         "loop_count": 0,
     }
@@ -128,37 +115,7 @@ def test_a_pass_that_contradicts_the_measurement_fails():
     assert any("모순" in reason for reason in result["reasons"])
 
 
-def test_a_fidelity_gap_is_the_overviews_problem_not_the_disclosure_checks():
-    state = sound_input()
-    state["ad_disclosure_check"]["fidelity"] = [
-        {
-            "code": "C01",
-            "kind": "누락",
-            "reason": "연회비가 개요에서 빠졌습니다",
-            "informational": False,
-        }
-    ]
-    result = run(state)
-    assert result["passed"] is False
-    assert "persona_explanation" in result["failed_modules"]
-    assert "ad_disclosure_check" not in result["failed_modules"]
-    request = result["feedback"][0]
-    assert request["module"] == "persona_explanation" and request["code"] == "C01"
-    assert "C01" in request["requested_change"]
-
-
-def test_an_informational_fidelity_row_is_reported_but_does_not_fail():
-    """판정 불가 비교는 고칠 내용을 말하지 않으므로 재생성하지 않고 정보로만 남깁니다."""
-    state = sound_input()
-    state["ad_disclosure_check"]["fidelity"] = [
-        {"code": "A04", "kind": "판정 불가", "reason": "r", "informational": True},
-    ]
-    result = run(state)
-    assert result["passed"] is True, result["reasons"]
-    assert sum(reason.startswith("[정보]") for reason in result["reasons"]) == 1
-
-
-def test_an_overview_held_back_by_its_checks_asks_for_a_new_draft():
+def test_an_advice_held_back_by_its_checks_asks_for_a_new_draft():
     state = sound_input()
     state["persona_explanation"].update(
         status="원문 대체", html="", problems=["원문에 없는 수치: 24"]
@@ -168,7 +125,7 @@ def test_an_overview_held_back_by_its_checks_asks_for_a_new_draft():
     assert requests and "24" in requests[0]["requested_change"]
 
 
-def test_an_invented_number_in_the_overview_fails():
+def test_an_invented_number_in_the_advice_fails():
     state = sound_input()
     state["persona_explanation"]["html"] = "<section><p>이자는 연 25%입니다.</p></section>"
     assert "persona_explanation" in run(state)["failed_modules"]

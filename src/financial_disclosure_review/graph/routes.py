@@ -22,7 +22,12 @@ def route_after_verify(state: State) -> str:
     return "retry_dispatch" if should_retry(state.get("verification") or {}) else "end_report"
 
 
-def route_after_retry(state: State) -> str:
-    """The node `retry_dispatch` picked; falls back to `end_report` instead of looping on empty."""
-    target = (state.get("verification") or {}).get("retry_target")
-    return target if target in NODE_ORDER else "end_report"
+def route_after_retry(state: State) -> list[str] | str:
+    """Every node `retry_dispatch` picked (they run in one step); `end_report` when there is none,
+    instead of looping on empty."""
+    verification = state.get("verification") or {}
+    targets = [n for n in verification.get("retry_targets") or [] if n in NODE_ORDER]
+    target = verification.get("retry_target")
+    if not targets and target in NODE_ORDER:
+        targets = [str(target)]
+    return targets or "end_report"

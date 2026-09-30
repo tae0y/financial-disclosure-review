@@ -15,9 +15,9 @@ STATUS_INSUFFICIENT = "조사 불충분"
 # product_page.status values written by the page-evidence agent.
 PAGE_COMPLETE = "완료"
 
-PUBLISH_BLOCKED = "쉬운말 개요 자동 게시 불가 — 원문만 게시"
-PUBLISH_ALLOWED = "담당자 확인 후 쉬운말 개요 게시 가능"
-EXPLANATION = "쉬운말 개요"
+PUBLISH_BLOCKED = "쉬운말 확인 권고 자동 게시 불가 — 원문만 게시"
+PUBLISH_ALLOWED = "담당자 확인 후 쉬운말 확인 권고 게시 가능"
+EXPLANATION = "쉬운말 확인 권고"
 
 SEVERITY_VIOLATION = "위반"
 SEVERITY_SHORTFALL = "권고 미충족"
@@ -44,15 +44,15 @@ def _clip(text: str, limit: int = 120) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def _withheld(overview: Mapping[str, Any]) -> list[str]:
-    """The code-check problems that kept the overview off the page; empty when it is shown."""
-    return list(overview.get("problems") or [])
+def _withheld(advice: Mapping[str, Any]) -> list[str]:
+    """The code-check problems that kept the advice off the page; empty when it is shown."""
+    return list(advice.get("problems") or [])
 
 
 def _findings(
     display: Mapping[str, Any],
     disclosure: Mapping[str, Any],
-    overview: Mapping[str, Any],
+    advice: Mapping[str, Any],
     bindings: Mapping[str, str] | None = None,
 ) -> list[dict]:
     """Every row a reviewer must check; a 부적합 row also carries its `severity` and `basis`."""
@@ -70,35 +70,22 @@ def _findings(
                     "quotes": row.get("quotes") or [],
                 }
             )
-    for side, label in (("original", "원문"), ("overview", EXPLANATION)):
-        for row in disclosure.get(side) or []:
-            if row.get("verdict") in ("부적합", "판정 불가"):
-                found.append(
-                    {
-                        "module": "ad_disclosure_check",
-                        "code": row.get("code", ""),
-                        "verdict": row.get("verdict"),
-                        "target": label,
-                        "reason": row.get("reason", ""),
-                        "quotes": [row.get("quote", "")] if row.get("quote") else [],
-                    }
-                )
+    for row in disclosure.get("original") or []:
+        if row.get("verdict") in ("부적합", "판정 불가"):
+            found.append(
+                {
+                    "module": "ad_disclosure_check",
+                    "code": row.get("code", ""),
+                    "verdict": row.get("verdict"),
+                    "target": "원문",
+                    "reason": row.get("reason", ""),
+                    "quotes": [row.get("quote", "")] if row.get("quote") else [],
+                }
+            )
     for row in found:
         if row["verdict"] == "부적합":
             row["severity"], row["basis"] = severity(bindings.get(row["code"]))
-    for row in disclosure.get("fidelity") or []:
-        found.append(
-            {
-                "module": "ad_disclosure_check",
-                "code": row.get("code", ""),
-                "verdict": f"의미 차이({row.get('kind', '')})"
-                + (" [정보]" if row.get("informational") else ""),
-                "target": EXPLANATION,
-                "reason": row.get("reason", ""),
-                "quotes": [row["quote"]] if row.get("quote") else [],
-            }
-        )
-    problems = _withheld(overview)
+    problems = _withheld(advice)
     if problems:
         found.append(
             {
@@ -273,12 +260,6 @@ def _judged_status(
         bases = sorted({row["basis"] for row in rows if row.get("basis")})
         basis = f"({', '.join(bases)})" if bases else ""
         actions.append(f"{target} {level}{basis} {len(codes)}건 확인·수정: {_codes(codes)}")
-    diffs = [f for f in findings if str(f["verdict"]).startswith("의미 차이")]
-    if diffs:
-        actions.append(
-            f"{EXPLANATION}이 원문과 어긋난 항목 {len(diffs)}건 확인: "
-            f"{_codes(sorted({f['code'] for f in diffs}))}"
-        )
     if any(f["verdict"] == "원문 대체" for f in findings):
         actions.append(f"{EXPLANATION}가 코드 검사를 통과하지 못해 싣지 않음: 사유 확인")
     if unjudged:
@@ -308,7 +289,7 @@ def build_report(
     page: Mapping[str, Any],
     classification: Mapping[str, Any],
     display: Mapping[str, Any],
-    overview: Mapping[str, Any],
+    advice: Mapping[str, Any],
     disclosure: Mapping[str, Any],
     verification: Mapping[str, Any],
     stop: Mapping[str, Any] | None = None,
@@ -322,7 +303,7 @@ def build_report(
 
     `labels` maps rubric codes to their question and legal basis for the markdown."""
     stop = stop or {}
-    findings = _findings(display, disclosure, overview, bindings)
+    findings = _findings(display, disclosure, advice, bindings)
     status, decision, actions = _status(classification, display, verification, findings, stop, page)
     deferred = disclosure.get("deferred") or []
     if deferred and status in (STATUS_PASSED, STATUS_REVIEW):
@@ -353,13 +334,9 @@ def build_report(
         "disclosure_violations_original": sum(
             1 for row in disclosure.get("original") or [] if row.get("verdict") == "부적합"
         ),
-        "disclosure_violations_overview": sum(
-            1 for row in disclosure.get("overview") or [] if row.get("verdict") == "부적합"
-        ),
         "deferred_explanation_items": len(deferred),
-        "fidelity_diffs": len(disclosure.get("fidelity") or []),
-        "overview_paragraphs": len(overview.get("overview") or []) if overview.get("html") else 0,
-        "overview_withheld": bool(_withheld(overview)),
+        "advice_items": len(advice.get("advice_codes") or []) if advice.get("html") else 0,
+        "advice_withheld": bool(_withheld(advice)),
         "verification_passed": verification.get("passed"),
         "verification_loops": verification.get("loop_count"),
         "findings": len(findings),
@@ -369,8 +346,8 @@ def build_report(
     cards = cards or {}
     summary["evidence_cards"] = len(cards.get("cards") or [])
     summary["interrupted_at"] = stop.get("interrupted_at") or ""
-    summary["agent_runs"] = agent_runs(page, overview.get("selection") or {})
-    limits = _limits(display, overview, disclosure)
+    summary["agent_runs"] = agent_runs(page, advice.get("selection") or {})
+    limits = _limits(display, advice, disclosure)
     limits += _card_limits(cards, disclosure)
     unreachable = _unreachable_limit(page)
     if unreachable:
@@ -387,7 +364,7 @@ def build_report(
             page,
             classification,
             display,
-            overview,
+            advice,
             disclosure,
             status,
             decision,
@@ -435,7 +412,7 @@ def _squash(text: str) -> str:
 
 
 def _limits(
-    display: Mapping[str, Any], overview: Mapping[str, Any], disclosure: Mapping[str, Any]
+    display: Mapping[str, Any], advice: Mapping[str, Any], disclosure: Mapping[str, Any]
 ) -> list[str]:
     judgments = display.get("judgments") or {}
     limits = [
@@ -452,15 +429,15 @@ def _limits(
         text = (judgments.get("assumptions") or {}).get(key)
         if text:
             limits.append("가정: " + _clip(str(text), 300))
-    if _withheld(overview):
+    if _withheld(advice):
         limits.append(f"{EXPLANATION}는 코드 검사를 통과하지 못해 싣지 않았습니다.")
-    profile = overview.get("profile") or {}
+    profile = advice.get("profile") or {}
     if profile:
         limits.append(
             f"{EXPLANATION}는 독자 프로필 {profile.get('id', '-')} v{profile.get('version', '-')}"
-            f"({profile.get('review_status', '-')}, {profile.get('status', '-')}) 기준으로 원문"
-            " 옆에 붙는 보조 요약이며, 원문을 대신하거나 독자의 자격·혜택·상환액을 판단하지"
-            " 않습니다."
+            f"({profile.get('review_status', '-')}, {profile.get('status', '-')}) 기준으로 계약 전"
+            " 확인할 사항을 권하는 보조 안내이며, 그 사항의 내용이나 독자의 자격·혜택·상환액을"
+            " 판단하지 않습니다."
         )
     unresolved = [
         row for row in disclosure.get("original") or [] if row.get("verdict") == "판정 불가"

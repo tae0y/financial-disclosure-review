@@ -45,7 +45,7 @@ class DisplayCheck(TypedDict, total=False):
 
 
 class PersonaExplanation(TypedDict, total=False):
-    """A reader-tailored plain overview shown beside the page; never a rewrite or a verdict."""
+    """Reader-tailored advice on what to check before signing, shown beside the page."""
 
     status: Any
     reason: Any
@@ -53,8 +53,8 @@ class PersonaExplanation(TypedDict, total=False):
     # How the reader was chosen (uuid / attributes / agent / default / fallback) and the
     # selection agent's trace; kept so a retry writes for the same reader.
     selection: Any
-    overview: Any  # [summary paragraph, advice paragraph]
-    advice_codes: Any  # the explanation-duty codes the advice paragraph recommends checking
+    advice: Any  # one paragraph
+    advice_codes: Any  # the explanation-duty codes the advice recommends checking
     problems: Any
     html: Any
     controls: Any
@@ -63,8 +63,6 @@ class PersonaExplanation(TypedDict, total=False):
 class AdDisclosureCheck(TypedDict, total=False):
     items: Any
     original: Any
-    overview: Any
-    fidelity: Any
     # Explanation-duty items for the product type, left to the product documents; not judged.
     deferred: Any
 
@@ -76,6 +74,7 @@ class Verification(TypedDict, total=False):
     feedback: Any
     loop_count: Any
     retry_target: Any
+    retry_targets: Any
     retry_modules: Any
     retry_history: Any
 

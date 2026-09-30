@@ -6,14 +6,6 @@ from ...knowledge.rubrics import load_rubric, rubric_question
 
 # The mandatory advertising disclosures of card_guardrail_rubric: 공통(A), 대출조건(B), 상품별(C).
 DISCLOSURE_GROUPS = ("A", "B", "C")
-# The disclosures a plain-language overview must carry: what the consumer pays, gets under which
-# conditions, and risks (이자율·수수료, 부가서비스 조건, 경고문구, 상환방법, 상품별 의무표시).
-# Page metadata — 설명서 권유(A01), 회사명(A02), 상품명(A03), 설명받을 권리(A06), 심의필
-# 번호·유효기간(A07·A08), 통계 출처(A09), 발급 기준(B01) — stays on the page the overview sits
-# beside and is not asked of the overview (영태, 2026-09-30).
-OVERVIEW_REQUIRED = frozenset(
-    {"A04", "A05", "A10", "A11", "A12", "A13", "B02", *(f"C{n:02d}" for n in range(1, 9))}
-)
 
 
 def load_disclosure_items(db_path: str | Path) -> list[dict]:

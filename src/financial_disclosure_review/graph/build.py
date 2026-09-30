@@ -12,7 +12,6 @@ from .nodes import (
     extract_evidence_cards,
     generate_persona_explanation,
     judge_ad_disclosure,
-    judge_disclosure_original,
     judge_display_method,
     preprocess_product_page,
     report_for,
@@ -35,7 +34,6 @@ def build_review_graph(checkpointer=None):
     builder.add_node("extract_evidence_cards", extract_evidence_cards)
     builder.add_node("judge_display_method", judge_display_method)
     builder.add_node("generate_persona_explanation", generate_persona_explanation)
-    builder.add_node("judge_disclosure_original", judge_disclosure_original)
     builder.add_node("judge_ad_disclosure", judge_ad_disclosure)
     builder.add_node("verify_answer", verify_answer)
     builder.add_node("retry_dispatch", retry_dispatch)
@@ -52,15 +50,13 @@ def build_review_graph(checkpointer=None):
         route_after_classify,
         {"extract_evidence_cards": "extract_evidence_cards", "end_report": "end_report"},
     )
-    # LangGraph runs a step's nodes together and waits for all of them, so the original side of
-    # the ad-disclosure check (page only) runs beside the persona overview. A node that two
-    # finished nodes point to runs once. A retry re-enters at the persona overview alone, which
-    # is why the original side has plain edges instead of a join.
+    # The advice and the disclosure check read only the page and the cards, so LangGraph runs
+    # them in one step; verification runs once both are done. A retry re-enters at the node(s)
+    # it names and goes straight on to verification.
     builder.add_edge("extract_evidence_cards", "judge_display_method")
     builder.add_edge("judge_display_method", "generate_persona_explanation")
-    builder.add_edge("judge_display_method", "judge_disclosure_original")
-    builder.add_edge("generate_persona_explanation", "judge_ad_disclosure")
-    builder.add_edge("judge_disclosure_original", "judge_ad_disclosure")
+    builder.add_edge("judge_display_method", "judge_ad_disclosure")
+    builder.add_edge("generate_persona_explanation", "verify_answer")
     builder.add_edge("judge_ad_disclosure", "verify_answer")
     builder.add_conditional_edges(
         "verify_answer",

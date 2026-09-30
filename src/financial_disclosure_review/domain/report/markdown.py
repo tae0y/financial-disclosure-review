@@ -1,9 +1,9 @@
-"""The reviewer-facing report: what to check, the overview, and what to confirm elsewhere.
+"""The reviewer-facing report: what to check, the reader advice, and what to confirm elsewhere.
 
 Kept short on purpose (compacted 2026-09-30). Passes are counts; only open items (부적합·판정
-불가) are listed, in one table, as their rubric question with a short legal basis.
-Explanation-duty items are one line of topics for the product document, unjudged. Cost, limits
-and agent records stay in the Report's other fields.
+불가) are listed, in one table grouped by area, as their rubric question with a short legal basis.
+Explanation-duty items are one line of topics for the product document, unjudged, with the ones
+the advice recommends starred. Cost, limits and agent records stay in the Report's other fields.
 """
 
 import re
@@ -70,7 +70,7 @@ def _passed(rows: list[Mapping[str, Any]]) -> str:
 
 
 def reader_line(profile: Mapping[str, Any]) -> str:
-    """Who the overview is for, as an age band and familiarity only — never the dataset
+    """Who the advice is for, as an age band and familiarity only — never the dataset
     persona's name or story, which is synthetic and not the requester's business."""
     attributes = profile.get("attributes") or {}
     parts = []
@@ -85,12 +85,14 @@ def reader_line(profile: Mapping[str, Any]) -> str:
 def _open_table(
     display: Mapping[str, Any], disclosure: Mapping[str, Any], labels: Mapping[str, Any]
 ) -> list[str]:
-    rows = [("표시방법", r) for r in display.get("items") or []]
-    rows += [("의무표시", r) for r in disclosure.get("original") or []]
-    open_rows = sorted(
-        ((area, r) for area, r in rows if r.get("verdict") != PASS), key=lambda x: _rank(x[1])
-    )
-    if not open_rows:
+    """Open items grouped by area (표시방법, then 의무표시), 부적합 before 판정 불가 in each."""
+    rows = []
+    for area, items in (
+        ("표시방법", display.get("items") or []),
+        ("의무표시", disclosure.get("original") or []),
+    ):
+        rows += [(area, r) for r in sorted(items, key=_rank) if r.get("verdict") != PASS]
+    if not rows:
         return ["확인할 항목이 없습니다.", ""]
     return _table(
         [
@@ -100,42 +102,25 @@ def _open_table(
                 _cell(r.get("verdict")),
                 _reason(r.get("reason")),
             ]
-            for area, r in open_rows
+            for area, r in rows
         ],
         ["구분", "질문", "근거", "판정", "사유"],
     )
 
 
-def _overview_lines(
-    overview: Mapping[str, Any], disclosure: Mapping[str, Any], labels: Mapping[str, Any]
-) -> list[str]:
-    """The overview as shown, or why none is shown, then what in it needs checking."""
+def _advice_lines(advice: Mapping[str, Any]) -> list[str]:
+    """The advice as shown, or why none is shown."""
     lines = []
-    reader = reader_line(overview.get("profile") or {})
+    reader = reader_line(advice.get("profile") or {})
     if reader:
         lines += [f"독자: {reader}", ""]
-    paragraphs = overview.get("overview") or []
-    if overview.get("html") and paragraphs:
-        labelled = zip(("**요약** ", "**확인 권고** "), paragraphs, strict=False)
-        lines += [line for label, p in labelled for line in (label + _cell(p), "")]
-    elif overview.get("problems"):
-        lines += [f"(싣지 않음: {_cell('; '.join(overview['problems']), 200)})", ""]
+    if advice.get("html") and advice.get("advice"):
+        lines += [_cell(advice["advice"]), ""]
+    elif advice.get("problems"):
+        lines += [f"(싣지 않음: {_cell('; '.join(advice['problems']), 200)})", ""]
     else:
-        reason = _cell(overview.get("reason"), 120)
-        lines += [f"(개요 없음: {reason})" if reason else "(개요 없음)", ""]
-    issues = [
-        f"- {_cell((labels.get(str(r.get('code', ''))) or {}).get('question') or r.get('code'))}"
-        f" — {r.get('verdict')}: {_reason(r.get('reason'))}"
-        for r in sorted(disclosure.get("overview") or [], key=_rank)
-        if r.get("verdict") != PASS
-    ]
-    issues += [
-        f"- {_cell(r.get('kind'))} ({_cell(r.get('code'))}): {_reason(r.get('reason'))}"
-        for r in disclosure.get("fidelity") or []
-        if not r.get("informational")
-    ]
-    if issues:
-        lines += ["개요 확인 사항:", "", *issues, ""]
+        reason = _cell(advice.get("reason"), 120)
+        lines += [f"(권고 없음: {reason})" if reason else "(권고 없음)", ""]
     return lines
 
 
@@ -143,7 +128,7 @@ def render_markdown(
     page: Mapping[str, Any],
     classification: Mapping[str, Any],
     display: Mapping[str, Any],
-    overview: Mapping[str, Any],
+    advice: Mapping[str, Any],
     disclosure: Mapping[str, Any],
     status: str,
     decision: str,
@@ -172,26 +157,29 @@ def render_markdown(
     ]
     display_rows = display.get("items") or []
     original = disclosure.get("original") or []
-    if not (display_rows or original or overview):
+    if not (display_rows or original or advice):
         # Out of scope, or stopped before any check: the header says why.
         return "\n".join([*lines, FOOTER, ""])
     lines += [
         "## 확인할 항목",
         "",
-        f"적합: 표시방법 {_passed(display_rows)} · 광고 의무표시 {_passed(original)}"
-        f" · 쉬운말 개요 {_passed(disclosure.get('overview') or [])}",
+        f"적합: 표시방법 {_passed(display_rows)} · 광고 의무표시 {_passed(original)}",
         "",
     ]
     lines += _open_table(display, disclosure, labels)
-    lines += ["## 쉬운말 개요", ""]
-    lines += _overview_lines(overview, disclosure, labels)
+    lines += ["## 쉬운말 확인 권고", ""]
+    lines += _advice_lines(advice)
     deferred = disclosure.get("deferred") or []
     if deferred:
+        advised = set(advice.get("advice_codes") or []) if advice.get("html") else set()
         topics = " · ".join(
-            _cell(_topic(str(r.get("question") or r.get("code")))) for r in deferred
+            ("★" if r.get("code") in advised else "")
+            + _cell(_topic(str(r.get("question") or r.get("code"))))
+            for r in deferred
         )
         lines += [
-            f"## 상품설명서에서 확인할 설명의무 ({len(deferred)}개)",
+            f"## 상품설명서에서 확인할 설명의무 ({len(deferred)}개"
+            + (", ★ 확인 권고)" if advised else ")"),
             "",
             "광고 페이지로는 판정하지 않았습니다(청약 단계의 의무). " + topics,
             "",

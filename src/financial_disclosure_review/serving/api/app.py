@@ -37,9 +37,10 @@ class MissingTokenError(RuntimeError):
 
 DESCRIPTION = """\
 Reviews a Korean card-company advertising page against the mandatory ad disclosures
-(광고 의무표시) and the display-method rules (표시방법), and writes a short plain-Korean overview
-to show beside it. Explanation-duty (설명의무) items are listed for the product documents, not
-judged, because they bind the contract-stage explanation rather than an advertisement.
+(광고 의무표시) and the display-method rules (표시방법). Explanation-duty (설명의무) items bind the
+contract-stage explanation, not an advertisement, so they are not judged: the review lists them,
+and writes one plain-Korean paragraph that advises the chosen reader which of them to check
+before signing.
 
 **A review takes minutes, so nothing here returns one.** The page is rendered in a real browser and
 judged over a series of model calls. Cloudflare closes a response that has produced nothing for

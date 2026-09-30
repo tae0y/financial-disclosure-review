@@ -41,7 +41,7 @@ def _context(
 
 
 def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[str, Any]:
-    """A compact view of final State; `full` adds rows and overview HTML, never page HTML."""
+    """A compact view of final State; `full` adds rows and advice HTML, never page HTML."""
     page = state.get("product_page") or {}
     display = state.get("display_check") or {}
     persona = state.get("persona_explanation") or {}
@@ -96,14 +96,13 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
             "status": persona.get("status"),
             "profile": (persona.get("profile") or {}).get("id"),
             "reader_chosen_by": (persona.get("selection") or {}).get("decided_by"),
-            "paragraphs": len(persona.get("overview") or []) if persona.get("html") else 0,
+            "advice_items": len(persona.get("advice_codes") or []) if persona.get("html") else 0,
             "problems": persona.get("problems") or [],
             "html_chars": len(persona.get("html") or ""),
         },
         "ad_disclosure_check": {
             "applied": len(applied),
             "item_count": len(disclosure.get("items") or []),
-            "fidelity_differences": len(disclosure.get("fidelity") or []),
             "deferred_explanation_items": len(disclosure.get("deferred") or []),
         },
         "verification": {
@@ -119,10 +118,10 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
         view["display_check"]["items"] = display.get("items") or []
         view["evidence_cards"]["rows"] = cards.get("cards") or []
         view["persona_explanation"]["html"] = persona.get("html")
-        view["persona_explanation"]["overview"] = persona.get("overview") or []
+        view["persona_explanation"]["advice"] = persona.get("advice") or ""
         view["persona_explanation"]["advice_codes"] = persona.get("advice_codes") or []
         view["persona_explanation"]["selection"] = persona.get("selection") or {}
-        for key in ("items", "original", "overview", "fidelity", "deferred"):
+        for key in ("items", "original", "deferred"):
             view["ad_disclosure_check"][key] = disclosure.get(key) or []
     return view
 

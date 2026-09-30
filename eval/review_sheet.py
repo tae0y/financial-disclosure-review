@@ -1,9 +1,9 @@
-"""Blank human review sheet for reader-tailored overviews (backlog F3). No model call.
+"""Blank human review sheet for reader-tailored advice (backlog F3). No model call.
 
 Human comprehension and harmful-analogy rate cannot be measured by code. This script pulls the
-plain-language overview of each finished live review and lays it out, paragraph by paragraph, for
-a person to score; every score column is left empty. The page's risk cards (rates, fees,
-warnings) are listed under each overview so the scorer can check whether a risk was softened.
+advice paragraph of each finished live review and lays it out for a person to score; every
+score column is left empty. The page's risk cards (rates, fees, warnings) are listed under each
+advice so the scorer can judge whether the items it recommends are the ones this reader needs.
 
     uv run python eval/review_sheet.py --checkpoints data/live3/checkpoints.sqlite \
         --thread f1-lotte-lasvegas --thread f1-shinhan-revolving --out sheet.md
@@ -28,9 +28,9 @@ def _cell(text: str) -> str:
 
 
 def paragraphs_for(state: dict[str, Any]) -> list[str]:
-    """The overview as shown; an overview held back by its code checks is not scored."""
+    """The advice as shown; an advice held back by its code checks is not scored."""
     persona = state.get("persona_explanation") or {}
-    return list(persona.get("overview") or []) if persona.get("html") else []
+    return [persona["advice"]] if persona.get("html") and persona.get("advice") else []
 
 
 def risk_facts(state: dict[str, Any]) -> list[str]:
@@ -42,12 +42,11 @@ def sheet(pages: list[tuple[str, dict[str, Any]]]) -> str:
     lines = [
         "## 채점 방법",
         "",
-        "- **이해도(1–5)**: 표시된 독자가 이 문단만 읽고 상품을 이해할 수 있는가. 1은 이해 불가,"
-        " 5는 바로 이해입니다.",
-        "- **사실 왜곡(Y/N)**: 문단이 원문의 수치·조건·예외·불이익을 바꾸거나"
-        " 약하게 만들었는가. 아래 위험 사실 목록과 대조합니다.",
-        "- **유해 비유(Y/N)**: 비유가 위험을 가볍게 보이게 하거나 사실과 다른 기대를 만드는가."
-        " 비유가 없으면 '-'로 둡니다.",
+        "- **적절성(1–5)**: 표시된 독자에게 꼭 필요한 확인 사항을 골랐는가. 1은 엉뚱한 항목,"
+        " 5는 이 독자가 놓치면 안 될 항목입니다.",
+        "- **이해도(1–5)**: 독자가 이 문단만 읽고 무엇을 물어봐야 하는지 알 수 있는가.",
+        "- **지어낸 답(Y/N)**: 확인할 사항의 답(기간·금액·조건)을 원문 없이 단정했는가."
+        " 아래 위험 사실 목록과 대조합니다.",
         "- 모든 점수 칸은 비어 있습니다. AI가 채운 값은 없습니다.",
         "",
     ]
@@ -64,7 +63,7 @@ def sheet(pages: list[tuple[str, dict[str, Any]]]) -> str:
             f"- 독자: {reader or profile.get('id', '')}"
             f" (금융 익숙도 {attributes.get('financial_familiarity', '-')})",
             "",
-            "| # | 개요 문단 | 이해도(1–5) | 사실 왜곡(Y/N) | 유해 비유(Y/N) | 메모 |",
+            "| # | 확인 권고 | 적절성(1–5) | 이해도(1–5) | 지어낸 답(Y/N) | 메모 |",
             "|---|---|---|---|---|---|",
         ]
         paragraphs = paragraphs_for(state)
@@ -72,7 +71,7 @@ def sheet(pages: list[tuple[str, dict[str, Any]]]) -> str:
             n += 1
             lines.append(f"| {n} | {_cell(paragraph)} |  |  |  |  |")
         if not paragraphs:
-            lines.append("| - | (게시된 개요 없음) | - | - | - | - |")
+            lines.append("| - | (게시된 확인 권고 없음) | - | - | - | - |")
         lines += ["", "위험 사실(원문 인용):", ""]
         lines += [f"- {_cell(quote)}" for quote in risk_facts(state)] or ["- (없음)"]
         lines.append("")

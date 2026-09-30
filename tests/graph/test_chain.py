@@ -1,4 +1,4 @@
-"""The downstream nodes wired together: evidence cards (given) -> generate_persona_explanation ->
+"""The downstream nodes wired together: evidence cards (given) -> generate_persona_explanation and
 judge_ad_disclosure -> verify_answer -> route_after_verify, with every model call faked."""
 
 from pathlib import Path
@@ -10,13 +10,9 @@ from langgraph.runtime import Runtime
 
 from financial_disclosure_review.core.context import Context
 from financial_disclosure_review.core.state import State
-from financial_disclosure_review.domain.ad_disclosure_check.schema import (
-    DisclosureJudgments,
-    FidelityDiffs,
-    OverviewJudgments,
-)
+from financial_disclosure_review.domain.ad_disclosure_check.schema import DisclosureJudgments
 from financial_disclosure_review.domain.evidence_cards import page_sources
-from financial_disclosure_review.domain.persona_explanation.schema import OverviewDraft
+from financial_disclosure_review.domain.persona_explanation.schema import AdviceDraft
 from financial_disclosure_review.domain.plain_language.contract import strip_ws
 from financial_disclosure_review.graph import nodes
 from financial_disclosure_review.graph.nodes import (
@@ -111,18 +107,16 @@ def upstream_display_check(status: str = "완료") -> dict:
 
 
 def persona_ask(invent: bool = False, seen: list | None = None):
-    """generate_persona_explanation에 주입할 가짜 ask. 원문 수치를 그대로 둔 요약 문단과, 설명의무
-    확인 목록의 앞 두 항목을 권하는 권고 문단을 돌려준다. invent=True면 없는 금액을 넣는다."""
+    """generate_persona_explanation에 주입할 가짜 ask. 설명의무 확인 목록의 앞 두 항목을 권하는
+    확인 권고를 돌려준다. invent=True면 원문에 없는 기간을 지어 넣는다."""
 
     def fake(model, schema, task, effort="low", **data):
-        assert schema is OverviewDraft, schema
+        assert schema is AdviceDraft, schema
         if seen is not None:
             seen.append(data.get("previous_feedback") or [])
-        fee = "초록카드는 연회비가 국내전용 1만원이고 매년 부과돼요."
-        late = " 돈을 늦게 내면 최고 연 20%의 연체이자율이 적용될 수 있어요."
+        advice = "계약 전에 청약 철회 방법과 연회비 반환 조건을 상품설명서에서 확인해 보세요."
         return {
-            "summary": (fee.replace("1만원", "12만원") if invent else fee) + late,
-            "advice": "계약 전에 청약 철회 방법과 연회비 반환 조건을 상품설명서에서 확인해 보세요.",
+            "advice": advice + (" 철회 기한은 14일입니다." if invent else ""),
             "advice_codes": [item["code"] for item in data["explanation_items"]][:2],
         }
 
@@ -132,7 +126,7 @@ def persona_ask(invent: bool = False, seen: list | None = None):
 def explanation_ask(condition_status: str = "불성립"):
     """judge_disclosure에 주입할 가짜 ask. applies_condition이 없는 항목은 입력 text에서 뽑은
     실제 인용으로 적합 처리하고, 있는 항목은 condition_status('불성립' 정상 제외 또는 '불명확'
-    판정 불가)로 남긴다. 원문/설명문 양쪽에 같은 규칙을 적용하므로 fidelity 후보는 생기지 않는다."""
+    판정 불가)로 남긴다."""
 
     def fake(model, schema, task, effort="low", **data):
         if schema is DisclosureJudgments:
@@ -154,26 +148,6 @@ def explanation_ask(condition_status: str = "불성립"):
                         "quote": quote,
                         "reason": "통합 확인용: 기준 충족",
                     }
-                    for item in data["items"]
-                ]
-            }
-        if schema is OverviewJudgments:
-            quote = strip_ws(data["text"])[:12]
-            return {
-                "items": [
-                    {
-                        "code": item["code"],
-                        "verdict": "적합",
-                        "quote": quote,
-                        "reason": "통합 확인용: 기준 충족",
-                    }
-                    for item in data["items"]
-                ]
-            }
-        if schema is FidelityDiffs:
-            return {
-                "items": [
-                    {"code": item["code"], "kind": "변화없음", "reason": "통합 확인용: 차이 없음"}
                     for item in data["items"]
                 ]
             }
@@ -208,17 +182,14 @@ def run_chain(
     monkeypatch.setattr(
         nodes,
         "judge_disclosure",
-        lambda page, overview, cls, ctx, previous_original, previous_items, *, feedback=(): (
-            judge_disclosure(
-                page,
-                overview,
-                cls,
-                ctx,
-                previous_original,
-                previous_items,
-                ask=explanation_fake,
-                feedback=feedback,
-            )
+        lambda page, cls, ctx, previous_original, previous_items, *, feedback=(): judge_disclosure(
+            page,
+            cls,
+            ctx,
+            previous_original,
+            previous_items,
+            ask=explanation_fake,
+            feedback=feedback,
         ),
     )
     state = state_with(
@@ -238,11 +209,11 @@ def test_the_happy_path_fills_every_key_and_passes(monkeypatch, runtime):
 
     persona = result["persona_explanation"]
     assert persona["status"] == "완료", persona["reason"]
-    assert len(persona["overview"]) == 2 and persona["problems"] == []
+    assert persona["advice"] and persona["problems"] == []
     assert len(persona["advice_codes"]) == 2
     assert persona["profile"]["status"] == "적용"
     disclosure = result["ad_disclosure_check"]
-    assert set(disclosure) == {"items", "original", "overview", "fidelity", "deferred"}
+    assert set(disclosure) == {"items", "original", "deferred"}
     assert not any(row["code"].startswith(("설명", "F")) for row in disclosure["items"])
     excluded = [row for row in disclosure["items"] if not row["applied"]]
     assert excluded, "적용되지 않는 항목이 하나도 없으면 이 시나리오가 의미가 없음"
@@ -251,18 +222,18 @@ def test_the_happy_path_fills_every_key_and_passes(monkeypatch, runtime):
     assert routed(result) == "end_report"
 
 
-def test_an_invented_number_holds_the_overview_back_and_asks_for_a_new_one(monkeypatch, runtime):
-    """지어낸 금액이 있는 개요는 싣지 않고, 검증이 그 문제를 고쳐 다시 쓰라고 요청합니다."""
+def test_an_invented_term_holds_the_advice_back_and_asks_for_a_new_one(monkeypatch, runtime):
+    """지어낸 기간이 있는 권고는 싣지 않고, 검증이 그 문제를 고쳐 다시 쓰라고 요청합니다."""
     result = run_chain(monkeypatch, runtime, persona_ask(invent=True))
 
     persona = result["persona_explanation"]
     assert persona["status"] == "원문 대체"
     assert persona["html"] == ""
-    assert any("12" in p for p in persona["problems"])
+    assert any("14" in p for p in persona["problems"])
     verification = result["verification"]
     assert "persona_explanation" in verification["failed_modules"]
     request = next(f for f in verification["feedback"] if f["module"] == "persona_explanation")
-    assert "12" in request["requested_change"]
+    assert "14" in request["requested_change"]
     assert routed(result) == "retry_dispatch"
 
 
@@ -298,10 +269,10 @@ def test_the_retry_round_hands_the_generator_what_verification_asked_for(monkeyp
     first = run_chain(monkeypatch, runtime, persona_ask())
     request = {
         "module": "persona_explanation",
-        "code": "C01",
+        "code": "",
         "source_id": "",
-        "reason": "연회비가 개요에서 빠짐",
-        "requested_change": "C01 항목의 원문 내용을 개요에 담도록 다시 쓰세요",
+        "reason": "원문에 없는 수치: 14",
+        "requested_change": "다음 문제를 고쳐 확인 권고를 다시 쓰세요: 원문에 없는 수치: 14",
         "target": "",
     }
     first["verification"] = {**first["verification"], "feedback": [request]}
@@ -311,7 +282,7 @@ def test_the_retry_round_hands_the_generator_what_verification_asked_for(monkeyp
     generate_persona_explanation(cast(State, first), runtime)
 
     assert seen[-1], "재시도 회차의 설명 생성이 검증 피드백을 받지 못함"
-    assert {entry["code"] for entry in seen[-1]} == {"C01"}
+    assert [entry["reason"] for entry in seen[-1]] == ["원문에 없는 수치: 14"]
 
 
 def test_a_persona_failure_is_routed_back_to_the_generator(monkeypatch, runtime):
@@ -328,36 +299,7 @@ def test_a_persona_failure_is_routed_back_to_the_generator(monkeypatch, runtime)
     state = state_with(verification=verification)
     assert routed(dict(state)) == "retry_dispatch"
     state["verification"] = {**verification, **plan_retry(verification)}  # type: ignore[typeddict-item]
-    assert route_after_retry(state) == "generate_persona_explanation"
-
-
-def test_a_disclosure_the_overview_dropped_fails_verification(monkeypatch, runtime):
-    """원문에 있던 의무표시 내용이 개요에서 빠지면 개요를 다시 쓰게 합니다."""
-    first = run_chain(monkeypatch, runtime, persona_ask())
-    judged_rows = {
-        "items": first["ad_disclosure_check"]["items"],
-        "original": first["ad_disclosure_check"]["original"],
-        "overview": first["ad_disclosure_check"]["overview"],
-        "fidelity": [
-            {
-                "code": "C02",
-                "kind": "누락",
-                "reason": "연체이자율이 빠짐",
-                "original_quote": LATE_LINE,
-                "quote": "",
-                "informational": False,
-            }
-        ],
-    }
-    monkeypatch.setattr(nodes, "judge_disclosure", lambda *a, **k: judged_rows)
-    state = dict(first)
-    state.update(judge_ad_disclosure(cast(State, state), runtime))
-    state.update(verify_answer(cast(State, state), runtime))
-    verification = state["verification"]
-    assert verification["passed"] is False
-    assert "persona_explanation" in verification["failed_modules"]
-    request = next(f for f in verification["feedback"] if f["module"] == "persona_explanation")
-    assert request["code"] == "C02"
+    assert route_after_retry(state) == ["generate_persona_explanation"]
 
 
 def test_the_reader_is_chosen_from_the_dataset_once_and_kept_on_retry(

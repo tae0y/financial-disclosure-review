@@ -26,7 +26,6 @@ def test_the_graph_compiles_with_every_node_and_edge():
         "extract_evidence_cards",
         "judge_display_method",
         "generate_persona_explanation",
-        "judge_disclosure_original",
         "judge_ad_disclosure",
         "verify_answer",
         "retry_dispatch",
@@ -54,15 +53,16 @@ def fake_cards(page, classification, ctx) -> dict:
 
 
 def fake_persona(sources, cards, classification, ctx, feedback=(), **kwargs) -> dict:
-    """A PersonaExplanation whose overview is one line lifted from the page."""
-    quote = visible_text(PAGE_HTML_FOR_PERSONA[0])[:24]
+    """A PersonaExplanation whose advice names two checklist items and no number."""
+    advice = "계약 전에 청약 철회 방법과 연회비 반환 조건을 확인해 보세요."
     return {
         "status": "완료",
         "reason": "",
         "profile": {"id": "p", "version": 1, "status": "적용"},
-        "overview": [quote],
+        "advice": advice,
+        "advice_codes": ["설명16", "설명11"],
         "problems": [],
-        "html": f'<section data-role="overview"><p>{quote}</p></section>',
+        "html": f'<section data-role="advice"><p>{advice}</p></section>',
         "controls": {},
     }
 
@@ -70,15 +70,15 @@ def fake_persona(sources, cards, classification, ctx, feedback=(), **kwargs) -> 
 PAGE_HTML_FOR_PERSONA: list[str] = [""]
 
 
-def fake_duty(
-    page, classification, overview, ctx, previous_original, previous_items, *, feedback=()
-) -> dict:
+def fake_duty(page, classification, ctx, previous_original, previous_items, *, feedback=()) -> dict:
     row = {
         "code": "A01",
         "verdict": "적합",
         "quote": visible_text(page["html"])[:24],
         "reason": "테스트",
     }
+    if previous_items is not None:
+        return {"items": list(previous_items), "original": list(previous_original or [])}
     return {
         "items": [
             {
@@ -89,14 +89,8 @@ def fake_duty(
             }
         ],
         "original": [dict(row)],
-        "overview": [dict(row)],
-        "fidelity": [],
+        "deferred": [],
     }
-
-
-def fake_original(page, classification, ctx) -> dict:
-    first = fake_duty(page, classification, {}, ctx, None, None)
-    return {"items": first["items"], "original": first["original"]}
 
 
 def fake_review(monkeypatch, revolving, calls: list[str], verdicts=None) -> None:
@@ -118,13 +112,9 @@ def fake_review(monkeypatch, revolving, calls: list[str], verdicts=None) -> None
         calls.append("persona")
         return fake_persona(*args, **kwargs)
 
-    def original(*args):
-        calls.append("original")
-        return fake_original(*args)
-
-    def duty(page, classification, overview, ctx, previous_original, previous_items, **kwargs):
-        calls.append("duty" if previous_items is None else "duty(original reused)")
-        return fake_duty(page, classification, overview, ctx, previous_original, previous_items)
+    def duty(page, classification, ctx, previous_original, previous_items, **kwargs):
+        calls.append("duty" if previous_items is None else "duty(retry)")
+        return fake_duty(page, classification, ctx, previous_original, previous_items)
 
     rounds = iter(verdicts or [])
 
@@ -133,14 +123,12 @@ def fake_review(monkeypatch, revolving, calls: list[str], verdicts=None) -> None
         return {**real, **next(rounds, {})}
 
     monkeypatch.setattr(nodes, "generate_persona", persona)
-    monkeypatch.setattr(nodes, "judge_original", original)
     monkeypatch.setattr(nodes, "judge_disclosure", duty)
     monkeypatch.setattr(nodes, "verify", verdict)
 
 
-def test_independent_judgments_share_a_step_with_the_explanation(monkeypatch, revolving, tmp_path):
-    """Reference cases run beside the display check, and the original side of the explanation
-    duty beside the persona explanation, which it does not read."""
+def test_the_advice_and_the_disclosure_check_share_a_step(monkeypatch, revolving, tmp_path):
+    """Neither reads the other, so they run in one step and verification waits for both."""
     from langgraph.checkpoint.sqlite import SqliteSaver
 
     calls: list[str] = []
@@ -152,18 +140,12 @@ def test_independent_judgments_share_a_step_with_the_explanation(monkeypatch, re
         steps = [set(state.next) for state in graph.get_state_history(config)]
 
     assert {"judge_display_method"} in steps
-    assert {"generate_persona_explanation", "judge_disclosure_original"} in steps
-    assert calls == ["persona", "original", "duty(original reused)"] or calls == [
-        "original",
-        "persona",
-        "duty(original reused)",
-    ]
+    assert {"generate_persona_explanation", "judge_ad_disclosure"} in steps
+    assert sorted(calls) == ["duty", "persona"]
     assert final["report"]["status"] == "검토 완료"
 
 
-def test_a_retry_regenerates_the_explanation_without_judging_the_original_again(
-    monkeypatch, revolving
-):
+def test_a_retry_regenerates_only_the_advice(monkeypatch, revolving):
     calls: list[str] = []
     failed = {
         "passed": False,
@@ -172,7 +154,7 @@ def test_a_retry_regenerates_the_explanation_without_judging_the_original_again(
             {
                 "module": "persona_explanation",
                 "code": "",
-                "source_id": "dom-0",
+                "source_id": "",
                 "reason": "테스트",
                 "requested_change": "다시 생성",
                 "target": "",
@@ -182,9 +164,31 @@ def test_a_retry_regenerates_the_explanation_without_judging_the_original_again(
     fake_review(monkeypatch, revolving, calls, verdicts=[failed])
     final = build_review_graph().invoke(initial(), context=Context(model="fake"))
 
-    assert calls.count("original") == 1
+    assert calls.count("duty") == 1 and "duty(retry)" not in calls
     assert calls.count("persona") == 2
-    assert calls[-1] == "duty(original reused)"
+    assert final["verification"]["loop_count"] == 2
+
+
+def test_a_retry_of_both_modules_runs_both_nodes(monkeypatch, revolving):
+    calls: list[str] = []
+    failed = {
+        "passed": False,
+        "failed_modules": ["ad_disclosure_check", "persona_explanation"],
+        "feedback": [
+            {
+                "module": m,
+                "code": "A01",
+                "reason": "x",
+                "requested_change": "y",
+                "target": "original",
+            }
+            for m in ("persona_explanation", "ad_disclosure_check")
+        ],
+    }
+    fake_review(monkeypatch, revolving, calls, verdicts=[failed])
+    final = build_review_graph().invoke(initial(), context=Context(model="fake"))
+
+    assert calls.count("persona") == 2 and calls.count("duty(retry)") == 1
     assert final["verification"]["loop_count"] == 2
 
 
@@ -206,7 +210,6 @@ def test_a_reviewable_page_runs_through_to_the_report(monkeypatch, revolving):
     PAGE_HTML_FOR_PERSONA[0] = page["html"]
     monkeypatch.setattr(nodes, "generate_persona", fake_persona)
     monkeypatch.setattr(nodes, "judge_disclosure", fake_duty)
-    monkeypatch.setattr(nodes, "judge_original", fake_original)
     final = build_review_graph().invoke(initial(), context=Context(model="fake"))
 
     assert final["classification"] == REVOLVING_CLASSIFICATION

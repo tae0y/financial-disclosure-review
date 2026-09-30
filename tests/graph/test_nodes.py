@@ -65,7 +65,7 @@ def test_generate_persona_explanation_without_sources_calls_no_model(monkeypatch
     assert update["persona_explanation"]["status"] == "판정 불가"
 
 
-def test_judge_ad_disclosure_needs_a_classification_an_html_and_an_explanation():
+def test_judge_ad_disclosure_needs_a_classification_and_an_html():
     update = judge_ad_disclosure(empty_state(), RUNTIME)
     assert update["ad_disclosure_check"]["items"][0]["reason"].startswith("classification")
     assert update["ad_disclosure_check"]["original"] == []
@@ -77,26 +77,19 @@ def test_judge_ad_disclosure_needs_a_classification_an_html_and_an_explanation()
     update = judge_ad_disclosure(state, RUNTIME)
     assert "product_page.html" in update["ad_disclosure_check"]["items"][0]["reason"]
 
-    state = state_with(
-        classification={"product_type": "리볼빙", "page_type": "업무광고"},
-        product_page={"html": "<p>x</p>"},
-    )
-    update = judge_ad_disclosure(state, RUNTIME)
-    assert "persona_explanation.html" in update["ad_disclosure_check"]["items"][0]["reason"]
-
 
 def test_judge_ad_disclosure_keeps_the_original_side_of_a_previous_round():
     previous = {
         "items": [
             {
-                "code": "설명01",
+                "code": "A01",
                 "rubric": "r",
                 "applied": True,
                 "condition_status": "해당없음",
                 "reason": "이전 회차",
             }
         ],
-        "original": [{"code": "설명01", "verdict": "적합", "quote": "인용", "reason": "이전 회차"}],
+        "original": [{"code": "A01", "verdict": "적합", "quote": "인용", "reason": "이전 회차"}],
     }
     state = state_with(
         classification={"product_type": "리볼빙", "page_type": "업무광고"},
@@ -105,7 +98,7 @@ def test_judge_ad_disclosure_keeps_the_original_side_of_a_previous_round():
     )
     update = judge_ad_disclosure(state, RUNTIME)
     assert update["ad_disclosure_check"]["original"] == previous["original"]
-    assert update["ad_disclosure_check"]["overview"] == []
+    assert update["ad_disclosure_check"]["items"] == previous["items"]
 
 
 def test_verify_answer_fails_every_module_that_has_no_answer_yet():

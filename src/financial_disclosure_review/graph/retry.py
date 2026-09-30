@@ -12,9 +12,15 @@ RETRYABLE: dict[str, str] = {
     "persona_explanation": "generate_persona_explanation",
     "ad_disclosure_check": "judge_ad_disclosure",
 }
+# How a module reads in the reviewer's report.
+MODULE_LABELS = {
+    "display_check": "표시방법",
+    "ad_disclosure_check": "광고 의무표시",
+    "persona_explanation": "쉬운말 확인 권고",
+}
 # Verification fields owned by `retry_dispatch`; `verify_answer` carries them across rounds.
-RETRY_KEYS = ("retry_target", "retry_modules", "retry_history")
-# Graph order, so a retry restarts at the earliest failed node and the rest follows by edges.
+RETRY_KEYS = ("retry_target", "retry_targets", "retry_modules", "retry_history")
+# Graph order. The two retryable nodes are independent, so a retry runs every failed one.
 NODE_ORDER = ["generate_persona_explanation", "judge_ad_disclosure"]
 
 
@@ -40,7 +46,8 @@ def plan_retry(verification: Mapping[str, Any]) -> dict:
     """The Verification fields that name the next round. Written only by `retry_dispatch`."""
     modules = [m for m in retryable_modules(verification) if m in RETRYABLE]
     nodes = {RETRYABLE[m] for m in modules}
-    target = next((node for node in NODE_ORDER if node in nodes), "")
+    targets = [node for node in NODE_ORDER if node in nodes]
+    target = targets[0] if targets else ""
     history = list(verification.get("retry_history") or [])
     history.append(
         {
@@ -51,7 +58,12 @@ def plan_retry(verification: Mapping[str, Any]) -> dict:
             "feedback_count": len(verification.get("feedback") or []),
         }
     )
-    return {"retry_target": target, "retry_modules": modules, "retry_history": history}
+    return {
+        "retry_target": target,
+        "retry_targets": targets,
+        "retry_modules": modules,
+        "retry_history": history,
+    }
 
 
 def escalation(verification: Mapping[str, Any]) -> dict:
@@ -59,8 +71,9 @@ def escalation(verification: Mapping[str, Any]) -> dict:
     if verification.get("passed"):
         return {"reason": "", "detail": ""}
     loops = int(verification.get("loop_count") or 0)
-    failed = list(verification.get("failed_modules") or [])
-    stuck = sorted(set(failed) - set(RETRYABLE))
+    modules = [str(m) for m in verification.get("failed_modules") or []]
+    failed = [MODULE_LABELS.get(m, m) for m in modules]
+    stuck = sorted(set(modules) - set(RETRYABLE))
     if loops >= MAX_LOOPS:
         return {
             "reason": "재시도 한도 초과",
@@ -70,7 +83,8 @@ def escalation(verification: Mapping[str, Any]) -> dict:
     if stuck:
         return {
             "reason": "자동 재시도 불가",
-            "detail": f"{', '.join(stuck)} 모듈의 실패는 재생성으로 고칠 수 없습니다"
+            "detail": f"{', '.join(MODULE_LABELS.get(m, m) for m in stuck)} 모듈의 실패는"
+            " 재생성으로 고칠 수 없습니다"
             "(측정 불가·판정 불가)."
             " 사람이 원문과 화면을 직접 확인해야 합니다.",
         }

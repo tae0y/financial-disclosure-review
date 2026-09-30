@@ -1,10 +1,10 @@
-"""Two real dataset readers, same page: do both overviews pass, and do they cite the same facts?
+"""Two real dataset readers, same page: do both advices pass, and do they recommend different items?
 
 For each of the two real lottecard pages, the round-1 evidence cards are summarised for two
 readers chosen from the pinned Nemotron-Personas-Korea dataset by explicit attributes (no model
-call to choose): a low-familiarity older reader and a finance-familiar reader. Both overviews must
-pass their code checks; wording and length may differ with the reader. The Jaccard of the numbers
-each overview cites shows how far the facts a reader is told depend on who the reader is (backlog
+call to choose): a low-familiarity older reader and a finance-familiar reader. Both advices must
+pass their code checks. The Jaccard of the explanation-duty codes each recommends shows how far
+what a reader is told to check depends on who the reader is — the point of tailoring (backlog
 C4). Until 2026-09-30 this compared fact-ledger verdicts of explanation units.
 
     uv run python eval/persona_pair_eval.py            # replay, $0
@@ -37,7 +37,6 @@ from financial_disclosure_review.domain.persona_explanation import (  # noqa: E4
     choose_profile,
     generate_persona_explanation,
 )
-from financial_disclosure_review.domain.plain_language.contract import number_set  # noqa: E402
 from financial_disclosure_review.evaluation.cassette import Cassette  # noqa: E402
 from financial_disclosure_review.evaluation.run_meta import run_meta  # noqa: E402
 
@@ -66,7 +65,7 @@ def main() -> None:
         page, classification = fixture["page"], fixture["classification"]
         base_ctx = Context(model=args.model)
         cards = extract_evidence_cards(page, classification, base_ctx, ask=cassette.ask)
-        rows, numbers = {}, {}
+        rows, advised = {}, {}
         for reader, attributes in READERS.items():
             ctx = Context(model=args.model, persona_attributes=attributes)
             chosen = choose_profile(
@@ -84,7 +83,7 @@ def main() -> None:
                 ask=cassette.ask,
                 profile=chosen["profile"],
             )
-            numbers[reader] = number_set(" ".join(persona.get("overview") or []))
+            advised[reader] = set(persona.get("advice_codes") or [])
             metrics = persona_metrics(persona)
             rows[reader] = {
                 "profile": chosen["profile"]["id"],
@@ -93,17 +92,16 @@ def main() -> None:
                     "financial_familiarity"
                 ),
                 "decided_by": chosen["selection"]["decided_by"],
-                **{k: metrics[k] for k in ("shown", "paragraphs", "chars", "problems")},
-                "numbers": sorted(numbers[reader]),
-                "sample": (persona.get("overview") or [""])[0][:160],
+                **{k: metrics[k] for k in ("shown", "advice_codes", "chars", "problems")},
+                "sample": (persona.get("advice") or "")[:160],
             }
-        a, b = (numbers[r] for r in READERS)
+        a, b = (advised[r] for r in READERS)
         result[name] = {
             "readers": rows,
             "both_shown": all(row["shown"] for row in rows.values()),
-            "number_jaccard": round(len(a & b) / len(a | b), 3) if a | b else 1.0,
-            "numbers_only_in": {
-                r: sorted(numbers[r] - numbers[o])
+            "advice_code_jaccard": round(len(a & b) / len(a | b), 3) if a | b else 1.0,
+            "codes_only_in": {
+                r: sorted(advised[r] - advised[o])
                 for r, o in (
                     (list(READERS)[0], list(READERS)[1]),
                     (list(READERS)[1], list(READERS)[0]),
@@ -113,7 +111,7 @@ def main() -> None:
 
     saved = cassette.save()
     out = {
-        "meta": run_meta("persona overview reader pair (cassette)"),
+        "meta": run_meta("persona advice reader pair (cassette)"),
         "mode": mode,
         "model": args.model,
         "pages": result,

@@ -17,7 +17,7 @@ def verify(
 ) -> dict:
     """Cross-checks the three modules against each other and the input text; needs no model call."""
     product_text = visible_text(page.get("html") or "")
-    overview_text = visible_text(persona_explanation.get("html") or "")
+    advice_text = visible_text(persona_explanation.get("html") or "")
 
     failed: set[str] = set()
     reasons: list[str] = [
@@ -107,8 +107,8 @@ def verify(
                     )
 
     # ---- persona_explanation ----
-    # The overview sits beside the page. One that failed its own code checks is not shown, and
-    # its problems are sent back as the request for the next draft.
+    # The advice sits beside the page. One that failed its own code checks is not shown, and its
+    # problems are sent back as the request for the next draft.
     number_pattern = re.compile(r"\d+(?:[.,]\d+)?%?")
     problems = persona_explanation.get("problems") or []
     if not persona_explanation:
@@ -119,8 +119,8 @@ def verify(
     elif problems:
         fail(
             "persona_explanation",
-            f"쉬운말 개요가 코드 검사를 통과하지 못했습니다: {'; '.join(problems)}",
-            requested_change=f"다음 문제를 고쳐 개요를 다시 쓰세요: {'; '.join(problems)}",
+            f"확인 권고가 코드 검사를 통과하지 못했습니다: {'; '.join(problems)}",
+            requested_change=f"다음 문제를 고쳐 확인 권고를 다시 쓰세요: {'; '.join(problems)}",
         )
     elif not persona_explanation.get("html"):
         fail(
@@ -129,13 +129,13 @@ def verify(
         )
     else:
         ungrounded = sorted(
-            {n for n in number_pattern.findall(overview_text) if n not in product_text}
+            {n for n in number_pattern.findall(advice_text) if n not in product_text}
         )
         if ungrounded:
             fail(
                 "persona_explanation",
-                f"쉬운말 개요: 수치 {ungrounded}이(가) 원문에서 근거를 찾을 수 없습니다",
-                requested_change=f"수치 {ungrounded}를 원문과 대조해 고치거나 빼세요",
+                f"확인 권고: 수치 {ungrounded}이(가) 원문에서 근거를 찾을 수 없습니다",
+                requested_change=f"수치 {ungrounded}를 빼고 무엇을 확인할지만 쓰세요",
             )
 
     # ---- ad_disclosure_check ----
@@ -146,60 +146,28 @@ def verify(
         )
     else:
         original = ad_disclosure_check.get("original") or []
-        overview = ad_disclosure_check.get("overview") or []
-        if not original and not overview:
-            fail("ad_disclosure_check", "ad_disclosure_check에 original/overview 판정이 없습니다.")
-        for label, entries, text, source_name in (
-            ("original", original, product_text, "product_page.html"),
-            ("overview", overview, overview_text, "persona_explanation.html"),
-        ):
-            for entry in entries:
-                code, verdict = entry.get("code", ""), entry.get("verdict")
-                quote, reason = entry.get("quote", ""), entry.get("reason", "")
-                if verdict is None:
-                    continue
-                if verdict == "판정 불가":
-                    fail(
-                        "ad_disclosure_check",
-                        f"ad_disclosure_check.{label} {code}: 판정 불가 ({reason})",
-                    )
-                    continue
-                # A missing disclosure cannot be quoted, so 부적합 may cite nothing (the prompt
-                # asks for an empty quote there). A quote that is given must still be real.
-                if verdict == "부적합" and not quote:
-                    continue
-                if not quote or locate_quote(text, quote) is None:
-                    fail(
-                        "ad_disclosure_check",
-                        f"ad_disclosure_check.{label} {code}: 인용문이 {source_name}에서"
-                        " 발견되지 않습니다",
-                        code=code,
-                        requested_change=f"{source_name}에 실제로 있는 문구로 다시 인용하세요",
-                        target=label,
-                    )
-        for entry in ad_disclosure_check.get("fidelity") or []:
-            code, kind, reason = (
-                entry.get("code", ""),
-                entry.get("kind", ""),
-                entry.get("reason", ""),
-            )
-            line = (
-                f"ad_disclosure_check.fidelity {code}: 쉬운말 개요가 원문과 어긋납니다"
-                f" ({kind}): {reason}"
-            )
-            # A 판정 불가 comparison names nothing to fix; a person reads it instead.
-            if entry.get("informational"):
-                reasons.append("[정보] " + line)
+        if not original:
+            fail("ad_disclosure_check", "ad_disclosure_check에 원문 판정이 없습니다.")
+        for entry in original:
+            code, verdict = entry.get("code", ""), entry.get("verdict")
+            quote, reason = entry.get("quote", ""), entry.get("reason", "")
+            if verdict is None:
                 continue
-            fail(
-                "persona_explanation",
-                line,
-                code=code,
-                requested_change=(
-                    f"{code} 항목에 대해 원문의 내용을 수치·조건 그대로 개요에 담도록"
-                    f" 다시 쓰세요({kind}: {reason})"
-                ),
-            )
+            if verdict == "판정 불가":
+                fail("ad_disclosure_check", f"ad_disclosure_check {code}: 판정 불가 ({reason})")
+                continue
+            # A missing disclosure cannot be quoted, so 부적합 may cite nothing (the prompt
+            # asks for an empty quote there). A quote that is given must still be real.
+            if verdict == "부적합" and not quote:
+                continue
+            if not quote or locate_quote(product_text, quote) is None:
+                fail(
+                    "ad_disclosure_check",
+                    f"ad_disclosure_check {code}: 인용문이 product_page.html에서 발견되지 않습니다",
+                    code=code,
+                    requested_change="product_page.html에 실제로 있는 문구로 다시 인용하세요",
+                    target="original",
+                )
 
     return {
         "passed": not failed,
