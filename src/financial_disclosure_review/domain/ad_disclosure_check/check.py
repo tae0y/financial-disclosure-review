@@ -8,7 +8,7 @@ from ...core.text import locate_quote, visible_text
 from ...knowledge.rubrics import item_scope
 from ...llm.client import ask, call_ask
 from .prompts import DISCLOSURE_ORIGINAL_TASK, DISCLOSURE_OVERVIEW_TASK, FIDELITY_TASK
-from .rubric import deferred_explanation_items, load_disclosure_items
+from .rubric import OVERVIEW_REQUIRED, deferred_explanation_items, load_disclosure_items
 from .schema import DisclosureJudgments, FidelityDiffs, OverviewJudgments
 
 
@@ -122,11 +122,16 @@ def fidelity_candidates(
     return candidates
 
 
-def judge_fidelity_rows(candidates: list[dict], model: str, ask) -> list[dict]:
+def judge_fidelity_rows(
+    candidates: list[dict], model: str, ask, criteria: Mapping[str, str] | None = None
+) -> list[dict]:
+    """Classify each candidate's difference against its own criterion, not quote against quote."""
+    criteria = criteria or {}
     wanted = [c["code"] for c in candidates]
     evidence = [
         {
             "code": c["code"],
+            "criterion": criteria.get(c["code"], ""),
             "original": {"verdict": c["original"]["verdict"], "quote": c["original"]["quote"]},
             "overview": {"verdict": c["overview"]["verdict"], "quote": c["overview"]["quote"]},
         }
@@ -157,6 +162,7 @@ def judge_fidelity_rows(candidates: list[dict], model: str, ask) -> list[dict]:
         ask, model, FidelityDiffs, FIDELITY_TASK, check, "low", salvage, items=evidence
     )
     quotes = {c["code"]: (c["original"]["quote"], c["overview"]["quote"]) for c in candidates}
+    carried = {c["code"] for c in candidates if c["overview"]["verdict"] == "적합"}
     return [
         {
             "code": f["code"],
@@ -165,7 +171,10 @@ def judge_fidelity_rows(candidates: list[dict], model: str, ask) -> list[dict]:
             "original_quote": quotes.get(f["code"], ("", ""))[0],
             "quote": quotes.get(f["code"], ("", ""))[1],
             # A 판정 불가 comparison names no concrete fix, so it goes to a person, not a retry.
-            "informational": f["kind"] == "판정 불가",
+            # A 누락 on an item the overview still carries is lost detail, which a summary may
+            # drop; only content missing outright makes the overview redraw.
+            "informational": f["kind"] == "판정 불가"
+            or (f["kind"] == "누락" and f["code"] in carried),
         }
         for f in answer["items"]
         if f["kind"] != "변화없음"
@@ -366,13 +375,21 @@ def judge_disclosure(
         items_rows, original_rows = first["items"], first["original"]
         deferred = first["deferred"]
 
+    # The overview is asked only for what it must carry (OVERVIEW_REQUIRED); page metadata stays
+    # on the page it sits beside.
     to_judge_codes = [
         i["code"]
         for i in items_rows
-        if i["applied"] and i["condition_status"] in ("해당없음", "성립")
+        if i["applied"]
+        and i["condition_status"] in ("해당없음", "성립")
+        and i["code"] in OVERVIEW_REQUIRED
     ]
     to_judge = [i for i in all_items if i["code"] in to_judge_codes]
-    unclear_rows = [r for r in original_rows if r["code"] not in to_judge_codes]
+    unclear_rows = [
+        r
+        for r in original_rows
+        if r["code"] not in to_judge_codes and r["code"] in OVERVIEW_REQUIRED
+    ]
 
     overview_rows = unclear_rows + (
         judge_overview_side(to_judge, overview_text, ctx.model, ask, overview_feedback)
@@ -381,7 +398,8 @@ def judge_disclosure(
     )
 
     candidates = fidelity_candidates(original_rows, overview_rows, to_judge_codes)
-    fidelity_rows = judge_fidelity_rows(candidates, ctx.model, ask) if candidates else []
+    criteria = {i["code"]: i["criterion"] for i in all_items}
+    fidelity_rows = judge_fidelity_rows(candidates, ctx.model, ask, criteria) if candidates else []
 
     result = {
         "items": items_rows,

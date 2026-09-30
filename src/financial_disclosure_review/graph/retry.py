@@ -59,17 +59,19 @@ def escalation(verification: Mapping[str, Any]) -> dict:
     if verification.get("passed"):
         return {"reason": "", "detail": ""}
     loops = int(verification.get("loop_count") or 0)
-    stuck = sorted(set(verification.get("failed_modules") or []) - set(RETRYABLE))
+    failed = list(verification.get("failed_modules") or [])
+    stuck = sorted(set(failed) - set(RETRYABLE))
     if loops >= MAX_LOOPS:
         return {
             "reason": "재시도 한도 초과",
-            "detail": f"검증 루프 {loops}회를 모두 사용했으나 {verification.get('failed_modules')}"
-            " 모듈이 계속 기준에 미달했습니다.",
+            "detail": f"검증 루프 {loops}회를 모두 사용했으나 {', '.join(failed)} 모듈이"
+            " 계속 기준에 미달했습니다.",
         }
     if stuck:
         return {
             "reason": "자동 재시도 불가",
-            "detail": f"{stuck} 모듈의 실패는 재생성으로 고칠 수 없습니다(측정 불가·판정 불가)."
+            "detail": f"{', '.join(stuck)} 모듈의 실패는 재생성으로 고칠 수 없습니다"
+            "(측정 불가·판정 불가)."
             " 사람이 원문과 화면을 직접 확인해야 합니다.",
         }
     return {

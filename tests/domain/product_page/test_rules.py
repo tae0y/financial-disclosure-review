@@ -2,8 +2,10 @@
 
 from pathlib import Path
 
+from financial_disclosure_review.domain.product_page.coverage import open_in_region_count
 from financial_disclosure_review.domain.product_page.rules import (
     check_rule,
+    coverage_regression,
     load_rule,
     page_family,
     product_from,
@@ -152,3 +154,25 @@ def test_a_saved_rule_replaces_the_file_whole(tmp_path, monkeypatch):
     assert replaced and replaced[0][1] == str(path)
     assert rules.load_rule(path) == {"include": ["#b"]}
     assert [p.name for p in path.parent.iterdir()] == ["site.json"]
+
+
+def test_a_replay_that_leaves_more_hidden_content_than_discovery_did_is_stale():
+    """2026-09-30 live run: a rule saved before the accordion fix had no expand step, replayed
+    with 68 open gaps, and every mandatory disclosure behind an accordion read as never visible."""
+    assert coverage_regression({"open_gaps": 2}, 2) == []
+    assert coverage_regression({"open_gaps": 2}, 3)
+    # A rule saved before the count existed is rediscovered once when anything is left hidden.
+    assert coverage_regression({}, 0) == []
+    assert "saved with 0" in coverage_regression({}, 68)[0]
+
+
+def test_only_open_actionable_gaps_inside_the_product_regions_count():
+    gaps = [
+        {"kind": "hidden_text", "status": "open", "in_region": True},
+        {"kind": "unexpanded_control", "status": "unresolved", "in_region": True},
+        {"kind": "hidden_text", "status": "closed", "in_region": True},
+        {"kind": "hidden_text", "status": "open", "in_region": False},
+        {"kind": "benefit_without_condition", "status": "open", "in_region": True},
+        {"kind": "hidden_text", "status": "open"},
+    ]
+    assert open_in_region_count(gaps) == 2

@@ -14,6 +14,7 @@ from . import coverage
 from .discover import TurnsExhaustedError, discover
 from .rules import (
     check_rule,
+    coverage_regression,
     execute_rule,
     finalize_rule,
     load_rule,
@@ -112,9 +113,12 @@ def visit(sess: PageSession, url: str, ctx: Context, rules_dir: Path, chat_facto
             before = coverage.summarize(obs_before, sess)
             content = execute_rule(sess, rule)
             errors = validate_output(rule, content)
+            obs_after = coverage.observe(sess) if not errors else {}
             if not errors:
-                obs_after = coverage.observe(sess)
                 coverage.derive_gaps(sess, obs_after)
+                coverage.mark_in_region(sess, rule["include"], rule["exclude"])
+                errors = coverage_regression(rule, coverage.open_in_region_count(sess.gaps))
+            if not errors:
                 after = coverage.summarize(obs_after, sess)
                 sess.log(
                     "reuse", key=key, model_calls=0, validation="passed", states=content["states"]
@@ -160,6 +164,8 @@ def visit(sess: PageSession, url: str, ctx: Context, rules_dir: Path, chat_facto
         sess.viewport_key(),
     )
     rule["saved_at"] = datetime.now().isoformat(timespec="seconds")
+    # What discovery itself could not reveal; a later replay that leaves more is stale.
+    rule["open_gaps"] = coverage.open_in_region_count(sess.gaps)
     # The collected content is already valid; a rule that cannot be written (disk, path length)
     # only costs the next visit a rediscovery, so it must not fail this review.
     try:

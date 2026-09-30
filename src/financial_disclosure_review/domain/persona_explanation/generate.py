@@ -9,7 +9,7 @@ from typing import Any
 from ...core.context import Context
 from ...knowledge.rubrics import item_scope
 from ...llm.client import ask, call_ask
-from ..ad_disclosure_check.rubric import load_disclosure_items
+from ..ad_disclosure_check.rubric import OVERVIEW_REQUIRED, load_disclosure_items
 from ..plain_language.contract import (
     FORBIDDEN_ABSOLUTE_PHRASES,
     counter_ones,
@@ -126,7 +126,7 @@ def generate_persona_explanation(
     disclosure_items = [
         {"code": i["code"], "criterion": i["criterion"]}
         for i in load_disclosure_items(ctx.db_path)
-        if not item_scope(i, classification)
+        if i["code"] in OVERVIEW_REQUIRED and not item_scope(i, classification)
     ]
     own_feedback = [
         {

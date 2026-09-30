@@ -141,6 +141,21 @@ def validate_output(rule: dict, content: dict) -> list[str]:
     return errors
 
 
+def coverage_regression(rule: dict, open_now: int) -> list[str]:
+    """A replay that leaves more hidden product content than the rule's own discovery did has
+    stopped revealing it (a stale rule, or one saved before a reveal fix): use it no longer.
+
+    A rule saved without `open_gaps` (before 2026-09-30) counts as having left none, so it is
+    rediscovered once and saved with the count."""
+    saved = int(rule.get("open_gaps") or 0)
+    if open_now > saved:
+        return [
+            f"replay left {open_now} hidden or unexpanded gap(s) in the product regions;"
+            f" the rule was saved with {saved}"
+        ]
+    return []
+
+
 def product_from(rule: dict, content: dict) -> dict:
     return {
         "product_name": rule["product_name"],

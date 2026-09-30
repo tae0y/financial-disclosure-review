@@ -378,6 +378,23 @@ def unreachable_hidden(sess) -> list[dict]:
     return [g for g in sess.gaps if g["kind"] == "hidden_text" and g["status"] == "unresolved"]
 
 
+def mark_in_region(sess, include: list[str], exclude: list[str]) -> None:
+    """Mark every actionable gap with whether it lies in the given product regions."""
+    html = sess.page.content()
+    for gap in sess.gaps:
+        if gap["kind"] in ACTIONABLE_KINDS:
+            gap["in_region"] = in_region(html, gap["target"], include, exclude, gap.get("text", ""))
+
+
+def open_in_region_count(gaps: list[dict]) -> int:
+    """Actionable gaps (hidden text, unexpanded controls) still open inside the product regions."""
+    return sum(
+        1
+        for gap in gaps
+        if gap["kind"] in ACTIONABLE_KINDS and gap["status"] != "closed" and gap.get("in_region")
+    )
+
+
 def finalize_coverage(sess, include: list[str], exclude: list[str]) -> dict:
     """Gaps evaluated against the SUBMITTED regions: the `product_page.status` decision.
 
@@ -385,12 +402,9 @@ def finalize_coverage(sess, include: list[str], exclude: list[str]) -> dict:
     stays hidden after every reachable control was tried (or when there is none) is excluded:
     its gap becomes `unresolved` and the report lists it as a limitation (user decision,
     2026-09-29)."""
-    html = sess.page.content()
     # Every actionable gap is marked with whether it lies in the submitted regions, so the
     # evaluation can measure closure over the content that was judged, not page chrome.
-    for gap in sess.gaps:
-        if gap["kind"] in ACTIONABLE_KINDS:
-            gap["in_region"] = in_region(html, gap["target"], include, exclude, gap.get("text", ""))
+    mark_in_region(sess, include, exclude)
     in_scope = [
         gap
         for gap in sess.gaps

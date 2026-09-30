@@ -80,15 +80,12 @@ def test_a_clean_run_is_reported_as_done_and_lists_no_finding():
 def test_the_markdown_carries_the_frontmatter_and_every_section():
     markdown = report()["markdown"]
     assert markdown.startswith("---\nai-generated: true\nhuman-review: false\n---")
-    headings = [
-        "## 1. 표시방법",
-        "## 2. 광고 의무표시 (원문)",
-        "## 3. 쉬운말 개요",
-        "## 4. 쉬운말 개요의 광고 의무표시",
-    ]
+    headings = ["## 확인할 항목", "## 쉬운말 개요"]
     positions = [markdown.index(heading) for heading in headings]
     assert positions == sorted(positions)
     assert markdown.index(PAGE["url"]) < positions[0], "원문 정보가 먼저"
+    assert "적합: 표시방법 1/1 · 광고 의무표시 1/1 · 쉬운말 개요 1/1" in markdown
+    assert "확인할 항목이 없습니다." in markdown
     assert "1년에 1만원을 냅니다." in markdown, "쉬운말 결과가 보고서에 실려야 함"
 
 
@@ -277,8 +274,8 @@ def test_explanation_duty_items_are_listed_for_the_product_documents_not_judged(
     assert not any(f["code"].startswith("설명") for f in result["findings"])
     assert any("상품설명서에서 확인: 설명11, 설명16" in a for a in result["actions"])
     assert result["summary"]["deferred_explanation_items"] == 2
-    assert "## 5. 상품설명서에서 확인할 설명의무 항목" in result["markdown"]
-    assert "- 청약 철회의 기한·행사방법·효과가 설명되어 있는가?" in result["markdown"]
+    assert "## 상품설명서에서 확인할 설명의무 (2개)" in result["markdown"]
+    assert "연회비 반환 · 청약 철회의 기한·행사방법·효과" in result["markdown"]
 
 
 def test_a_guideline_never_makes_a_violation():
@@ -511,14 +508,18 @@ def test_an_overview_held_back_by_its_checks_is_a_finding_and_a_limit():
     assert any("싣지 않았습니다" in limit for limit in result["limits"])
 
 
-def test_the_report_names_the_reader():
+def test_the_report_names_the_reader_by_age_band_and_familiarity_only():
+    """데이터셋 페르소나의 이름·인물 묘사는 가상 인물이라 요청자에게 보여 주지 않는다."""
     plain = {
         **OVERVIEW_OK,
         "profile": {
             "id": "nemotron:abc",
             "version": "t1@ada0f5b",
             "status": "적용",
-            "attributes": {"reader": "74세 남성, 초등학교, 하역 종사원"},
+            "attributes": {
+                "reader": "74세 남자 · 학력 고등학교 · 직업 무직\n임경호 씨는 바둑을 즐긴다.",
+                "financial_familiarity": "낮음",
+            },
         },
         "selection": {
             "decided_by": "agent",
@@ -529,7 +530,8 @@ def test_the_report_names_the_reader():
         },
     }
     markdown = report(overview=plain)["markdown"]
-    assert "독자: 74세 남성" in markdown
+    assert "독자: 70대 · 금융 익숙도 낮음" in markdown
+    assert "임경호" not in markdown and "고등학교" not in markdown
 
 
 # Audit 2026-09-29 R2: which agent loops actually ran in this request, and how far.
@@ -587,7 +589,7 @@ def test_loops_that_did_not_run_say_so():
 
 DRAFT = {
     **PERSONA,
-    "profile": {"attributes": {"reader": "93세 어르신"}},
+    "profile": {"attributes": {"reader": "93세 여자 · 학력 초등학교"}},
     "overview": ["연회비는 1년에 '1만원'이에요.", "늦게 내면 이자가 더 붙어요."],
     "html": "<section><p>연회비는 1년에 &#x27;1만원&#x27;이에요.</p><p>늦게 내면</p></section>",
 }
@@ -604,17 +606,29 @@ def _duty_row(code: str, verdict: str, reason: str) -> dict:
 
 def test_the_overview_section_shows_the_reader_and_each_paragraph():
     markdown = report(overview=DRAFT)["markdown"]
-    section = markdown[markdown.index("## 3.") : markdown.index("## 4.")]
-    assert "독자: 93세 어르신" in section
+    section = markdown[markdown.index("## 쉬운말 개요") :]
+    assert "독자: 90대" in section
     assert "연회비는 1년에 '1만원'이에요." in section
     assert "늦게 내면 이자가 더 붙어요." in section
 
 
-def test_display_rows_read_as_the_rubric_question_with_its_basis():
-    markdown = report(labels=LABELS)["markdown"]
-    assert "| 의무표시사항은 9포인트 이상인가? | 여신협회 광고규정 제5조 | 적합 |" in markdown
-    assert "| E02 |" not in markdown
-    assert "| E02 | - | 적합 |" in report()["markdown"], "라벨이 없으면 코드가 대신합니다"
+def test_open_rows_read_as_the_rubric_question_with_a_short_basis():
+    display = {**DISPLAY_OK, "items": [{**DISPLAY_OK["items"][0], "verdict": "부적합"}]}
+    labels = {
+        **LABELS,
+        "E02": {
+            "question": "의무표시사항은 9포인트 이상인가?",
+            "basis": "여신협회 광고규정 제5조; 금소법 제22조; 세부지침 제3조",
+        },
+    }
+    markdown = report(display=display, labels=labels)["markdown"]
+    assert (
+        "| 표시방법 | 의무표시사항은 9포인트 이상인가? | 여신협회 광고규정 제5조 외 2 | 부적합 |"
+        in markdown
+    )
+    assert "| 표시방법 | E02 | - | 부적합 |" in report(display=display)["markdown"], (
+        "라벨이 없으면 코드가 대신합니다"
+    )
 
 
 def test_disclosures_list_only_open_items_with_question_and_basis():
@@ -630,13 +644,16 @@ def test_disclosures_list_only_open_items_with_question_and_basis():
         ],
     }
     markdown = report(disclosure=disclosure, labels=LABELS)["markdown"]
-    original = markdown[markdown.index("## 2.") : markdown.index("## 3.")]
-    overview = markdown[markdown.index("## 4.") :]
-    assert "적합 1건, 확인 필요 1건" in original
-    row = "| 연체이자율이 표시되어 있는가? | 금소법 제22조 외 1 | 부적합 | 연체이자율 없음 |"
-    assert row in original
-    assert "연회비가 표시되어 있는가?" not in original, "적합 항목은 건수로만"
-    assert "| 판정 불가 | 근거 부족 |" in overview
+    checks = markdown[markdown.index("## 확인할 항목") : markdown.index("## 쉬운말 개요")]
+    overview = markdown[markdown.index("## 쉬운말 개요") :]
+    assert "광고 의무표시 1/2" in checks
+    row = (
+        "| 의무표시 | 연체이자율이 표시되어 있는가? | 금소법 제22조 외 1 | 부적합"
+        " | 연체이자율 없음 |"
+    )
+    assert row in checks
+    assert "연회비가 표시되어 있는가?" not in checks, "적합 항목은 건수로만"
+    assert "- 연체이자율이 표시되어 있는가? — 판정 불가: 근거 부족" in overview
 
 
 def test_a_meaning_change_is_listed_but_an_informational_one_is_not():

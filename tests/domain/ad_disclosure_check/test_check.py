@@ -12,6 +12,7 @@ from financial_disclosure_review.domain.ad_disclosure_check.check import (
     judge_original,
 )
 from financial_disclosure_review.domain.ad_disclosure_check.rubric import (
+    OVERVIEW_REQUIRED,
     load_disclosure_items,
 )
 from financial_disclosure_review.domain.ad_disclosure_check.schema import (
@@ -210,6 +211,8 @@ def test_explanation_duty_items_are_listed_for_the_product_documents_not_judged(
     # 청약철회는 신용카드에도 걸리는 의무라 목록에 남는다.
     assert "설명16" in deferred
     assert not any(code.startswith("F") for code in deferred)
+    # 신청·발급 화면에서만 성립하는 항목은 상품설명서 확인 목록에 넣지 않는다.
+    assert not {"설명19", "설명25", "설명26", "설명27", "설명28"} & set(deferred)
 
 
 def test_an_unclear_condition_stays_unjudged_and_is_reused_on_the_overview_side(rows):
@@ -373,3 +376,39 @@ def test_an_empty_original_side_from_judge_original_is_not_judged_again(ctx, fir
     ask = FakeDisclosureAsk()
     judge_disclosure(PAGE, OVERVIEW_1, CLASSIFICATION, ctx, [], items, ask=ask)
     assert "DisclosureJudgments" not in ask.calls
+
+
+def test_the_overview_is_asked_only_for_what_it_must_carry(first_round):
+    """페이지 정보(심의필 번호, 회사명 등)는 옆의 원문에 남으므로 개요에 요구하지 않는다."""
+    sent = [data for name, data in first_round["ask"].sent if name == "OverviewJudgments"]
+    codes = {item["code"] for item in sent[0]["items"]}
+    assert codes <= OVERVIEW_REQUIRED
+    assert not codes & {"A01", "A02", "A03", "A06", "A07", "A08", "B01"}
+    overview_codes = {row["code"] for row in first_round["result"]["overview"]}
+    assert "A07" not in overview_codes and "A04" in overview_codes
+
+
+def test_the_difference_is_judged_against_the_criterion(first_round):
+    sent = [data for name, data in first_round["ask"].sent if name == "FidelityDiffs"]
+    by_code = {item["code"]: item for item in sent[0]["items"]}
+    assert "연회비" in by_code["C01"]["criterion"]
+
+
+def test_lost_detail_on_an_item_the_overview_still_carries_is_informational(ctx, first_round):
+    """개요가 연회비를 담았지만 세부(기본·제휴 구분)가 줄었다는 누락은 재작성 사유가 아니다."""
+    previous = first_round["result"]
+    ask = FakeDisclosureAsk(
+        overview={
+            "C01": {
+                "verdict": "적합",
+                "quote": "연회비는 국내전용 1만원, 해외겸용 1만2천원이에요.",
+                "reason": "연회비가 있음",
+            }
+        },
+        fidelity={"C01": {"kind": "누락", "reason": "구성 내역이 줄었음"}},
+    )
+    result = judge_disclosure(
+        PAGE, OVERVIEW_2, CLASSIFICATION, ctx, previous["original"], previous["items"], ask=ask
+    )
+    row = next(r for r in result["fidelity"] if r["code"] == "C01")
+    assert row["informational"] is True

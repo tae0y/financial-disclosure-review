@@ -6,6 +6,14 @@ from ...knowledge.rubrics import load_rubric, rubric_question
 
 # The mandatory advertising disclosures of card_guardrail_rubric: 공통(A), 대출조건(B), 상품별(C).
 DISCLOSURE_GROUPS = ("A", "B", "C")
+# The disclosures a plain-language overview must carry: what the consumer pays, gets under which
+# conditions, and risks (이자율·수수료, 부가서비스 조건, 경고문구, 상환방법, 상품별 의무표시).
+# Page metadata — 설명서 권유(A01), 회사명(A02), 상품명(A03), 설명받을 권리(A06), 심의필
+# 번호·유효기간(A07·A08), 통계 출처(A09), 발급 기준(B01) — stays on the page the overview sits
+# beside and is not asked of the overview (영태, 2026-09-30).
+OVERVIEW_REQUIRED = frozenset(
+    {"A04", "A05", "A10", "A11", "A12", "A13", "B02", *(f"C{n:02d}" for n in range(1, 9))}
+)
 
 
 def load_disclosure_items(db_path: str | Path) -> list[dict]:
@@ -16,11 +24,17 @@ def load_disclosure_items(db_path: str | Path) -> list[dict]:
     return items
 
 
+# An applies_condition naming one of these screens holds only on the 신청·가입·발급 flow, which
+# neither an ad nor its product document is; such items are left off the checklist.
+APPLICATION_SCREEN_MARKERS = ("신청 화면", "가입 화면", "발급 화면")
+
+
 def deferred_explanation_items(db_path: str | Path, product_type: str | None) -> list[dict]:
     """설명의무 항목 중 이 상품유형에 걸리는 것. 판정하지 않는다.
 
     설명의무는 청약 단계의 상품설명서·설명화면에 걸리는 의무라서 광고 페이지로는 판정할 수
-    없다. 담당자가 상품설명서에서 확인할 목록으로만 돌려준다."""
+    없다. 담당자가 상품설명서에서 확인할 목록으로만 돌려준다. 신청·가입·발급 화면에서만 성립하는
+    항목(설명19·25–28 등)은 뺀다."""
     return [
         {
             "code": item["code"],
@@ -29,4 +43,5 @@ def deferred_explanation_items(db_path: str | Path, product_type: str | None) ->
         }
         for item in load_rubric(db_path, "plain_service_rubric", groups=("설명의무",))
         if product_type in item["applies_to"]
+        and not any(m in (item.get("applies_condition") or "") for m in APPLICATION_SCREEN_MARKERS)
     ]
