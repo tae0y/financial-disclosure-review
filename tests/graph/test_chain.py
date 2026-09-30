@@ -111,19 +111,19 @@ def upstream_display_check(status: str = "완료") -> dict:
 
 
 def persona_ask(invent: bool = False, seen: list | None = None):
-    """generate_persona_explanation에 주입할 가짜 ask. 원문 수치를 그대로 둔 두 문단 개요를
-    돌려준다. invent=True면 연회비 문장에 원문에 없는 금액을 넣는다."""
+    """generate_persona_explanation에 주입할 가짜 ask. 원문 수치를 그대로 둔 요약 문단과, 설명의무
+    확인 목록의 앞 두 항목을 권하는 권고 문단을 돌려준다. invent=True면 없는 금액을 넣는다."""
 
     def fake(model, schema, task, effort="low", **data):
         assert schema is OverviewDraft, schema
         if seen is not None:
             seen.append(data.get("previous_feedback") or [])
         fee = "초록카드는 연회비가 국내전용 1만원이고 매년 부과돼요."
+        late = " 돈을 늦게 내면 최고 연 20%의 연체이자율이 적용될 수 있어요."
         return {
-            "paragraphs": [
-                fee.replace("1만원", "12만원") if invent else fee,
-                "돈을 늦게 내면 최고 연 20%의 연체이자율이 적용될 수 있어요.",
-            ]
+            "summary": (fee.replace("1만원", "12만원") if invent else fee) + late,
+            "advice": "계약 전에 청약 철회 방법과 연회비 반환 조건을 상품설명서에서 확인해 보세요.",
+            "advice_codes": [item["code"] for item in data["explanation_items"]][:2],
         }
 
     return fake
@@ -239,6 +239,7 @@ def test_the_happy_path_fills_every_key_and_passes(monkeypatch, runtime):
     persona = result["persona_explanation"]
     assert persona["status"] == "완료", persona["reason"]
     assert len(persona["overview"]) == 2 and persona["problems"] == []
+    assert len(persona["advice_codes"]) == 2
     assert persona["profile"]["status"] == "적용"
     disclosure = result["ad_disclosure_check"]
     assert set(disclosure) == {"items", "original", "overview", "fidelity", "deferred"}

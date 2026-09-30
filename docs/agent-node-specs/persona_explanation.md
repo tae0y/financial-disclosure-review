@@ -7,8 +7,11 @@ created: 2026-09-29
 # persona_explanation
 
 `generate_persona_explanation` writes a plain-language overview (쉬운말 개요) of the page's
-evidence cards for one reviewed reader profile: one or two paragraphs shown beside the page, never
-in place of it. It is not a legal rewrite and issues no compliance verdict. Code checks the draft;
+evidence cards for one reviewed reader profile: two paragraphs shown beside the page, never in
+place of it. The first (`summary`) is a supplementary summary of the page. The second (`advice`)
+recommends, for this reader, which explanation-duty items the ad page does not cover to check in
+the product document or with a consultant, and why they matter to this reader (영태,
+2026-09-30). It is not a legal rewrite and issues no compliance verdict. Code checks the draft;
 `judge_ad_disclosure` then judges the overview by the same mandatory ad disclosures as the page and
 records the differences ([ADR-006](../architecture-decisions/adr-006-ad-disclosure-instead-of-explanation-duty.md)).
 Until 2026-09-30 this node rewrote the page line by line in traced units checked against a fact
@@ -24,14 +27,17 @@ ledger; that structure is removed.
 | `profile` | the result of `choose_profile` (see below), used as is; a retry keeps the same reader |
 | profile fallback | without `profile`: `profile_id`, else `Context.persona_profile`, else the yaml's `default` |
 
-The result is `{status, reason, profile, overview, problems, html, controls}`.
+The result is `{status, reason, profile, overview, advice_codes, problems, html, controls}`.
 
 - `status`: `완료` (the overview passed its checks), `원문 대체` (invalid profile, no cards, or a
   draft that failed its checks twice), `판정 불가` (no sources at all).
 - `profile`: `{id, version, source, review_status, status: 적용 | 무효, reason, attributes}`.
-- `overview`: the drafted paragraphs, kept even when held back so a reviewer can see them.
+- `overview`: `[summary, advice]`, kept even when held back so a reviewer can see them.
+- `advice_codes`: the explanation-duty codes (설명NN) the advice paragraph recommends checking.
 - `problems`: the code-check problems that held the overview back; empty when it is shown.
-- `html`: `<section data-role="overview"><p>…</p>…</section>` when shown, else empty.
+- `html`: `<section data-role="overview"><p data-role="summary">…</p><p data-role="advice">…</p>
+  </section>` when shown, else empty. Only the summary goes to `judge_ad_disclosure`; the advice
+  points elsewhere and is not an ad disclosure.
 - `controls`: a static list of UI controls (AI 생성 고지, 원문 보기 전환, 오류 신고) and governance
   controls (사람 승인, 변경 관리, 프로필 검토). They are documented for the report, not judged.
 
@@ -196,14 +202,22 @@ CLI: `review --persona "<free text>"`, `--persona-uuid <uuid>`, `--persona-attr 
 lines the cards cite, and `disclosure_items`: the in-scope A·B·C criteria an overview must carry
 (`ad_disclosure_check.rubric.OVERVIEW_REQUIRED` — rates and fees, benefit conditions, warnings,
 repayment, product-specific disclosures). The prompt asks for their core in the page's own figures,
-not every breakdown, and not the page metadata (심의필 번호, 회사명) that stays on the page beside it. `previous_feedback` carries this module's verification requests (for
-example a `누락` on C01) on a retry.
+not every breakdown, and not the page metadata (심의필 번호, 회사명) that stays on the page beside it.
+It also gets `explanation_items`: the product type's explanation-duty checklist
+(`ad_disclosure_check.rubric.deferred_explanation_items`, the same list the report shows). The
+advice picks 2–5 of them the page does not explain and that matter to this reader (familiarity,
+likely questions), and says what to check — never the answer, since the terms are not on the page.
+`previous_feedback` carries this module's verification requests (for example a `누락` on C01) on a
+retry.
 
 ## What code checks
 
-`overview_problems(paragraphs, source_text)`, over the text of every source line:
+`overview_problems(paragraphs, source_text)` over both paragraphs, against the text of every source
+line, and `advice_problems` for the advice:
 
-- one or two non-empty paragraphs, at most 1,200 characters in total;
+- a non-empty summary and, when the product has checklist items, a non-empty advice paragraph;
+- 2–5 `advice_codes`, every one from `explanation_items`;
+- at most 1,200 characters in total;
 - no number the page lacks (`number_set`, minus list numbering and the `counter_ones` exception
   shared with `plain_language`);
 - no absolute/superlative phrase the page lacks (`has_phrase`), no verdict word

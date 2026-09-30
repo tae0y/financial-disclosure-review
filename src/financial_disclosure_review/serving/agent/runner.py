@@ -120,6 +120,7 @@ def summarize(state: dict[str, Any], detail: Detail = Detail.summary) -> dict[st
         view["evidence_cards"]["rows"] = cards.get("cards") or []
         view["persona_explanation"]["html"] = persona.get("html")
         view["persona_explanation"]["overview"] = persona.get("overview") or []
+        view["persona_explanation"]["advice_codes"] = persona.get("advice_codes") or []
         view["persona_explanation"]["selection"] = persona.get("selection") or {}
         for key in ("items", "original", "overview", "fidelity", "deferred"):
             view["ad_disclosure_check"][key] = disclosure.get(key) or []

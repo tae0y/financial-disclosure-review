@@ -69,6 +69,10 @@ intent was a plain overview of one or two paragraphs shown beside the page.
   C01–C08); a `누락` of detail on an item it still carries is informational; the difference step
   gets each item's criterion and compares only what it asks. The product-document checklist drops
   the application-screen items, and the report names the reader by age band and familiarity only.
+- Extended 2026-09-30 (영태): the overview has two paragraphs. The summary restates the page and is
+  the only part judged against the ad disclosures. The advice recommends 2–5 of the deferred
+  explanation-duty items for this reader to check in the product document, so the items the ad is
+  not required to carry reach the reader as a prompt to ask, not as a claim about the product.
 
 ## Alternatives considered
 

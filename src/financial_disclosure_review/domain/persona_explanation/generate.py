@@ -1,4 +1,5 @@
-"""Entry point of persona_explanation: a one- or two-paragraph plain overview beside the page."""
+"""Entry point of persona_explanation: a two-paragraph plain overview beside the page — a summary
+of the page, then advice on the explanation-duty items this reader should check elsewhere."""
 
 import re
 from collections.abc import Mapping, Sequence
@@ -9,7 +10,11 @@ from typing import Any
 from ...core.context import Context
 from ...knowledge.rubrics import item_scope
 from ...llm.client import ask, call_ask
-from ..ad_disclosure_check.rubric import OVERVIEW_REQUIRED, load_disclosure_items
+from ..ad_disclosure_check.rubric import (
+    OVERVIEW_REQUIRED,
+    deferred_explanation_items,
+    load_disclosure_items,
+)
 from ..plain_language.contract import (
     FORBIDDEN_ABSOLUTE_PHRASES,
     counter_ones,
@@ -21,6 +26,10 @@ from .prompts import PERSONA_TASK
 from .schema import OverviewDraft
 
 MAX_PARAGRAPHS = 2
+MIN_ADVICE_CODES = 2
+MAX_ADVICE_CODES = 5
+# The roles of the two paragraphs, in order; only the summary is judged against the ad disclosures.
+ROLES = ("summary", "advice")
 MAX_CHARS = 1200
 ENUM_MARKER = re.compile(r"(?<!\S)\(?\d{1,2}[)）.](?=\s)")
 VERDICT_RE = re.compile(r"적합|부적합|위반|합법|불법|문제없")
@@ -45,11 +54,41 @@ CONTROLS = {
 
 
 def overview_html(paragraphs: Sequence[str]) -> str:
-    """The overview alone; the page it summarises is shown beside it, not inside it."""
+    """The overview alone; the page it summarises is shown beside it, not inside it. The first
+    paragraph is the summary, the second the advice."""
     if not paragraphs:
         return ""
-    body = "".join(f"<p>{escape(p)}</p>" for p in paragraphs)
+    body = "".join(
+        f'<p data-role="{role}">{escape(p)}</p>' for role, p in zip(ROLES, paragraphs, strict=False)
+    )
     return f'<section data-role="overview">{body}</section>'
+
+
+def advice_problems(answer: Mapping[str, Any], allowed: Sequence[str]) -> list[str]:
+    """The advice paragraph must exist and name 2–5 explanation-duty items the product has."""
+    if not allowed:
+        return []
+    problems = []
+    if not (answer.get("advice") or "").strip():
+        problems.append("권고 문단(advice)이 비어 있음")
+    codes = list(dict.fromkeys(answer.get("advice_codes") or []))
+    unknown = [c for c in codes if c not in allowed]
+    if unknown:
+        problems.append(f"설명의무 항목에 없는 advice_codes: {', '.join(unknown)}")
+    known = [c for c in codes if c in allowed]
+    if not MIN_ADVICE_CODES <= len(known) <= MAX_ADVICE_CODES:
+        problems.append(
+            f"권고 항목 {len(known)}개(advice_codes는 {MIN_ADVICE_CODES}~{MAX_ADVICE_CODES}개)"
+        )
+    return problems
+
+
+def _draft_paragraphs(answer: Mapping[str, Any]) -> list[str]:
+    return [
+        text
+        for text in ((answer.get("summary") or "").strip(), (answer.get("advice") or "").strip())
+        if text
+    ]
 
 
 def overview_problems(paragraphs: Sequence[str], source_text: str) -> list[str]:
@@ -87,6 +126,7 @@ def _fallback(status: str, reason: str, profile: dict) -> dict:
         "reason": reason,
         "profile": profile,
         "overview": [],
+        "advice_codes": [],
         "problems": [],
         "html": "",
         "controls": CONTROLS,
@@ -106,7 +146,8 @@ def generate_persona_explanation(
 ) -> dict:
     """독자 맞춤 쉬운말 개요 생성. PersonaExplanation의 모든 필드를 돌려준다.
 
-    {status, reason, profile, overview, problems, html, controls}. 모델 호출은 한 번이며, 코드
+    {status, reason, profile, overview, advice_codes, problems, html, controls}. `overview`는
+    [요약 문단, 권고 문단]이다. 모델 호출은 한 번이며, 코드
     검사에 걸린 답은 한 번 다시 묻는다. 두 번째 답도 걸리면 개요를 싣지 않고(원문 대체) 문제를
     `problems`에 남겨 검증이 재생성을 요청하게 한다. `profile`이 주어지면(choose_profile의 결과)
     다시 고르지 않고 그대로 쓴다: 재시도도 같은 독자로 쓴다.
@@ -128,6 +169,21 @@ def generate_persona_explanation(
         for i in load_disclosure_items(ctx.db_path)
         if i["code"] in OVERVIEW_REQUIRED and not item_scope(i, classification)
     ]
+    explanation_items = [
+        {"code": i["code"], "question": i["question"]}
+        for i in deferred_explanation_items(ctx.db_path, classification.get("product_type"))
+    ]
+    allowed = [i["code"] for i in explanation_items]
+
+    def check(answer: Mapping[str, Any]) -> list[str]:
+        paragraphs = _draft_paragraphs(answer)
+        problems = (
+            [] if (answer.get("summary") or "").strip() else ["요약 문단(summary)이 비어 있음"]
+        )
+        return (
+            problems + overview_problems(paragraphs, source_text) + advice_problems(answer, allowed)
+        )
+
     own_feedback = [
         {
             "code": f.get("code", ""),
@@ -144,7 +200,7 @@ def generate_persona_explanation(
         ctx.model,
         OverviewDraft,
         PERSONA_TASK,
-        lambda a: overview_problems(a.get("paragraphs") or [], source_text),
+        check,
         "medium",
         # A second answer that still fails is kept as is; the checks below hold it back.
         lambda a, _problems: a,
@@ -157,15 +213,18 @@ def generate_persona_explanation(
             if s["source_id"] in cited_sources
         ],
         disclosure_items=disclosure_items,
+        explanation_items=explanation_items,
         **extra,
     )
 
-    paragraphs = [p.strip() for p in answer.get("paragraphs") or [] if p and p.strip()]
-    problems = overview_problems(paragraphs, source_text)
+    paragraphs = _draft_paragraphs(answer)
+    advice_codes = [c for c in dict.fromkeys(answer.get("advice_codes") or []) if c in allowed]
+    problems = check(answer)
     if problems:
         return {
             **_fallback("원문 대체", "개요가 코드 검사를 통과하지 못해 싣지 않음", profile),
             "overview": paragraphs,
+            "advice_codes": advice_codes,
             "problems": problems,
         }
     return {
@@ -173,6 +232,7 @@ def generate_persona_explanation(
         "reason": "",
         "profile": profile,
         "overview": paragraphs,
+        "advice_codes": advice_codes,
         "problems": [],
         "html": overview_html(paragraphs),
         "controls": CONTROLS,

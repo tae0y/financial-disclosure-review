@@ -53,7 +53,8 @@ class PersonaExplanation(TypedDict, total=False):
     # How the reader was chosen (uuid / attributes / agent / default / fallback) and the
     # selection agent's trace; kept so a retry writes for the same reader.
     selection: Any
-    overview: Any
+    overview: Any  # [summary paragraph, advice paragraph]
+    advice_codes: Any  # the explanation-duty codes the advice paragraph recommends checking
     problems: Any
     html: Any
     controls: Any

@@ -63,7 +63,8 @@ collection, a failed verification, hidden text no control could reveal. Then thr
    of every open item (부적합 first, then 판정 불가) from the display check and the page-side
    disclosure check: area, rubric question, short basis, verdict, reason (80 characters).
 2. 쉬운말 개요 — the reader as an age band and financial familiarity only (never the dataset
-   persona's name or story), the paragraphs as shown or why none is shown, then "개요 확인 사항":
+   persona's name or story), the paragraphs as shown (**요약**, then **확인 권고**) or why none
+   is shown, then "개요 확인 사항":
    the overview's open items and the differences that are not merely informational.
 3. 상품설명서에서 확인할 설명의무 (n개) — one paragraph of topics (the question without its asking
    tail and asides); omitted when there are none.

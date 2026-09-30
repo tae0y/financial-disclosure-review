@@ -180,8 +180,10 @@ def structured_answer(name: str, schema: dict, data: dict) -> Any:
             "page_subject": "mock",
             "confidence": "high",
         }
-    if name == "OverviewDraft":  # one paragraph lifted from the page, so its code checks pass
-        return {"paragraphs": [quote]}
+    if name == "OverviewDraft":  # page text and the first two checklist codes pass the checks
+        codes = [i["code"] for i in data.get("explanation_items") or [] if isinstance(i, dict)]
+        advice = "상품설명서에서 확인해 보세요."
+        return {"summary": quote, "advice": advice, "advice_codes": codes[:2]}
     return fill_quotes(mirror_items(synth(schema, schema), schema, data), quote)
 
 

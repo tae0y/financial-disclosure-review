@@ -1,4 +1,5 @@
-"""generate_persona_explanation with the model faked: a short overview, held back when it fails."""
+"""generate_persona_explanation with the model faked: a summary paragraph and an advice paragraph
+on the explanation-duty items to check elsewhere, held back when either fails its checks."""
 
 import copy
 
@@ -21,16 +22,24 @@ from tests.domain.persona_explanation.persona_fixtures import (
     scripted_ask,
 )
 
-GOOD = [
+SUMMARY = (
     "스타벅스에서 쓰면 할인을 받을 수 있어요. 전월 이용금액 30만원 이상이면 월 최대 2만원까지"
-    " 할인돼요.",
-    "일부 가맹점은 할인에서 빠지고, 할인 한도는 모든 가맹점 할인을 합쳐서 계산돼요.",
-]
+    " 할인돼요. 일부 가맹점은 할인에서 빠져요."
+)
+ADVICE = (
+    "계약 전에 상품설명서에서 청약을 철회할 수 있는 기한과 방법, 그리고 연회비를 돌려받는 조건을"
+    " 꼭 확인해 보세요. 카드를 처음 만드시는 분께 특히 중요합니다."
+)
+CODES = ["설명16", "설명11"]
 
 
-def run(paragraphs: list[str], *more: list[str], profile_id: str = LOWFIN, **kwargs):
+def draft(summary: str = SUMMARY, advice: str = ADVICE, codes: list[str] | None = None) -> dict:
+    return {"summary": summary, "advice": advice, "advice_codes": CODES if codes is None else codes}
+
+
+def run(*answers: dict, profile_id: str = LOWFIN, **kwargs):
     fixture = load_persona_fixture("threshold_exclusion")
-    fake = scripted_ask({"paragraphs": paragraphs}, *({"paragraphs": p} for p in more))
+    fake = scripted_ask(*answers)
     result = generate_persona_explanation(
         fixture["sources"],
         fixture["cards"],
@@ -45,34 +54,36 @@ def run(paragraphs: list[str], *more: list[str], profile_id: str = LOWFIN, **kwa
 
 
 def test_the_result_has_the_state_shape_and_one_model_call():
-    result, fake = run(GOOD)
+    result, fake = run(draft())
     assert set(result) == {
         "status",
         "reason",
         "profile",
         "overview",
+        "advice_codes",
         "problems",
         "html",
         "controls",
     }
     assert fake.calls == ["OverviewDraft"]
     assert result["status"] == "완료" and result["problems"] == []
-    assert result["overview"] == GOOD
+    assert result["overview"] == [SUMMARY, ADVICE]
+    assert result["advice_codes"] == CODES
     assert result["profile"]["id"] == LOWFIN and result["profile"]["status"] == "적용"
     assert result["controls"] == CONTROLS
 
 
-def test_the_html_is_the_overview_alone_not_the_page():
-    result, _ = run(GOOD)
-    soup = BeautifulSoup(result["html"], "html.parser")
-    section = soup.find("section")
+def test_the_html_holds_the_summary_then_the_advice_and_not_the_page():
+    result, _ = run(draft())
+    section = BeautifulSoup(result["html"], "html.parser").find("section")
     assert section is not None and section["data-role"] == "overview"
-    assert [p.get_text() for p in section.find_all("p")] == GOOD
+    roles = [(p["data-role"], p.get_text()) for p in section.find_all("p")]
+    assert roles == [("summary", SUMMARY), ("advice", ADVICE)]
     assert "data-source-id" not in result["html"]
 
 
-def test_the_prompt_gets_the_profile_cards_cited_sources_and_the_ad_disclosure_items():
-    _, fake = run(GOOD)
+def test_the_prompt_gets_the_disclosures_to_carry_and_the_explanation_items_to_advise_on():
+    _, fake = run(draft())
     data = fake.data[0]
     assert set(data["profile"]) == {
         "reading_preference",
@@ -84,61 +95,81 @@ def test_the_prompt_gets_the_profile_cards_cited_sources_and_the_ad_disclosure_i
     assert [s["source_id"] for s in data["sources"]] == ["dom-2"]
     codes = [item["code"] for item in data["disclosure_items"]]
     assert "C01" in codes and "A11" in codes
-    # 신용카드 상품광고에는 카드대출·할부금융 의무표시가 걸리지 않는다.
     assert "C03" not in codes and "C06" not in codes
-    assert not any(code.startswith(("설명", "F")) for code in codes)
-    assert "previous_feedback" not in data and "fact_ledger" not in data
+    explanation = {item["code"]: item for item in data["explanation_items"]}
+    assert "설명16" in explanation and explanation["설명16"]["question"].endswith("?")
+    # 신용카드에 걸리지 않거나 신청 화면 전용인 항목은 권고 대상이 아니다.
+    assert "설명01" not in explanation and "설명19" not in explanation
+    assert "previous_feedback" not in data
 
 
-def test_an_invented_number_is_asked_again_and_then_held_back():
-    invented = [GOOD[0] + " 1년이면 24만원을 아껴요.", GOOD[1]]
-    result, fake = run(invented)
-    assert fake.calls == ["OverviewDraft", "OverviewDraft"]
-    assert any("24" in p for p in fake.data[1]["previous_problems"])
-    assert result["status"] == "원문 대체"
-    assert result["html"] == ""
-    assert any("원문에 없는 수치: 24" in p for p in result["problems"])
+def test_advice_codes_must_come_from_the_checklist_and_number_two_to_five():
+    for codes, marker in (
+        (["설명01", "설명16"], "설명의무 항목에 없는 advice_codes: 설명01"),
+        (["설명16"], "권고 항목 1개"),
+        ([], "권고 항목 0개"),
+    ):
+        result, fake = run(draft(codes=codes))
+        assert len(fake.calls) == 2, "코드 검사에 걸린 답은 한 번 다시 묻는다"
+        assert result["status"] == "원문 대체" and result["html"] == ""
+        assert any(marker in p for p in result["problems"]), result["problems"]
+
+
+def test_an_empty_advice_paragraph_is_held_back():
+    result, _ = run(draft(advice=""))
+    assert any("권고 문단(advice)이 비어 있음" in p for p in result["problems"])
+
+
+def test_an_invented_number_in_either_paragraph_is_asked_again_and_then_held_back():
+    for answer in (
+        draft(summary=SUMMARY + " 1년이면 24만원을 아껴요."),
+        draft(advice=ADVICE + " 철회 기한은 24일입니다."),
+    ):
+        result, fake = run(answer)
+        assert fake.calls == ["OverviewDraft", "OverviewDraft"]
+        assert any("24" in p for p in fake.data[1]["previous_problems"])
+        assert result["status"] == "원문 대체"
+        assert any("원문에 없는 수치: 24" in p for p in result["problems"])
 
 
 def test_a_retry_that_fixes_the_answer_is_used():
-    result, fake = run([GOOD[0] + " 24만원을 아껴요."], GOOD)
+    result, fake = run(draft(summary=SUMMARY + " 24만원을 아껴요."), draft())
     assert len(fake.calls) == 2
-    assert result["status"] == "완료" and result["overview"] == GOOD
+    assert result["status"] == "완료" and result["overview"] == [SUMMARY, ADVICE]
 
 
 def test_list_numbering_is_not_an_invented_number():
     """2026-09-29 C4: '1) … 2) …' 목록 번호는 사실이 아니므로 원문에 없는 수치로 보지 않습니다."""
-    numbered = [
+    numbered = (
         "1) 전월 이용금액 30만원 이상이어야 해요. 2) 할인은 월 최대 2만원이에요."
         " (3) 일부 가맹점은 빠져요."
-    ]
-    result, _ = run(numbered)
+    )
+    result, _ = run(draft(summary=numbered))
     assert result["status"] == "완료", result["problems"]
 
 
-def test_more_than_two_paragraphs_or_too_long_is_held_back():
-    result, _ = run([*GOOD, "세 번째 문단이에요."])
-    assert any("문단 3개" in p for p in result["problems"])
-    result, _ = run([GOOD[0], "가" * (MAX_CHARS + 1)])
+def test_too_long_is_held_back():
+    result, _ = run(draft(summary="가" * MAX_CHARS))
     assert any(f"(최대 {MAX_CHARS}자)" in p for p in result["problems"])
 
 
 def test_verdict_words_and_new_absolutes_are_held_back():
     cases = ((" 이 광고는 문제없습니다.", "판정 표현"), (" 누구나 받아요.", "단정·최상급"))
     for extra, marker in cases:
-        result, _ = run([GOOD[0] + extra, GOOD[1]])
+        result, _ = run(draft(summary=SUMMARY + extra))
         assert result["status"] == "원문 대체"
         assert any(marker in p for p in result["problems"]), result["problems"]
 
 
 def test_an_empty_answer_is_held_back_not_raised():
-    result, fake = run([])
+    result, fake = run(draft(summary="", advice="", codes=[]))
     assert len(fake.calls) == 2
-    assert result["status"] == "원문 대체" and result["problems"] == ["개요 문단이 없음"]
+    assert result["status"] == "원문 대체"
+    assert "요약 문단(summary)이 비어 있음" in result["problems"]
 
 
 def test_text_is_escaped_in_the_html():
-    result, _ = run(["<b>스타벅스</b> 할인 & 혜택이 있어요."])
+    result, _ = run(draft(summary="<b>스타벅스</b> 할인 & 혜택이 있어요."))
     assert "&lt;b&gt;스타벅스&lt;/b&gt; 할인 &amp; 혜택" in result["html"]
 
 
@@ -149,7 +180,7 @@ def test_an_invalid_profile_makes_no_call(tmp_path):
         p["version"] = 99
     bad = tmp_path / "persona_profiles.yaml"
     bad.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
-    fake = scripted_ask({"paragraphs": GOOD})
+    fake = scripted_ask(draft())
     result = generate_persona_explanation(
         fixture["sources"],
         fixture["cards"],
@@ -163,12 +194,12 @@ def test_an_invalid_profile_makes_no_call(tmp_path):
     assert result["status"] == "원문 대체"
     assert result["profile"]["status"] == "무효"
     assert "프로필 무효" in result["reason"]
-    assert result["html"] == "" and result["overview"] == []
+    assert result["html"] == "" and result["overview"] == [] and result["advice_codes"] == []
 
 
 def test_an_unknown_profile_id_from_the_context_is_invalid_too():
     fixture = load_persona_fixture("threshold_exclusion")
-    fake = scripted_ask({"paragraphs": GOOD})
+    fake = scripted_ask(draft())
     ctx = fake_ctx()
     ctx.persona_profile = "not-allowlisted"
     result = generate_persona_explanation(
@@ -179,7 +210,7 @@ def test_an_unknown_profile_id_from_the_context_is_invalid_too():
 
 def test_no_cards_or_no_sources_means_no_call():
     fixture = load_persona_fixture("threshold_exclusion")
-    fake = scripted_ask({"paragraphs": GOOD})
+    fake = scripted_ask(draft())
     result = generate_persona_explanation(
         fixture["sources"], [], CLASSIFICATION, fake_ctx(), ask=fake, profiles_path=PROFILES
     )
@@ -201,7 +232,7 @@ def test_only_this_modules_feedback_reaches_the_prompt():
         },
         {"module": "ad_disclosure_check", "reason": "다른 모듈", "requested_change": "x"},
     ]
-    _, fake = run(GOOD, feedback=feedback)
+    _, fake = run(draft(), feedback=feedback)
     assert fake.data[0]["previous_feedback"] == [
         {
             "code": "C01",
@@ -216,7 +247,7 @@ def test_a_given_profile_is_used_as_is_and_its_reader_reaches_the_prompt(tmp_pat
     profile = copy.deepcopy(resolve_profile(LOWFIN, PROFILES))
     profile["id"] = "nemotron:" + "0" * 32
     profile["attributes"]["reader"] = "74세 여자 · 학력 초등학교 · 직업 무직\n가상의 인물입니다."
-    fake = scripted_ask({"paragraphs": GOOD})
+    fake = scripted_ask(draft())
     result = generate_persona_explanation(
         fixture["sources"],
         fixture["cards"],
@@ -238,13 +269,13 @@ def test_an_invalid_given_profile_makes_no_call():
         "status": "무효",
         "reason": "템플릿 버전 불일치",
     }
-    result, fake = run(GOOD, profile=profile)
+    result, fake = run(draft(), profile=profile)
     assert result["status"] == "원문 대체" and "템플릿 버전 불일치" in result["reason"]
     assert fake.calls == []
 
 
-def test_the_task_asks_for_a_short_overview_and_limits_the_reader_sketch():
-    assert "1개 또는 2개" in PERSONA_TASK and "보조 요약" in PERSONA_TASK
-    assert "disclosure_items" in PERSONA_TASK
-    assert "reader" in PERSONA_TASK
+def test_the_task_asks_for_a_summary_and_reader_tailored_advice():
+    assert "summary" in PERSONA_TASK and "advice" in PERSONA_TASK
+    assert "explanation_items" in PERSONA_TASK and "likely_questions" in PERSONA_TASK
+    assert "지어내지 않습니다" in PERSONA_TASK
     assert "자격" in PERSONA_TASK.split("reader", 1)[1]

@@ -51,7 +51,8 @@ codes are downgraded to `판정 불가`; a mismatch in the set of codes raises.
 
 ## Overview side and fidelity
 
-The overview is judged by the same procedure, looking only at the overview, but only on the
+The overview is judged by the same procedure, looking only at its summary paragraph (the advice
+paragraph recommends what to check elsewhere and is not an ad disclosure), but only on the
 items it must carry (`OVERVIEW_REQUIRED` in `rubric.py`): 이자율·수수료 (A04·A05), 부가서비스 조건
 (A10), 경고문구 (A11–A13), 상환방법 (B02) and the product-specific disclosures (C01–C08). Page
 metadata — 설명서 권유, 회사명, 상품명, 설명받을 권리, 심의필 번호·유효기간, 통계 출처, 발급 기준 —

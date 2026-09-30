@@ -116,7 +116,8 @@ def _overview_lines(
         lines += [f"독자: {reader}", ""]
     paragraphs = overview.get("overview") or []
     if overview.get("html") and paragraphs:
-        lines += [line for p in paragraphs for line in (_cell(p), "")]
+        labelled = zip(("**요약** ", "**확인 권고** "), paragraphs, strict=False)
+        lines += [line for label, p in labelled for line in (label + _cell(p), "")]
     elif overview.get("problems"):
         lines += [f"(싣지 않음: {_cell('; '.join(overview['problems']), 200)})", ""]
     else:

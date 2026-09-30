@@ -4,4 +4,6 @@ from pydantic import BaseModel
 
 
 class OverviewDraft(BaseModel):
-    paragraphs: list[str]
+    summary: str
+    advice: str
+    advice_codes: list[str]

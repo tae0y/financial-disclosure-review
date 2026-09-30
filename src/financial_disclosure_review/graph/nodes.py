@@ -1,6 +1,7 @@
 """The graph nodes. Each pulls what it needs from State and calls one domain entry point."""
 
 from collections.abc import Mapping
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -185,10 +186,13 @@ def judge_ad_disclosure(state: State, runtime: Runtime[Context]) -> dict:
         )
     else:
         feedback = (state.get("verification") or {}).get("feedback") or []
+        # Only the summary paragraph restates the page; the advice paragraph points elsewhere
+        # (explanation-duty items for the product document) and is not an ad disclosure.
+        summary = (persona.get("overview") or [""])[0]
         check.update(
             judge_disclosure(
                 page,
-                {"html": persona["html"]},
+                {"html": f"<p>{escape(summary)}</p>"},
                 classification,
                 runtime.context,
                 # An empty original side (every item ruled out) is a result, not a missing one.
