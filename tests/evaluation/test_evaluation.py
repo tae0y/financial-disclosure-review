@@ -160,6 +160,36 @@ def test_a_deleted_disclosure_is_detected_and_a_neutral_delete_flips_nothing(tmp
     assert metrics["false_flips"] == []
     assert metrics["quote_groundedness"]["rate"] == 1.0
     assert [row["case"] for row in result["rows"]][-1] == "neutral-delete"
+    assert metrics["controls"] == 1 and metrics["controls_flipped"] == 0
+
+
+def test_several_controls_each_delete_a_different_uncited_sentence(tmp_path, monkeypatch):
+    from financial_disclosure_review.evaluation import suites
+
+    items = [
+        {"code": code, "criterion": f"{code} 기준", "applies_condition": None, "rubric": "r"}
+        for code in FakeDutyAsk.QUOTES
+    ]
+    monkeypatch.setattr(suites, "_in_scope_items", lambda db_path, classification: items)
+    extra = "<p>모바일 앱에서 카드 신청부터 발급 현황 조회까지 한 번에 확인할 수 있습니다.</p>"
+    html_path = tmp_path / "page.html"
+    html_path.write_text(HTML.replace("</main>", extra + "</main>"), encoding="utf-8")
+    config = {
+        "base_html": str(html_path),
+        "classification": {"product_type": "신용카드", "page_type": "상품광고"},
+        "prefer_codes": ["F11"],
+    }
+
+    result = run_disclosure_flip(
+        Context(model="fake"), fake_cassette(tmp_path), config, max_flips=1, controls=2
+    )
+    controls = [row for row in result["rows"] if row["kind"] == "무관 문장 삭제(대조군)"]
+    metrics = metrics_for(result)
+
+    assert [row["case"] for row in controls] == ["neutral-delete", "neutral-delete-2"]
+    assert controls[0]["removed_quote"] != controls[1]["removed_quote"]
+    assert metrics["controls"] == 2
+    assert metrics["controls_flipped"] == 0
 
 
 class SplitAsk(FakeDutyAsk):

@@ -30,17 +30,23 @@ def remove_quote(html: str, quote: str) -> tuple[str, bool]:
     return result, gone
 
 
-def longest_unused_sentence(html: str, used_quotes: list[str], min_chars: int = 30) -> str:
-    """A long sentence no judgment cited, the control edit — deleting it must not flip any item."""
+def unused_sentences(html: str, used_quotes: list[str], n: int, min_chars: int = 30) -> list[str]:
+    """The `n` longest sentences no judgment cited, longest first — control edits."""
     text = visible_text(html)
     used = [norm(q) for q in used_quotes if q]
-    candidates = []
+    candidates: list[str] = []
     for raw in text.replace("!", ".").replace("?", ".").split("."):
         sentence = raw.strip()
-        if len(sentence) < min_chars:
+        if len(sentence) < min_chars or sentence in candidates:
             continue
         low = norm(sentence)
         if any(low in u or u in low for u in used):
             continue
         candidates.append(sentence)
-    return max(candidates, key=len) if candidates else ""
+    return sorted(candidates, key=len, reverse=True)[:n]
+
+
+def longest_unused_sentence(html: str, used_quotes: list[str], min_chars: int = 30) -> str:
+    """A long sentence no judgment cited, the control edit — deleting it must not flip any item."""
+    found = unused_sentences(html, used_quotes, 1, min_chars)
+    return found[0] if found else ""

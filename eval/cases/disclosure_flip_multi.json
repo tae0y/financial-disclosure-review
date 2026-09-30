@@ -1,0 +1,45 @@
+{
+  "dataset": "광고 의무표시 결함 주입 v3 (여러 페이지)",
+  "purpose": "v2(disclosure_flip.json)는 롯데카드 한 페이지에서 3건만 지웠다. v3는 카드사 3곳·상품유형 4종의 페이지 5장에서 페이지마다 더 많은 문장을 지우고, 대조군도 페이지마다 2건 둔다. 판정 코드와 프롬프트는 v2와 같다.",
+  "label_source": "삭제 자체가 정답이다(v2와 같음). 삭제 대상은 두 구성이 모두 적합으로 본 항목에서 고른다. 삭제 뒤 어느 구성이든 페이지에 실제로 있는 다른 문장을 근거로 적합을 내면 '같은 사실이 다른 곳에 남은' 경우로 보고 정답 의심으로 따로 센다.",
+  "html_source": "eval/fixtures/flip/*.html은 실제 검토(2026-09-29 live4·live5)의 체크포인트에서 꺼낸 모델 입력 html이다. lotte-auto-installment만 분류 픽스처의 원본 페이지 html이다. eval/fixtures/는 공개 저장소에서 제외되어 제출 zip에 들어간다.",
+  "classification_source": "각 페이지의 상품유형은 실제 검토의 분류 결과(체크포인트) 또는 분류 픽스처의 라벨이다. 적용할 루브릭 항목을 고르는 데만 쓴다.",
+  "pages": [
+    {
+      "name": "lotte-lasvegas",
+      "config": "eval/cases/disclosure_flip.json"
+    },
+    {
+      "name": "shinhan-card",
+      "base_html": "eval/fixtures/flip/shinhan-card.html",
+      "url": "https://www.shinhancard.com/pconts/html/card/apply/credit/2013774_2207.html",
+      "captured": "2026-09-29T05:15:41Z, data/live5 thread r2-shinhan-card",
+      "sha256": "1850ec39fb4b952c613729e11b28d140b59bfe288358eeac08ace4140bc1b0b5",
+      "classification": {"product_type": "신용카드", "page_type": "상품광고"}
+    },
+    {
+      "name": "samsung-cardloan",
+      "base_html": "eval/fixtures/flip/samsung-cardloan.html",
+      "url": "https://www.samsungcard.com/home/finance/index/PGHPPCPFinanceIndexApplyLowerInterestRate001",
+      "captured": "2026-09-29T04:44:04Z, data/live4 thread r1-samsung-loan",
+      "sha256": "f8a40da0014a08476e8b6bd921934140e3e819302541d44997370336e6236eb7",
+      "classification": {"product_type": "장기카드대출", "page_type": "상품광고"}
+    },
+    {
+      "name": "shinhan-revolving",
+      "base_html": "eval/fixtures/flip/shinhan-revolving.html",
+      "url": "https://www.shinhancard.com/pconts/html/finance/revolving/CONFM60030/CONFM60030R01.html",
+      "captured": "2026-09-29T04:38:16Z, data/live4 thread r1-shinhan-revolving (수집 상태 '조사 불충분')",
+      "sha256": "f4584bdf9c9d056dda7cc1c95bf9f0f3863be825f1673f55ac22f5e57b79cd1f",
+      "classification": {"product_type": "리볼빙", "page_type": "업무광고"}
+    },
+    {
+      "name": "lotte-auto-installment",
+      "base_html": "eval/fixtures/flip/lotte-auto-installment.html",
+      "url": "https://www.lottecard.co.kr/app/LPFINFB_V100.lc",
+      "captured": "tests/fixtures/classify/lottecard-auto-installment.json의 원본 페이지 html",
+      "sha256": "2beafb1d4320f06c6cba0ce114f6cdbfd6618da439bb23f1939c8b9f9dade3fd",
+      "classification": {"product_type": "할부금융·리스", "page_type": "상품광고"}
+    }
+  ]
+}

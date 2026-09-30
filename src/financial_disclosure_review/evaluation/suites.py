@@ -17,7 +17,7 @@ from ..domain.plain_language.contract import verify_block, verify_source_quote
 from ..domain.plain_language.judge import judge_condition_preservation
 from ..knowledge.rubrics import item_scope
 from .cassette import Asks, Cassette, CassetteMissError
-from .defects import longest_unused_sentence, remove_quote
+from .defects import remove_quote, unused_sentences
 
 ABLATION_TASK = """당신은 카드회사 상품광고 페이지 원문(text)이 광고 의무표시 기준(items)을 지켰는지
 판단합니다. items의 각 항목마다 verdict(적합/부적합/판정 불가), quote(근거 문장),
@@ -182,7 +182,12 @@ def shared_targets(
 
 
 def run_disclosure_flip(
-    ctx: Context, cassette: Cassette, config: dict, arm: str = "pipeline", max_flips: int = 3
+    ctx: Context,
+    cassette: Cassette,
+    config: dict,
+    arm: str = "pipeline",
+    max_flips: int = 3,
+    controls: int = 1,
 ) -> dict:
     """Deletes one disclosure at a time and checks if the item flips; unlanded cases go unscored."""
     judge = ARMS[arm]
@@ -233,11 +238,10 @@ def run_disclosure_flip(
         rows.append(row)
 
     all_quotes = [row["quote"] for rows_ in bases.values() for row in rows_]
-    neutral_quote = longest_unused_sentence(base_html, all_quotes)
-    if neutral_quote:
+    for n, neutral_quote in enumerate(unused_sentences(base_html, all_quotes, controls), 1):
         variant_html, landed = remove_quote(base_html, neutral_quote)
         row = {
-            "case": "neutral-delete",
+            "case": "neutral-delete" if n == 1 else f"neutral-delete-{n}",
             "kind": "무관 문장 삭제(대조군)",
             "code": "",
             "removed_quote": neutral_quote[:120],

@@ -25,7 +25,11 @@ def disclosure_flip_metrics(result: dict) -> dict:
     detected = [row for row in injected if row.get("detected")]
     softened = [row for row in injected if row.get("softened")]
     skipped = [row for row in rows if not row["landed"]]
-    neutral = next((row for row in rows if row["case"] == "neutral-delete"), None)
+    controls = [
+        row
+        for row in rows
+        if row["case"].startswith("neutral-delete") and row["landed"] and not row.get("failed")
+    ]
     grounded = [row.get("groundedness") or {} for row in rows if row.get("groundedness")]
     quoted = sum(g.get("quoted", 0) for g in grounded)
     found = sum(g.get("found", 0) for g in grounded)
@@ -44,7 +48,10 @@ def disclosure_flip_metrics(result: dict) -> dict:
         # A variant the arm could not judge at all counts as missed above and is named here too.
         "failed": [row["case"] for row in rows if row.get("failed")],
         "skipped_variants": [row["case"] for row in skipped],
-        "false_flips": (neutral or {}).get("false_flips") or [],
+        "false_flips": [code for row in controls for code in row.get("false_flips") or []],
+        # One deletion of an uncited sentence per control; a control with any flip is a false alarm.
+        "controls": len(controls),
+        "controls_flipped": sum(1 for row in controls if row.get("false_flips")),
         "quote_groundedness": {"quoted": quoted, "found": found, "rate": rate(found, quoted)},
         "base_verdicts": result["base"]["verdicts"],
         "base_groundedness": result["base"]["groundedness"],
