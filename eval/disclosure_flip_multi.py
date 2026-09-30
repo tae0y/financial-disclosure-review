@@ -199,7 +199,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--record", action="store_true")
     parser.add_argument("--page", action="append", default=[])
-    parser.add_argument("--flips", type=int, default=6)
+    parser.add_argument("--flips", type=int, default=8)
     parser.add_argument("--controls", type=int, default=2)
     parser.add_argument("--model", default="gpt-5-mini")
     parser.add_argument("--max-usd", type=float, default=0.5)

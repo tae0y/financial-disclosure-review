@@ -60,7 +60,7 @@ page and pick the reader; the review order, routing, retries and verdict rules s
 
 Captured third-party pages and the model answers about them are not in this repository:
 `tests/fixtures/classify/`, `eval/fixtures/`, `eval/cassettes/`, `eval/results/` and
-`data/reference.sqlite` ship separately as `fdr-reproduction-assets-260929.zip`, unpacked at the
+`data/reference.sqlite` ship separately as `fdr-reproduction-assets-260930.zip`, unpacked at the
 repository root. Without them the tests that need a captured page are skipped and `evaluate`
 stops with `no evaluation cases`.
 

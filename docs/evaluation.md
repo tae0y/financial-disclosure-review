@@ -31,7 +31,7 @@ uv run python -m financial_disclosure_review evaluate --ablation   # replays the
 
 `eval/results/`, `eval/fixtures/`, `eval/cassettes/` and `tests/fixtures/classify/` hold captured
 third-party pages and are gitignored; they ship in the submission zip
-(`fdr-reproduction-assets-260929.zip`, unpacked at the repository root). Without them the
+(`fdr-reproduction-assets-260930.zip`, unpacked at the repository root). Without them the
 classification and stability suites stop with `no evaluation cases` instead of reporting an
 empty score.
 
@@ -126,6 +126,46 @@ not hold for that case. The pipeline's one control flip (A08, 광고·심의필 
 also changes verdict across the stability rounds (§5). Source:
 `eval/results/260930-135417-disclosure-flip-record.json`, replayed in
 `eval/results/260930-140141-all-replay.json`.
+
+#### Five pages, 33 deletions, 10 controls — pipeline 20/33, ablation 20/33 (2026-09-30 15:00)
+
+Three deletions give a 95% interval of 21-94% for 2/3, too wide to say anything. The same suite
+(`run_disclosure_flip`, same prompts and arms, unchanged code) was run on five pages from three card
+companies and four product types, up to 8 deletions and 2 controls per page:
+`eval/disclosure_flip_multi.py`, cases in `eval/cases/disclosure_flip_multi.json`. Four pages are
+the model-facing html saved in the checkpoints of the 2026-09-29 live reviews (`data/live4`,
+`data/live5`), stored as `eval/fixtures/flip/*.html` with their SHA-256; the Lotte auto-installment
+page is the raw classification fixture. Each page recorded in its own cassette under
+`eval/cassettes/disclosure-multi/` (5 parallel processes, 106 calls, $1.008, about 14 minutes);
+the pooled replay is free, 8 seconds, 0 misses.
+
+| Page (product type) | Deleted | Caught pipeline / ablation | Controls flipped | Quotes on page |
+|---|---|---|---|---|
+| Lotte Las Vegas (신용카드) | 8 | 5 / 5 | 2/2 / 0/2 | 139/139 / 121/169 |
+| Shinhan Hi-Point Plan (신용카드) | 8 | 5 / 4 | 1/2 / 0/2 | 148/148 / 143/170 |
+| Samsung rate-cut request (장기카드대출) | 1 | 1 / 1 | 0/2 / 1/2 | 7/7 / 7/54 |
+| Shinhan revolving (리볼빙) | 8 | 4 / 5 | 0/2 / 0/2 | 134/134 / 117/170 |
+| Lotte auto installment (할부금융·리스) | 8 | 5 / 5 | 0/2 / 0/2 | 146/146 / 141/180 |
+| **Total** | **33** | **20 / 20** (61%, 95% CI 44-75%) | **3/10 / 1/10** | **574/574 / 529/743** |
+
+- Detection is still a tie at eleven times the sample. The validation steps do not raise it.
+- The pipeline's effect is on evidence: all 574 of its quotes are on the page, against 71% of the
+  ablation's.
+- The pipeline flips more controls (3/10 against 1/10): A08 twice and B01 once, the two items
+  that also change verdict across stability rounds (§5).
+- All 13 misses passed on another sentence still on the edited page. Six are the company/product
+  name items (A02, A03), whose names appear all over the page, so deleting one sentence cannot make
+  them absent: those deletions carry no valid label and should not be targets. The other seven (fee
+  tables, benefit conditions, a credit-score warning) need a person to decide whether the remaining
+  sentence meets the criterion. Lotte auto-installment A12 passed a deleted credit-score warning on
+  "대출취급이 부적정한 경우(…개인신용평점 낮음 등) 대출이 제한될 수 있습니다", which is not that warning — the
+  quote check proves the sentence exists, not that it satisfies the item.
+- The script also reports a "label doubt" rate (19/20 in both arms once doubtful deletions are
+  removed). A deletion is doubtful when either arm passes it on an on-page sentence, which also
+  drops cases where the ablation cited an unrelated sentence, so this rate is not the headline.
+
+Source: `eval/results/260930-150207-disclosure-multi-all-replay.{json,md}`; per-page recordings
+`eval/results/260930-1451*`–`1501*-disclosure-multi-*-record.*`.
 
 #### 이전 기준 — explanation duty by analogy (2026-09-27 – 09-29)
 
