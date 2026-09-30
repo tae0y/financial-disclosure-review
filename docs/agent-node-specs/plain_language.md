@@ -61,7 +61,7 @@ checked:
 
 | Item | Verdict | Why |
 |---|---|---|
-| `쉬운말01` | always `판정 불가` | whether a mandatory disclosure survived is `judge_explanation_duty`'s answer, not this node's |
+| `쉬운말01` | always `판정 불가` | whether a mandatory disclosure survived is `judge_ad_disclosure`'s answer, not this node's |
 | `쉬운말08`, `쉬운말10` | `적용` when any term was glossed, else `해당없음` | the node can show `term_refs`, not judge whether a gloss changed the concept |
 | `쉬운말11`, `14`, `15`, `17`–`22` | always `판정 불가` | sentence complexity, block ordering, UI elements and pre-publication human review are outside what this node produces |
 | the rest | `위반 발견` when a matching contract error fired, else `적용` | the item is mapped to the error markers it corresponds to |

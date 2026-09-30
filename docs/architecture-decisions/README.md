@@ -16,3 +16,4 @@ Decisions the report and the slides rely on. ADR-001 and ADR-002 were first writ
 | [003](adr-003-staged-classification.md) | Classify the product with a quoted, staged model judgment | 2026-09-10 / 09-17 |
 | [004](adr-004-fixed-statute-lookup.md) | Fixed statute lookup; similarity search for sanction cases only (case search removed 2026-09-30) | 2026-09-17 |
 | [005](adr-005-display-flip-evaluation.md) | Measure the display check by mutating rendered measurements | 2026-09-28 |
+| [006](adr-006-ad-disclosure-instead-of-explanation-duty.md) | Judge an ad page by the mandatory ad disclosures; write a short overview beside it | 2026-09-30 |

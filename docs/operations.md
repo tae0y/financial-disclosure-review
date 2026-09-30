@@ -8,13 +8,14 @@ for a person to assess, not an automatic legal conclusion.
 | Situation | System behaviour |
 |---|---|
 | Out of scope or classification cannot be established | Stop and report the reason. |
-| A display or explanation item is uncertain | Add it to the reviewer actions; never treat it as a pass. |
+| A display or ad-disclosure item is uncertain | Add it to the reviewer actions; never treat it as a pass. |
 | Verification fails | Retry at most twice when the failed node can use the feedback. |
 | Display check fails verification | Escalate directly; repeating identical measurements is not useful. |
-| Retry budget is exhausted | Keep the original wording and block automatic publication. |
+| Retry budget is exhausted | Show the original page only and block automatic publication of the overview. |
 
-Only `검토 완료` permits “담당자 확인 후 독자 맞춤 설명 게시 가능.” That still leaves the release
-decision to the named reviewer.
+Only `검토 완료` permits “담당자 확인 후 쉬운말 개요 게시 가능.” That still leaves the release
+decision to the named reviewer. Explanation-duty items are never judged here; the report lists
+them for the reviewer to confirm in the product document.
 
 ## Cost controls
 

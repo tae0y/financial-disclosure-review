@@ -39,10 +39,10 @@ it with `uv run python -m financial_disclosure_review.serving.openapi`.
 
 Only `url` is required. `detail` defaults to `summary`; `max_calls` and `max_usd` cap one run.
 
-### Reader information for the easy-language explanation
+### Reader information for the easy-language overview
 
-`persona` carries the user information used to choose the reader of the reader-tailored
-explanation (독자 맞춤 설명). It does not identify the API caller. A normal UI sends the text the
+`persona` carries the user information used to choose the reader of the plain-language overview
+(쉬운말 개요, one or two paragraphs shown beside the page). It does not identify the API caller. A normal UI sends the text the
 user entered in `persona.request`:
 
 ```json
@@ -67,10 +67,10 @@ Free text is turned into dataset filters and a financial-familiarity hint by a s
 agent. Useful details are age band, education, occupation, region, household type, and phrases
 such as "처음 알아보는" or "금융권 종사자". Income, credit standing, suitability, and other
 facts that the dataset does not contain are not inferred or used. The selected persona only
-changes the explanation's wording; it never changes a compliance verdict.
+changes the overview's wording; it never changes a compliance verdict.
 
 Treat `persona.request` as model input. Collect only the demographic sketch and level of financial
-familiarity needed for the explanation; do not send a name, contact details, account or card
+familiarity needed for the overview; do not send a name, contact details, account or card
 numbers, resident-registration numbers, credentials, or other identifying or sensitive data.
 
 The advanced `attributes` form accepts the filters `age_min`, `age_max`, `sex`,
@@ -127,8 +127,9 @@ selection trace, and fallback reason.
 
 Successful results contain the checkpoint `thread_id`, reviewer status and decision, summary,
 report, cost, and elapsed time. `detail=full` additionally includes per-item judgments, evidence cards,
-the page agent's trace, and the reader-tailored explanation HTML with its units, fact ledger and
-reader selection. Raw source HTML and snapshots never leave the API.
+the page agent's trace, the overview HTML and paragraphs with the reader selection, and under
+`ad_disclosure_check` the ad-disclosure rows for the page and the overview, their differences, and
+the explanation-duty items left to the product document (`deferred`). Raw source HTML and snapshots never leave the API.
 
 The worker runs up to `FDR_AGENT_CONCURRENCY` reviews at once (2 in the compose file); each run
 meters its own budget. Extra submissions stay `queued` until a slot frees, and a run takes about

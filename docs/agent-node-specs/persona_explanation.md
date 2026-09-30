@@ -6,11 +6,13 @@ created: 2026-09-29
 
 # persona_explanation
 
-`generate_persona_explanation` writes a supplementary explanation of the page's evidence cards
-for one reviewed reader profile. It is not a legal rewrite and issues no compliance verdict. The
-model drafts units; code keeps only the units it can trace back to the page, and every other
-line stays in its original wording. `check_ledger` (in `explanation_duty_check/ledger.py`) then
-compares the fact ledger against the assembled explanation.
+`generate_persona_explanation` writes a plain-language overview (쉬운말 개요) of the page's
+evidence cards for one reviewed reader profile: one or two paragraphs shown beside the page, never
+in place of it. It is not a legal rewrite and issues no compliance verdict. Code checks the draft;
+`judge_ad_disclosure` then judges the overview by the same mandatory ad disclosures as the page and
+records the differences ([ADR-006](../architecture-decisions/adr-006-ad-disclosure-instead-of-explanation-duty.md)).
+Until 2026-09-30 this node rewrote the page line by line in traced units checked against a fact
+ledger; that structure is removed.
 
 ## Inputs and output
 
@@ -22,14 +24,14 @@ compares the fact ledger against the assembled explanation.
 | `profile` | the result of `choose_profile` (see below), used as is; a retry keeps the same reader |
 | profile fallback | without `profile`: `profile_id`, else `Context.persona_profile`, else the yaml's `default` |
 
-The result is `{status, reason, profile, fact_ledger, units, html, controls}`.
+The result is `{status, reason, profile, overview, problems, html, controls}`.
 
-- `status`: `완료` (at least one unit accepted), `원문 대체` (invalid profile, no cards, or every
-  unit reverted), `판정 불가` (no sources at all).
+- `status`: `완료` (the overview passed its checks), `원문 대체` (invalid profile, no cards, or a
+  draft that failed its checks twice), `판정 불가` (no sources at all).
 - `profile`: `{id, version, source, review_status, status: 적용 | 무효, reason, attributes}`.
-- `fact_ledger`: `[{fact_id, card_id, source_id, kind, value, unit_ids}]`.
-- `units`: `[{unit_id, card_ids, source_ids, replaces, exact_fact, explanation, analogy,
-  persona_question_answered, status: accepted | reverted, problems}]`.
+- `overview`: the drafted paragraphs, kept even when held back so a reviewer can see them.
+- `problems`: the code-check problems that held the overview back; empty when it is shown.
+- `html`: `<section data-role="overview"><p>…</p>…</section>` when shown, else empty.
 - `controls`: a static list of UI controls (AI 생성 고지, 원문 보기 전환, 오류 신고) and governance
   controls (사람 승인, 변경 관리, 프로필 검토). They are documented for the report, not judged.
 
@@ -44,7 +46,7 @@ At the start of the run, `_context` maps the three fields to `Context.persona_re
 `Context.persona_uuid`, and `Context.persona_attributes`. It removes `null` values inside
 `attributes`; therefore an all-null object is treated as absent and cannot outrank a populated
 free-text request. The `persona` object and each of its fields may be omitted or `null`; empty
-input becomes the selection default described below. See [the HTTP API guide](../api.md#reader-information-for-the-easy-language-explanation)
+input becomes the selection default described below. See [the HTTP API guide](../api.md#reader-information-for-the-easy-language-overview)
 for the wire format, validation failures, and response paths.
 
 ## Profiles
@@ -188,40 +190,30 @@ first version, kept small and fully validated so it can be replaced. Alternative
 CLI: `review --persona "<free text>"`, `--persona-uuid <uuid>`, `--persona-attr key=value`
 (repeatable; list fields take comma-separated values, e.g. `province=서울,경기`).
 
-## Fact ledger
+## What the model gets
 
-`build_fact_ledger(cards)` is pure code. Per card, in card order: each `numbers` string becomes
-`period` (unit 개월·년·일·주·회차·시간·영업일), `limit` (최대 or 한도 within 4 characters before, or
-한도 right after) or `number`; each qualifier becomes `condition`; each exception becomes
-`exception`; an `eligibility` card adds a `target` (its claim when literally in the quote, else
-the quote); a `warning` card adds a `penalty` holding its quote. Values are literal source
-strings, never normalised numbers.
+`product_type`, the profile attributes (with `reader` for a dataset profile), the cards, the source
+lines the cards cite, and `disclosure_items`: the in-scope A·B·C criteria of
+`card_guardrail_rubric` (the same scope `judge_ad_disclosure` uses). The overview is judged by
+those criteria like the page, so the prompt asks it to carry, in the page's own figures, whatever
+the page states for them. `previous_feedback` carries this module's verification requests (for
+example a `누락` on C01) on a retry.
 
-## What code checks per unit
+## What code checks
 
-A unit that fails any check is `reverted`: its draft stays in `units` for audit, but the page
-shows the original line.
+`overview_problems(paragraphs, source_text)`, over the text of every source line:
 
-- `card_ids` non-empty and known; `source_ids` non-empty, known, and a subset of the cited cards'
-  sources.
-- `exact_fact` locatable (whitespace-insensitive) in the joined text of the unit's sources.
-- No number in `explanation`/`analogy` that the unit's source text lacks (`number_set`, minus the
-  `counter_ones` exception shared with `plain_language`).
-- Every ledger value of the cited cards, and of every card on the line the unit replaces, is in
-  `exact_fact` or `explanation` (whitespace-normalised substring).
-- No absolute/superlative phrase the source lacks (`has_phrase`); no verdict word
-  (적합|부적합|위반|합법|불법|문제없) in `explanation`/`analogy`.
-- Two units may not replace the same line; the later one is reverted.
+- one or two non-empty paragraphs, at most 1,200 characters in total;
+- no number the page lacks (`number_set`, minus list numbering and the `counter_ones` exception
+  shared with `plain_language`);
+- no absolute/superlative phrase the page lacks (`has_phrase`), no verdict word
+  (적합|부적합|위반|합법|불법|문제없).
 
-Analogies are dropped, not reverted, and the drop is recorded as `analogy_dropped: <why>`: when
-the profile's policy is `none`, when a cited card is `rate_claim`/`fee_claim`/`warning`, when the
-unit's text mentions 리볼빙|금리|이자|연체|위약금|수수료|이월, or when the policy is `benefit_only` and
-a cited card is not a `benefit_claim`. The drop happens before the number/phrase checks, so a
-risky analogy never reverts an otherwise sound unit.
-
-The model call goes through `call_ask`. Only structural problems (no units, empty fields, ids
-that do not exist) trigger the single retry; a second broken answer is kept as is and the unit
-checks revert what cannot be traced, so the graph never stops here.
+The model call goes through `call_ask`, so a draft with problems is asked again once with
+`previous_problems`. A second failing draft is kept in `overview` but not shown (`html` empty,
+`status: 원문 대체`); `verify_answer` turns `problems` into a request, so the next round redraws it.
+Analogy rules (none on risk concepts, `analogy_policy`) are in the prompt only; a free paragraph
+has no field code could strip an analogy from.
 
 ## Familiarity stated by the reviewer
 
@@ -235,44 +227,15 @@ request does not name.
 
 ## HTML
 
-Every source appears once, in page order. The first source (in page order) of each accepted unit
-is replaced by `<section data-unit-id data-source-ids><p data-role="exact-fact">…</p>
-<p data-role="explanation">…</p>[<p data-role="analogy">…</p>]</section>`; every other source,
-including the unit's other sources, stays `<p data-source-id>original</p>`. All text is escaped.
-
-Mandatory disclosures stay emphasised (audit P2-12). The graph node flags a source `mandatory`
-when its text contains, or is contained in, a block `display_check` labelled `mandatory` (at least
-6 normalised characters). Such a line renders as `<p data-source-id data-mandatory="true">
-<strong>…</strong></p>`, and a unit covering a mandatory line carries `data-mandatory="true"` with
-its `exact_fact` in `<strong>`. The emphasis is markup only; it adds no text, so the ledger and
-fidelity checks read the same words.
-
-## check_ledger
-
-`check_ledger(fact_ledger, units, original_text, explanation_text, model, ask)` returns
-`{"ledger": rows, "fidelity": rows}`.
-
-- A value literally present in `explanation_text` is `보존`, `decided_by: code`.
-- All absent values go to one model call (`LedgerSemantics`: `보존 | 누락 | 약화`, with a quote
-  that must be locatable in the explanation unless `누락`). A broken answer is retried once, then
-  salvaged to `판정 불가`; it never raises.
-- A number in the explanation that the original lacks is a code-decided `추가` row (`code: NUM`).
-- Fidelity rows: `{code, kind: 누락 | 약화 | 추가 | 판정 불가, source_ids, unit_ids, quote, reason,
-  decided_by, informational}`. `source_ids` is never empty (fact source, else its units' sources,
-  else `unmapped`). `informational` is true when every related unit was reverted (or there is
-  none) — the reader then sees the original line; an added number with no owning unit is not
-  informational.
+Only the overview, escaped, in one `<section data-role="overview">`. The page is shown beside it
+by the caller; the node no longer interleaves original lines, so the display check's mandatory
+labels (audit P2-12) have nothing to emphasise here.
 
 ## Decisions taken without a reviewer
 
-- Required ledger coverage extends to every card on the replaced line, not only the cited ones,
-  because the section hides that whole line.
-- Verdict words are rejected even when the source uses them (e.g. 약관 위반): a false revert only
-  costs the original wording.
-- `benefit_only` allows an analogy only when all cited cards are `benefit_claim`.
-- Non-card text on a replaced line is not checked: an `exact_fact` shorter than its line can drop
-  it. The design example itself uses a partial `exact_fact`, so the node does not require the
-  whole line; Stage 4 evaluation should measure this.
+- The length cap (1,200 characters for two paragraphs) is this node's reading of "한두 문단".
+- Verdict words are rejected even when the source uses them (e.g. 약관 위반): a false hold-back
+  only costs the overview for that round.
 - The default profiles path is `default_rubric_dir()/persona_profiles.yaml`. The Docker image
   mounts rubrics at `/app/rubrics`, so the graph node has to pass `profiles_path` from
   `serving.settings.rubric_dir` (or `Context` needs a path field) before this runs in Docker.

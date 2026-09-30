@@ -15,6 +15,18 @@ for free:
 uv run python -m financial_disclosure_review evaluate --ablation   # replays the cassette, $0
 ```
 
+> **2026-09-30 — criteria switched, re-recording pending.** The explanation-duty check became
+> the ad-disclosure check (A·B·C mandatory ad disclosures instead of 설명의무 by analogy), and the
+> reader explanation became a one- or two-paragraph overview
+> ([ADR-006](architecture-decisions/adr-006-ad-disclosure-instead-of-explanation-duty.md)). The
+> `duty-flip` suite is now `disclosure-flip` (`eval/cases/disclosure_flip.json` v2) and the
+> stability suite repeats the disclosure items. Their prompts and items changed, so the current
+> cassettes do not hold their answers: `disclosure-flip` and `stability` need `--record` (paid)
+> before they replay, and `eval/cards_persona_eval.py`, `agentic_stability.py` and
+> `persona_pair_eval.py` now measure the overview and need their persona answers recorded again.
+> Every explanation-duty and unit/fact-ledger figure below was measured before the switch and is
+> kept as history, not as a result of the current code.
+
 `eval/results/`, `eval/fixtures/`, `eval/cassettes/` and `tests/fixtures/classify/` hold captured
 third-party pages and are gitignored; they ship in the submission zip
 (`fdr-reproduction-assets-260929.zip`, unpacked at the repository root). Without them the
@@ -52,12 +64,12 @@ The model comparison (other models on the same suites) is recorded in its own ca
 | Suite | Question | Label source | Cases | Comparison arm |
 |---|---|---|---|---|
 | `classification` | Is a real page put in the right product type? | the product type each issuer names on its page, written into the fixture by 영태 | 6 | `keyword`: count product words, no model |
-| `duty-flip` | Is a disclosure that left the page noticed? | the deletion itself — the sentence is provably gone | 3 + 1 control | `ablation`: one call, no quote check, no condition step, no retry — on the same deletions |
+| `disclosure-flip` (was `duty-flip`) | Is a disclosure that left the page noticed? | the deletion itself — the sentence is provably gone | 3 + 1 control | `ablation`: one call, no quote check, no condition step, no retry — on the same deletions |
 | `display-flip` | Is a disclosure made too small or too faint noticed, and only that one? | the mutation itself — the measured size or contrast is provably under the threshold | 4 + 2 controls | `rules`: thresholds with no notion of which text is mandatory |
 | `plain-contract` | Is a rewrite that drifts from the original caught? (the 2026-09-28 plain-language checks; see §4) | the defect written into each pair | 13 (9 defective, 4 clean) | `mechanical`: numbers, absolute phrases and quotes only, no model judgment of conditions |
 | `stability` | Does the same input get the same answer? | agreement with itself, no label | 6 pages + 39 items, 3 rounds | `ablation`: the one-call judgment asked three times (the keyword classifier is code and never varies) |
 
-Why the explanation duty is measured by deletion and the display method by mutation is recorded
+Why the disclosure check is measured by deletion and the display method by mutation is recorded
 in `docs/architecture-decisions/adr-002-defect-injection-evaluation.md` and `docs/architecture-decisions/adr-005-display-flip-evaluation.md`.
 
 ## Results
@@ -418,21 +430,21 @@ F13·설명13·F14·설명14는 1회차에 판정 불가였다가 다른 회차�
 - 실제 페이지에서 수집과 판정을 모두 끝낸 것은 7건 중 1건입니다(§8). 녹음 재생 스위트의 수치는 저장된
   페이지에 대한 값이며, 실제 페이지의 완주율을 뜻하지 않습니다.
 - `plain-contract`는 9/28 구조의 쉬운말 검사를 잽니다. 현재 그래프는 이 검사를 부르지 않습니다(§4).
-- 설명의무는 삭제 방향만 측정했습니다. 없던 설명을 넣으면 적합으로 바뀌는지(반대 방향)는 보지 않았습니다.
+- 결함 주입은 삭제 방향만 측정했습니다(2026-09-30 이전 수치는 설명의무 준용 기준입니다). 없던 설명을 넣으면 적합으로 바뀌는지(반대 방향)는 보지 않았습니다.
 - 표시방법 평가는 측정값을 바꾼 것이지 화면을 다시 그린 것이 아닙니다. 캡처 이미지는 내보내지 않아
   이미지 위 글자는 두 구성 모두에서 판정 불가로 남습니다.
 - 분류 라벨은 페이지에 적힌 상품 구분을 영태가 옮겨 적은 것이고 프롬프트도 영태가 썼습니다. 두 번째
   사람의 교차 확인은 아직 없습니다.
 - 쉬운말 케이스는 손으로 만든 문장쌍입니다. 실제 모델이 만드는 오류 분포와 다를 수 있습니다.
 - 인용 유효율 100%는 "인용문이 본문에 있다"는 뜻이고 "그 인용이 기준을 충족한다"는 뜻이 아닙니다.
-- 설명의무 판정은 같은 입력에서도 23%가 흔들립니다(축소 구성 21%). 한 번의 실행 결과를 확정 판정으로
+- 설명의무 준용 기준의 판정은 같은 입력에서도 23%가 흔들렸습니다(축소 구성 21%). 광고 의무표시 기준은 재측정 전입니다. 한 번의 실행 결과를 확정 판정으로
   읽으면 안 됩니다.
-- 증거 카드 정답셋은 AI 초안이고, 독자 맞춤 설명의 사람 평가는 0건입니다.
+- 증거 카드 정답셋은 AI 초안이고, 쉬운말 개요의 사람 평가는 0건입니다.
 
 ## Adding a case
 
 1. 분류: `tests/fixtures/classify/<case>.json`에 `{url, product, html, expected}`를 넣습니다.
-2. 결함 주입: `eval/cases/duty_flip.json`의 `prefer_codes`를 조정하거나 `base_html`을 다른 수집 결과로
+2. 결함 주입: `eval/cases/disclosure_flip.json`의 `prefer_codes`(A·B·C 코드)를 조정하거나 `base_html`을 다른 수집 결과로
    바꿉니다.
 3. 표시방법: `eval/cases/display_flip.json`의 `pages[].cases`에 `{id, kind, rubric, text}`를 더합니다.
    `rubric: null`이면 대조군입니다. 새 페이지는 실제 검토의 `product_page`를
