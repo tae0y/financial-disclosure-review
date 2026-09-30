@@ -18,10 +18,11 @@ that the page complies with the law, and the first reason line says so.
 | `display_check` | status is not `완료`; an item is `판정 불가`; a verdict cites no block or quote; a cited block was never measured; `적합` contradicts a measured threshold violation | re-cite real block ids, or re-judge the contradicted item (not retried, see below) |
 | `persona_explanation` | the module is empty; the overview was held back by its code checks (`problems`); a number in the overview is not on the page | "fix these problems and rewrite the overview"; "check these numbers against the page" |
 | `ad_disclosure_check` | the module is empty or has no rows; an item is `판정 불가`; a `적합` has no quote; a quote is not in the text it claims (page for `original`, overview for `overview`) | re-quote, addressed to the side (`target: original` or `overview`) and the code |
-| overview vs. page (fidelity) | a `누락`, `변경` or `추가` row | fails `persona_explanation`: "carry this code's content as the page states it" |
+| overview vs. page (fidelity) | a `변경` or `추가` row, or a `누락` of an item the overview does not carry at all | fails `persona_explanation`: "carry this code's content as the page states it" |
 
-A `부적합` may cite nothing — a missing disclosure cannot be quoted. A `판정 불가` fidelity row is
-added to the reasons as `[정보]` and fails nothing, because it names nothing to fix.
+A `부적합` may cite nothing — a missing disclosure cannot be quoted. A `판정 불가` fidelity row, and
+a `누락` on an item the overview still carries (detail a summary may drop), is added to the reasons
+as `[정보]` and fails nothing.
 
 ## Retry (`graph/retry.py`, `graph/routes.py`)
 

@@ -50,27 +50,26 @@ overview unpublished. The reading changes what the reviewer is told, not what th
 
 ## Sections of the markdown
 
-The markdown is short on purpose (replaced 2026-09-30): it is what a requester is sent.
+The markdown is short on purpose (replaced, then compacted, 2026-09-30): it is what a requester
+is sent.
 `domain/report/markdown.py` renders it; the other Report fields keep the detail.
 
 Frontmatter first (`ai-generated: true`, `human-review: false`), so a generated report can never
 be mistaken for a reviewed one. Then the page (product, verdict and publish decision, URL, types)
 with header notes only where they explain the verdict: why a review stopped, an incomplete
-collection, a failed verification, hidden text no control could reveal. Then up to five sections:
+collection, a failed verification, hidden text no control could reveal. Then three sections:
 
-1. 표시방법 — every item, as its rubric question and legal basis (not its code), verdict, reason.
-2. 광고 의무표시 (원문) — passes are a count, and only 부적합·판정 불가 items are listed with
-   question, basis and reason.
-3. 쉬운말 개요 — the reader, then the overview paragraphs as shown; an overview held back by its
-   code checks shows why instead.
-4. 쉬운말 개요의 광고 의무표시 — the same table for the overview, then the differences from the
-   original that are not merely informational, each with its code.
-5. 상품설명서에서 확인할 설명의무 항목 — the unjudged explanation-duty questions for the product
-   type; omitted when there are none.
+1. 확인할 항목 — one line of pass counts (표시방법, 광고 의무표시, 쉬운말 개요), then a single table
+   of every open item (부적합 first, then 판정 불가) from the display check and the page-side
+   disclosure check: area, rubric question, short basis, verdict, reason (80 characters).
+2. 쉬운말 개요 — the reader as an age band and financial familiarity only (never the dataset
+   persona's name or story), the paragraphs as shown or why none is shown, then "개요 확인 사항":
+   the overview's open items and the differences that are not merely informational.
+3. 상품설명서에서 확인할 설명의무 (n개) — one paragraph of topics (the question without its asking
+   tail and asides); omitted when there are none.
 
-The question is the asking sentence of the rubric `criterion`; the basis names each cited
-document once (`rubric_sources.doc` through `knowledge.rubrics.DOC_NAMES`) with its first article
-and a count of the rest. Both come from `rubric_labels(db_path)`; with no DB the code stands in.
+The question is the asking sentence of the rubric `criterion`; the short basis is its first cited
+document and article with a count of the others (`rubric_labels`, `knowledge.rubrics.DOC_NAMES`). Both come from `rubric_labels(db_path)`; with no DB the code stands in.
 
 Cost, limits and assumptions, the action list, findings, agent runs and evidence cards are not in
 the markdown. They stay in `report.cost`, `report.limits`, `report.actions`,

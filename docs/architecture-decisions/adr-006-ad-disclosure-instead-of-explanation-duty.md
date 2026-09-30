@@ -62,10 +62,13 @@ intent was a plain overview of one or two paragraphs shown beside the page.
   Prompts and items changed, so the recorded cassettes no longer match and must be re-recorded
   with paid calls before the suites replay. Earlier results in `docs/evaluation.md` were
   measured under the explanation-duty criteria and stay as history.
-- Open: because the overview is judged like the page, a page-level disclosure the original
-  carries (e.g. 심의필 번호 A07, 카드사 명칭 A02) is a `누락` if the overview leaves it out. If this
-  makes overviews fail repeatedly on the paid re-measurement, the next decision is which A·B·C
-  items an overview must carry.
+- Resolved 2026-09-30 after the first live run (롯데 디지로카 Las Vegas, `data/live6/`): the
+  overview failed both rounds on page metadata (심의필 번호 A07, 유효기간 A08) and on detail a
+  summary drops (구간별 할인율, 연회비 내역), and two differences compared unrelated quotes. 영태
+  lowered the overview's bar: it is judged only on `OVERVIEW_REQUIRED` (A04·A05·A10–A13·B02·
+  C01–C08); a `누락` of detail on an item it still carries is informational; the difference step
+  gets each item's criterion and compares only what it asks. The product-document checklist drops
+  the application-screen items, and the report names the reader by age band and familiarity only.
 
 ## Alternatives considered
 

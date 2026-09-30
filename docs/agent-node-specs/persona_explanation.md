@@ -193,10 +193,10 @@ CLI: `review --persona "<free text>"`, `--persona-uuid <uuid>`, `--persona-attr 
 ## What the model gets
 
 `product_type`, the profile attributes (with `reader` for a dataset profile), the cards, the source
-lines the cards cite, and `disclosure_items`: the in-scope A·B·C criteria of
-`card_guardrail_rubric` (the same scope `judge_ad_disclosure` uses). The overview is judged by
-those criteria like the page, so the prompt asks it to carry, in the page's own figures, whatever
-the page states for them. `previous_feedback` carries this module's verification requests (for
+lines the cards cite, and `disclosure_items`: the in-scope A·B·C criteria an overview must carry
+(`ad_disclosure_check.rubric.OVERVIEW_REQUIRED` — rates and fees, benefit conditions, warnings,
+repayment, product-specific disclosures). The prompt asks for their core in the page's own figures,
+not every breakdown, and not the page metadata (심의필 번호, 회사명) that stays on the page beside it. `previous_feedback` carries this module's verification requests (for
 example a `누락` on C01) on a retry.
 
 ## What code checks

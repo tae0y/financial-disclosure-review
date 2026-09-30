@@ -25,7 +25,9 @@ Until 2026-09-30 this node was `explanation_duty_check` and judged the 설명의
 bind an advertisement directly, so a 부적합 reads as 위반 in the report.
 
 `deferred_explanation_items` returns the 설명의무 items of `plain_service_rubric` whose
-`applies_to` includes the product type, as `{code, question, applies_condition}`. They are not
+`applies_to` includes the product type, as `{code, question, applies_condition}`, leaving out the
+items whose condition holds only on a 신청·가입·발급 화면 (설명19·25–28): neither an ad nor its
+product document is that screen. They are not
 judged: 설명의무 (금소법 제19조) binds the contract-stage product document, which an ad page is not.
 The report lists them for the reviewer to confirm in the 상품설명서. The F group of
 `card_guardrail_rubric` repeats these duties and is neither judged nor listed.
@@ -49,14 +51,24 @@ codes are downgraded to `판정 불가`; a mismatch in the set of codes raises.
 
 ## Overview side and fidelity
 
-The overview is judged by the same criteria, looking only at the overview (영태, 2026-09-30).
-`fidelity_candidates` sends to the model only the codes whose verdict or quote differs between the
-two sides, and `변화없음` answers are dropped. Because the overview is a summary, its quotes almost
-always differ in wording; the model decides whether the content changed.
+The overview is judged by the same procedure, looking only at the overview, but only on the
+items it must carry (`OVERVIEW_REQUIRED` in `rubric.py`): 이자율·수수료 (A04·A05), 부가서비스 조건
+(A10), 경고문구 (A11–A13), 상환방법 (B02) and the product-specific disclosures (C01–C08). Page
+metadata — 설명서 권유, 회사명, 상품명, 설명받을 권리, 심의필 번호·유효기간, 통계 출처, 발급 기준 —
+stays on the page the overview sits beside and is not asked of it (영태, 2026-09-30, after the
+first live run failed an overview for leaving out 심의필 번호).
 
-Each row carries `original_quote`, `quote` (overview side) and `informational`. A `누락`, `변경` or
-`추가` fails `persona_explanation` in `verify_answer` with a request naming the code, so the next
-round redraws the overview. `추가` is not a fix: an overview that fills a gap the page left does
+`fidelity_candidates` sends to the model only the codes whose verdict or quote differs between the
+two sides, and `변화없음` answers are dropped. Each item goes with its `criterion`, and the task
+compares only what the criterion asks about: two quotes that differ on something else are no
+difference (the first live run called A02 변경 because the page quote was about L.POINT and the
+overview quote about 할인 혜택). Detail a summary drops — 구간별 할인율, 기본·제휴 연회비 내역 — is
+`변화없음` when the criterion's content is still there.
+
+Each row carries `original_quote`, `quote` (overview side) and `informational`. A `변경` or `추가`,
+or a `누락` where the overview does not carry the item at all (its own verdict is not 적합), fails
+`persona_explanation` in `verify_answer` with a request naming the code, so the next round redraws
+the overview. A `누락` on an item the overview still carries is informational: lost detail. `추가` is not a fix: an overview that fills a gap the page left does
 not resolve the page's `부적합`. A `판정 불가` comparison is informational.
 
 ## Output

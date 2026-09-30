@@ -41,6 +41,13 @@ rejected: coverage cannot be established without it.
 `active_includes` selector has to contribute text, the content may not shrink below half of
 `content_chars`, and an expand step that matched elements but clicked none is an error.
 
+`coverage_regression` rejects a replay that leaves more hidden text or unexpanded controls inside
+the product regions than discovery did (`open_gaps`, stored with the rule). A stale rule — one
+saved before the accordion fix, with no expand step — replayed with 68 open gaps on 2026-09-30,
+so every mandatory disclosure behind an accordion read as never visible and the display items
+came back 판정 불가. A rule saved without `open_gaps` counts as having left none, so it is
+rediscovered once and saved with the count.
+
 ## What the agent may and may not do
 
 The guards live in the tools, never in the prompt.
