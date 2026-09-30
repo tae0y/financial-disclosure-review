@@ -216,6 +216,23 @@ budget runs out after collection still ends in a 판정 불가 report naming the
 - The live run on 디지로카 Las Vegas under the current criteria (18 calls, $0.1085, 305 s) collected
   the page to `full_coverage` with 0 open gaps and judged 표시방법 적합 4/8 and 의무표시 적합 14/17
   (A08, A09, B01 부적합).
+- On 2026-09-30 at 18:00 KST the same five pages used for defect injection were submitted through
+  the deployed web front end: URL and reader text ("70대, 금융 경험 적음") typed into the form, the
+  result awaited, and the report saved with the "Markdown 저장" button (Playwright). Three ran end
+  to end; 신한 리볼빙 and 롯데 오토할부 failed on the first model call because the OpenAI credit ran
+  out (`429 credit_balance_exhausted`), which the front end showed as "검토에 실패했습니다" and which
+  ended the job without a 판정 불가 report.
+
+| Page | Time | Calls, cost | Collection | 표시방법 적합 | 의무표시 적합 | Download |
+|---|---|---|---|---|---|---|
+| 롯데 디지로카 Las Vegas | 215.9 s | 9, $0.0701 | 완료, saved rule reused | 5/8 | 16/16 | 4,410 bytes |
+| 삼성 금리인하요구 (장기카드대출) | 108.4 s | 9, $0.0398 | 완료, saved rule reused | 1/8 (5 판정 불가) | 2/16 (11 부적합) | 9,954 bytes |
+| 신한 Hi-Point | 374.5 s | 24, $0.1439 | 완료 / reachable_coverage, re-explored | 3/8 (4 판정 불가) | 16/16 | 4,957 bytes |
+
+  Across the five live runs under the current criteria (two on Las Vegas, these three) a review
+  took 108–375 s (median 305 s) and cost $0.040–$0.144 (median $0.091). A08 and B01 on Las Vegas,
+  부적합 in the earlier run, came out 적합 here; they are the two items that move under repetition.
+  Files: `data/live7/` (screenshots, downloaded reports, API responses; shipped in the asset zip).
 
 Sources: `eval/results/260929-140148-agent-loop.md` (seven pages) and
 `260929-141601-agent-loop.md` (reruns of 신한 Hi-Point and 현대 카드론); per-page reports and the
