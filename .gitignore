@@ -1,6 +1,7 @@
 ######## Local docs (symlinked to TIL repo)
 localdocs/
 localdocs
+tmp/
 
 ######## AI Agent temporary files
 scratchpad/
@@ -242,6 +243,8 @@ data/persona-api-change-*.md
 data/mock/
 # Local follow-up notes and backups between work sessions; not project documentation.
 data/followups/
+# Final course-submission archives kept locally for post-hoc verification.
+data/submission/
 
 # PyPI configuration file
 .pypirc
